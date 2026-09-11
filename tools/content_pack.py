@@ -66,6 +66,24 @@ def validate_entry(entry):
     return character
 
 
+def validate_timetable(record):
+    if not isinstance(record, dict) or "days" not in record:
+        raise ValueError("Timetable needs days")
+    for key in ("days", "supplies"):
+        if key not in record:
+            continue
+        days = record[key]
+        if not isinstance(days, list) or len(days) not in (5, 7):
+            raise ValueError(f"{key} needs five or seven day arrays, Monday first")
+        for day in days:
+            if not isinstance(day, list) or len(day) > 8:
+                raise ValueError("At most eight lessons/items per day")
+            for value in day:
+                text({key: value}, key, 32)
+                if any(c in value for c in "\r\n\t"):
+                    raise ValueError("Timetable text must be one line")
+
+
 def validate(folder):
     folder = Path(folder)
     manifest = read_json(folder / "manifest.json", 4096)
@@ -81,14 +99,7 @@ def validate(folder):
         count += 1
     timetable = folder / "timetable.json"
     if timetable.exists():
-        days = read_json(timetable, 8192).get("days")
-        if not isinstance(days, list) or len(days) != 5:
-            raise ValueError("Timetable needs five weekday arrays")
-        for day in days:
-            if not isinstance(day, list) or len(day) > 8:
-                raise ValueError("At most eight lessons per day")
-            for lesson in day:
-                text({"lesson": lesson}, "lesson", 24, True)
+        validate_timetable(read_json(timetable, 8192))
     weather = folder / "weather.json"
     if weather.exists():
         record = read_json(weather, 4096)

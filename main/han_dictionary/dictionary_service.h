@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include "content_store.h"
+#include "timetable.h"
 
 class DictionaryService {
 public:
@@ -15,6 +16,7 @@ public:
 private:
     DictionaryService() = default;
     han::ContentStore store_;
+    han::TimetableData timetable_;
     bool tools_registered_ = false;
     std::function<void(const han::Entry&)> result_callback_;
 };

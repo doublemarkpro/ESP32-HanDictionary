@@ -10,6 +10,7 @@
 #include <atomic>
 #include <functional>
 #include "study_timer.h"
+#include "timetable.h"
 
 // Opt-in product display. The generic LCD and all other boards remain independent.
 class HanDisplay : public MipiLcdDisplay {
@@ -26,6 +27,7 @@ public:
     void ShowEntry(const han::Entry& entry);
     bool OpenPage(const std::string& page);
     bool ApplyStrokeFrame(const std::string& path, std::string data);
+    bool ApplyTimetable(const std::string& json);
 
 private:
     enum class Page { Home, Dictionary, Phonetics, Timetable, Timer, Alarm, Weather, Network };
@@ -105,6 +107,10 @@ private:
     bool alarm_ringing_ = false;
     std::atomic<bool> local_audio_{false};
     int64_t last_checkpoint_ms_ = 0;
-    std::string timetable_text_;
+    han::TimetableData timetable_;
+    int timetable_row_ = 0, timetable_week_ = 0, timetable_day_group_ = 0;
+    int timetable_today_ = -1, supplies_page_ = 0;
+    int64_t timetable_date_key_ = -1;
+    std::array<bool, 8> supplies_checked_{};
     std::string weather_text_;
 };

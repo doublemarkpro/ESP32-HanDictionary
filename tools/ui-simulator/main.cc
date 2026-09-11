@@ -46,6 +46,14 @@ lv_obj_t* FindImage(lv_obj_t* obj, const lv_image_dsc_t* source) {
             return image;
     return nullptr;
 }
+bool HasCheck(lv_obj_t* obj) {
+    if (lv_obj_check_type(obj, &lv_line_class))
+        return true;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (HasCheck(lv_obj_get_child(obj, i)))
+            return true;
+    return false;
+}
 void Click(const char* label) {
     auto obj = FindLabel(lv_screen_active(), label);
     Check(obj != nullptr, label);
@@ -126,6 +134,20 @@ int main(int argc, char** argv) {
         lv_display_set_flush_cb(display, Flush);
         HanDisplay ui(nullptr, nullptr, 1280, 720, 0, 0, false, false, false);
         ui.SetupUI();
+        const std::string empty_schedule = R"({"days":[[],[],[],[],[]]})";
+        han::TimetableData schedule;
+        Check(han::TimetableData::Parse(empty_schedule, schedule) && schedule.empty(),
+              "legacy empty timetable");
+        Check(han::TimetableData::Parse(R"({"days":[[""],[],[],[],[]]})", schedule) &&
+                  schedule.empty(),
+              "blank lessons are empty");
+        for (const auto& invalid :
+             {std::string("{}"), empty_schedule + "garbage",
+              std::string(R"({"days":[null,[],[],[],[]]})"),
+              std::string(R"({"days":[["1","2","3","4","5","6","7","8","9"],[],[],[],[]]})"),
+              std::string(R"({"days":[["\u0000"],[],[],[],[]]})"), std::string(8193, ' ')})
+            Check(!han::TimetableData::Parse(invalid, schedule), "malformed timetable rejected");
+        Check(ui.ApplyTimetable(empty_schedule), "load genuine empty template");
         ui.UpdateStatusBar();
         Shot(folder, "home");
         auto& app = Application::GetInstance();
@@ -245,6 +267,50 @@ int main(int argc, char** argv) {
                 Click("作业计时");
                 Click("暂停");
                 Check(FindLabel(lv_screen_active(), "00:01:05"), "timer survives back");
+            }
+            if (i == 2) {
+                Check(FindLabel(lv_screen_active(), "还没有课程，请导入课表"),
+                      "empty template does not invent lessons");
+                Click("问明天课程");
+                Check(FindLabel(lv_screen_active(), "请先联网，再询问课程"),
+                      "offline timetable voice is guarded");
+                std::ifstream fixture(std::string(HAN_SOURCE_ROOT) +
+                                      "/docs/examples/timetable.example.json");
+                const std::string example((std::istreambuf_iterator<char>(fixture)), {});
+                Check(ui.ApplyTimetable(example), "explicit demo fixture accepted");
+                ui.ShowNotification("", 1);
+                lv_tick_inc(2);
+                lv_timer_handler();
+                Shot(folder, "timetable-example");
+                Check(FindLabel(lv_screen_active(), "科学"), "subject cells rendered");
+                Click("第6—8节");
+                Check(
+                    FindLabel(lv_screen_active(), "第8节") && FindLabel(lv_screen_active(), "班会"),
+                    "last three lessons reachable");
+                Shot(folder, "timetable-more-lessons");
+                Click("第1—5节");
+                Click("查看周末");
+                Check(
+                    FindLabel(lv_screen_active(), "周六") && FindLabel(lv_screen_active(), "周日"),
+                    "weekend reachable");
+                Shot(folder, "timetable-weekend");
+                Click("周一至周五");
+                Click("本周 v");
+                Check(FindLabel(lv_screen_active(), "下周 v"), "next weekly template");
+                Click("下周 v");
+                Click("美术本");
+                Check(HasCheck(lv_obj_get_parent(FindLabel(lv_screen_active(), "美术本"))),
+                      "supplies can be checked");
+                Shot(folder, "timetable-checked");
+                Click("更多物品");
+                Check(FindLabel(lv_screen_active(), "水杯"), "all supplies reachable");
+                Click("更多物品");
+                Check(HasCheck(lv_obj_get_parent(FindLabel(lv_screen_active(), "美术本"))),
+                      "check survives pagination");
+                Check(!ui.ApplyTimetable("{}"), "invalid import returns failure");
+                Check(FindLabel(lv_screen_active(), "课表未加载或格式错误"),
+                      "invalid import clears stale courses");
+                Check(ui.ApplyTimetable(empty_schedule), "restore real template");
             }
             Click("<");
             Check(FindLabel(lv_screen_active(), "小小助手"), "back home");

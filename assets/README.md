@@ -1,5 +1,12 @@
 # Product assets
 
+UI4 timetable: `graphics/timetable/` contains six 40×40 PNG exports (4,226 bytes total), recolored
+from the project's existing original vector controls. `tools/ui-assets/timetable-assets.cjs`
+generates their LVGL descriptors and the fifth Resource Han Rounded subset (`han_font_schedule`, 32 px,
+4 bpp compressed, same SIL OFL license). Background/mascot reuse UI3 assets; no full-page bitmap.
+The normal font generator now also collects glyphs from the real SD timetable and the explicitly labeled
+example under `docs/examples/`; actual course data is not baked into the firmware.
+
 UI3 home skin: `graphics/home-skin/` and `main/han_dictionary/assets/home_skin.c` combine original
 vector layers with resized/palette-optimized AI cutouts from `graphics/source/raster/`; generation
 prompts remain in `graphics/prompts.json`. The 116 px 规 image appended to `home_skin.c` is derived

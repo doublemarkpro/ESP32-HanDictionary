@@ -55,7 +55,8 @@ if(CONFIG_HAN_DICTIONARY)
         "han_dictionary/assets/han_font_character.c"
         "han_dictionary/assets/home_skin.c" "han_dictionary/assets/han_font_home.c"
         "han_dictionary/assets/han_font_brand.c" "han_dictionary/assets/han_font_talk.c"
-        "han_dictionary/assets/han_font_clock.c")
+        "han_dictionary/assets/han_font_clock.c"
+        "han_dictionary/assets/timetable_assets.c" "han_dictionary/assets/han_font_schedule.c")
     list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
 endif()
 

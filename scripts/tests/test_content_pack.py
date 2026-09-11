@@ -12,6 +12,21 @@ spec.loader.exec_module(pack)
 
 
 class ContentPackTests(unittest.TestCase):
+    def test_timetable_legacy_and_weekend_example(self):
+        pack.validate_timetable({"days": [[], [], [], [], []]})
+        pack.validate_timetable(json.loads((ROOT / "docs/examples/timetable.example.json").read_text(encoding="utf-8")))
+
+    def test_timetable_rejects_invalid_shape_and_strings(self):
+        for record in [[], {}, {"days": []}, {"days": [None] * 5},
+                       {"days": [["x"] * 9] * 5}, {"days": [["x" * 33]] * 5},
+                       {"days": [["a\n"]] * 5}, {"days": [["\0"]] * 5},
+                       {"days": [[True]] * 5}, {"days": [[]] * 5, "supplies": {}}]:
+            with self.subTest(record=record), self.assertRaises(ValueError):
+                pack.validate_timetable(record)
+
+    def test_timetable_accepts_empty_lesson_placeholders(self):
+        pack.validate_timetable({"days": [["", "语文"]] * 7, "supplies": [[]] * 7})
+
     def setUp(self):
         self.entry = json.loads((ROOT / "content/sdcard/handict/dictionary/entries/89C4.json").read_text(encoding="utf-8"))
 

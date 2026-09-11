@@ -2,7 +2,9 @@
 #include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 #include <cJSON.h>
+#include <ctime>
 #include "mcp_server.h"
+#include "timetable.h"
 
 DictionaryService& DictionaryService::GetInstance() {
     static DictionaryService instance;
@@ -13,6 +15,52 @@ void DictionaryService::RegisterMcpTools() {
     if (tools_registered_)
         return;
     tools_registered_ = true;
+    // Called during board construction after the card is mounted, before the app loop.
+    // Keep tool callbacks free of SD I/O. Card changes take effect after restarting.
+    std::string timetable_json;
+    if (store_.ready() && store_.Read("timetable.json", timetable_json, 8192))
+        han::TimetableData::Parse(timetable_json, timetable_);
+    McpServer::GetInstance().AddTool(
+        "self.study.timetable",
+        "读取本机SD周课表和需带物品。day_offset=0今天、1明天，最大7。"
+        "必须使用返回数据回答，不猜课程；时间未同步或内容未提供时明确说明。每周重复，不代表调休安排"
+        "。",
+        PropertyList({Property("day_offset", kPropertyTypeInteger, 1, 0, 7)}),
+        [this](const PropertyList& properties) -> ReturnValue {
+            auto result = cJSON_CreateObject();
+            const auto& schedule = timetable_;
+            const bool available = schedule.valid;
+            auto now = time(nullptr);
+            struct tm local{};
+            localtime_r(&now, &local);
+            const bool time_valid = local.tm_year >= 125;
+            cJSON_AddBoolToObject(result, "available", available && time_valid);
+            if (!available || !time_valid) {
+                cJSON_AddStringToObject(result, "message",
+                                        !time_valid ? "日期未同步" : "课程表未提供或格式错误");
+                return result;
+            }
+            local.tm_hour = 12;
+            local.tm_min = 0;
+            local.tm_sec = 0;
+            local.tm_isdst = -1;
+            local.tm_mday += properties["day_offset"].value<int>();
+            mktime(&local);
+            const int day = (local.tm_wday + 6) % 7;
+            char date[32];
+            strftime(date, sizeof(date), "%Y-%m-%d", &local);
+            cJSON_AddStringToObject(result, "date", date);
+            cJSON_AddNumberToObject(result, "weekday_monday_zero", day);
+            cJSON_AddBoolToObject(result, "weekly_template", true);
+            cJSON_AddBoolToObject(result, "empty_template", schedule.empty());
+            auto lessons = cJSON_AddArrayToObject(result, "lessons");
+            for (const auto& value : schedule.days[day])
+                cJSON_AddItemToArray(lessons, cJSON_CreateString(value.c_str()));
+            auto supplies = cJSON_AddArrayToObject(result, "supplies");
+            for (const auto& value : schedule.supplies[day])
+                cJSON_AddItemToArray(supplies, cJSON_CreateString(value.c_str()));
+            return result;
+        });
     McpServer::GetInstance().AddTool(
         "self.study.capacity",
         "只读查看设备运行内存和分区容量，数值单位为字节。PSRAM不是Flash；空闲总量不等于最大连续可分"

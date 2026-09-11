@@ -76,7 +76,10 @@ python tools/content_pack.py prepare --entries local-dictionary.json --output di
 
 ## 课程与天气
 
-`timetable.json` 的 days 为周一至周五五个数组，每天最多八节，每项为课程名称。默认五个空数组，不虚构课程。
+UI4：`timetable.json` 的 `days` 为周一开始的五个或七个数组，每天最多八节。
+可选 `supplies` 使用同样结构，记录当天需带的物品。每项最多 32 UTF-8 字节，文件最多 8192 字节。
+默认五个空数组，不虚构课程；支持周末、节次翻页、临时物品勾选和联网查询。
+完整格式、字体扩充方法、实际截图见 [课程表 UI4](ui/TIMETABLE_UI4.md)。
 
 `weather.json` 提供 city、summary、updated_at；全部默认空。显示缓存时保留“缓存”和更新时间标记，在线天气 API 尚未接入。
 

@@ -15,6 +15,7 @@
 #include <cstring>
 #include <ctime>
 #include "assets/home_skin.h"
+#include "assets/timetable_assets.h"
 #include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "phonetics.h"
@@ -23,6 +24,14 @@ namespace {
 constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0xd9edfc;
 constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
 const char* kSubjects[] = {"语文", "数学", "英语"};
+const char* kWeekdays[] = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+int SubjectKind(const std::string& name) {
+    const char* names[] = {"语文", "数学", "英语", "科学", "美术", "体育"};
+    for (int i = 0; i < 6; ++i)
+        if (name == names[i])
+            return i;
+    return 6;
+}
 lv_obj_t* Image(lv_obj_t* parent, const lv_image_dsc_t* source, int x, int y) {
     auto image = lv_image_create(parent);
     lv_image_set_src(image, source);
@@ -199,6 +208,23 @@ void HanDisplay::Render(Page page) {
         lv_obj_set_x(title_, 115);
         lv_obj_set_pos(body_, 24, 104);
         lv_obj_set_size(body_, 1232, 490);
+    }
+    if (page == Page::Timetable) {
+        lv_obj_add_flag(talk_button_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(message_, 32, 676);
+        lv_obj_set_pos(status_label_, 944, 665);
+        lv_obj_set_pos(notification_label_, 944, 665);
+        lv_obj_set_width(status_label_, 288);
+        lv_obj_set_width(notification_label_, 288);
+        lv_label_set_text(message_, "每周重复 · 课程及物品由家长填写");
+    } else {
+        lv_obj_remove_flag(talk_button_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(message_, 240, 677);
+        lv_obj_set_pos(status_label_, 844, 596);
+        lv_obj_set_pos(notification_label_, 844, 596);
+        lv_obj_set_width(status_label_, 365);
+        lv_obj_set_width(notification_label_, 365);
+        lv_label_set_text(message_, "试试说：我想学英语音标");
     }
     lv_obj_set_y(talk_button_, page == Page::Home ? 579 : 606);
     lv_obj_set_height(talk_button_, page == Page::Home ? 86 : 66);
@@ -448,15 +474,128 @@ void HanDisplay::Phonetics() {
 }
 
 void HanDisplay::Timetable() {
-    auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
-    Label(card, "我的课程表", 28, 24, 1000, &han_font_40);
-    auto text =
-        Label(card,
-              timetable_text_.empty() ? "还没有课程表\n\n请用内容准备工具填写每周课程后放入 SD 卡。"
-                                      : timetable_text_.c_str(),
-              28, 92, 1170);
-    lv_obj_set_height(text, 360);
-    lv_label_set_long_mode(text, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_size(body_, 1232, 560);
+    auto table = Box(body_, 0, 0, 922, 524, 0xffffff);
+    const int first_day = timetable_day_group_ ? 5 : 0;
+    const int columns = timetable_day_group_ ? 2 : 5;
+    const int col_width = timetable_day_group_ ? 390 : 156;
+    auto row_head = Box(table, 12, 12, 108, 54, 0xf4f5e8);
+    Label(row_head, timetable_row_ ? "6—8节" : "1—5节", 6, 10, 103);
+    for (int c = 0; c < columns; ++c) {
+        int day = first_day + c;
+        const bool today = timetable_week_ == 0 && day == timetable_today_;
+        const int x = 124 + c * col_width;
+        if (today)
+            Box(table, x, 12, col_width - 4, 438, 0xe6f4ff);
+        auto head = Box(table, x, 12, col_width - 4, 54, today ? 0xc9e8ff : 0xf3f6ec);
+        auto label = Label(head, kWeekdays[day], 0, 8, col_width - 4, &han_font_schedule);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        for (int r = 0; r < 5; ++r) {
+            const int lesson = timetable_row_ + r;
+            if (lesson >= 8)
+                break;
+            const auto& classes = timetable_.days[day];
+            const std::string name =
+                lesson < static_cast<int>(classes.size()) ? classes[lesson] : "";
+            const int kind = SubjectKind(name);
+            const uint32_t colors[] = {0xffded5, 0xcdeaff, 0xeadeff, 0xddf6d2,
+                                       0xffe2c3, 0xcdf2ed, 0xf5f5ef};
+            auto cell = Button(table, "", x + 4, 74 + r * 75, col_width - 12, 67, colors[kind],
+                               700 + day * 8 + lesson);
+            lv_obj_set_style_bg_grad_color(cell, lv_color_hex(0xfffbf4), 0);
+            lv_obj_set_style_bg_grad_dir(cell, LV_GRAD_DIR_VER, 0);
+            lv_obj_set_style_radius(cell, 18, 0);
+            const lv_image_dsc_t* icons[] = {&han_subject_book, &han_subject_calculator,
+                                             nullptr,           &han_subject_science,
+                                             &han_subject_art,  &han_subject_sport};
+            if (kind < 6 && icons[kind])
+                Image(cell, icons[kind], 9, 12);
+            if (kind == 2) {
+                auto abc = Label(cell, "A\nBC", 8, 0, 42, &han_font_28);
+                lv_obj_set_style_text_color(abc, lv_color_hex(0x9d65c4), 0);
+                lv_obj_set_style_text_letter_space(abc, -3, 0);
+                lv_obj_set_style_text_line_space(abc, -9, 0);
+                lv_obj_set_style_text_align(abc, LV_TEXT_ALIGN_CENTER, 0);
+            }
+            auto text = Label(cell, name.empty() ? "—" : name.c_str(), kind < 6 ? 54 : 9, 16,
+                              col_width - (kind < 6 ? 68 : 28),
+                              kind < 6 ? &han_font_schedule : &han_font_28);
+            lv_label_set_long_mode(text, LV_LABEL_LONG_DOT);
+            lv_obj_set_height(text, 40);
+        }
+    }
+    for (int r = 0; r < 5 && timetable_row_ + r < 8; ++r) {
+        auto row = Box(table, 12, 74 + r * 75, 108, 67, 0xf9f4e5);
+        auto name = "第" + std::to_string(timetable_row_ + r + 1) + "节";
+        Label(row, name.c_str(), 9, 18, 98, &han_font_schedule);
+    }
+    Button(table, timetable_row_ ? "第1—5节" : "第6—8节", 18, 463, 177, 48, kBlue, 501);
+    Button(table, timetable_day_group_ ? "周一至周五" : "查看周末", 207, 463, 198, 48, kGreen, 503);
+    Label(table,
+          timetable_.valid
+              ? (timetable_.empty() ? "还没有课程，请导入课表" : "点击课程可查看完整名称")
+              : "课表未加载或格式错误",
+          422, 473, 479);
+    Button(body_, timetable_week_ ? "下周 v" : "本周 v", 956, 0, 150, 54, kGreen, 502);
+    auto friend_image = Image(body_, &han_art_book, 1135, 0);
+    lv_image_set_pivot(friend_image, 0, 0);
+    lv_image_set_scale(friend_image, 104);
+    auto bag = Box(body_, 944, 71, 288, 287, 0xfff3ce);
+    Image(bag, &han_subject_backpack, 16, 17);
+    Label(bag, "明天要带", 67, 19, 207, &han_font_schedule);
+    const int tomorrow = timetable_today_ < 0 ? -1 : (timetable_today_ + 1) % 7;
+    if (tomorrow < 0) {
+        Label(bag, "请先同步日期", 22, 103, 244);
+    } else if (!timetable_.valid) {
+        Label(bag, "请先导入课程表", 22, 103, 244);
+    } else {
+        const auto& items = timetable_.supplies[tomorrow];
+        if (items.empty())
+            Label(bag, "未填写需带物品", 22, 103, 244);
+        for (int n = 0; n < 2 && supplies_page_ * 2 + n < static_cast<int>(items.size()); ++n) {
+            const int i = supplies_page_ * 2 + n;
+            auto item = Button(bag, "", 12, 74 + n * 80, 264, 71, 0xffffff, 600 + i);
+            auto text = Label(item, items[i].c_str(), 14, 17, 193);
+            lv_label_set_long_mode(text, LV_LABEL_LONG_DOT);
+            lv_obj_set_height(text, 42);
+            auto box = Box(item, 219, 21, 29, 29, supplies_checked_[i] ? 0x55c892 : 0xffffff);
+            lv_obj_set_style_radius(box, 7, 0);
+            lv_obj_set_style_border_width(box, 2, 0);
+            lv_obj_set_style_border_color(box, lv_color_hex(0xb3bdb1), 0);
+            if (supplies_checked_[i]) {
+                static const lv_point_precise_t points[] = {{5, 14}, {11, 20}, {22, 7}};
+                auto check = lv_line_create(box);
+                lv_line_set_points(check, points, 3);
+                lv_obj_set_style_line_width(check, 3, 0);
+                lv_obj_set_style_line_color(check, lv_color_white(), 0);
+                lv_obj_remove_flag(check, LV_OBJ_FLAG_CLICKABLE);
+            }
+        }
+        if (items.size() > 2)
+            Button(bag, "更多物品", 14, 238, 168, 40, kOrange, 504);
+        if (items.size() <= 2)
+            Label(bag, "勾选仅本次", 20, 251, 248);
+    }
+    auto voice = Button(body_, "", 944, 382, 288, 82, 0xc9efdb, 500);
+    auto mic_circle = Box(voice, 9, 9, 64, 64, 0x43b985);
+    lv_obj_set_style_radius(mic_circle, LV_RADIUS_CIRCLE, 0);
+    auto mic = Image(mic_circle, &han_status_mic, 16, 10);
+    lv_image_set_pivot(mic, 0, 0);
+    lv_image_set_scale(mic, 180);
+    Label(voice, "问明天课程", 83, 24, 201, &han_font_schedule);
+    Label(body_, "好好学习\n天天向上", 1019, 470, 208, &han_font_schedule);
+}
+
+bool HanDisplay::ApplyTimetable(const std::string& json) {
+    han::TimetableData data;
+    const bool valid = han::TimetableData::Parse(json, data);
+    DisplayLockGuard guard(this);
+    timetable_ = std::move(data);
+    supplies_checked_.fill(false);
+    supplies_page_ = 0;
+    if (page_ == Page::Timetable)
+        Render(Page::Timetable);
+    return valid;
 }
 
 void HanDisplay::Timer() {
@@ -551,6 +690,45 @@ void HanDisplay::OnClick(lv_event_t* e) {
 }
 
 void HanDisplay::Action(int a) {
+    if (a == 500) {
+        if (!WifiManager::GetInstance().IsConnected() ||
+            Application::GetInstance().GetDeviceState() == kDeviceStateWifiConfiguring) {
+            Toast("请先联网，再询问课程");
+            return;
+        }
+        Action(8);
+        Toast("试试说：明天有哪些课，要带什么？");
+        return;
+    }
+    if (a >= 501 && a <= 504) {
+        if (a == 501)
+            timetable_row_ = timetable_row_ ? 0 : 5;
+        if (a == 502)
+            timetable_week_ = 1 - timetable_week_;
+        if (a == 503)
+            timetable_day_group_ = 1 - timetable_day_group_;
+        if (a == 504 && timetable_today_ >= 0) {
+            const auto size = timetable_.supplies[(timetable_today_ + 1) % 7].size();
+            supplies_page_ = (supplies_page_ + 1) % std::max(1, static_cast<int>((size + 1) / 2));
+        }
+        Render(Page::Timetable);
+        return;
+    }
+    if (a >= 600 && a < 608) {
+        supplies_checked_[a - 600] = !supplies_checked_[a - 600];
+        Render(Page::Timetable);
+        return;
+    }
+    if (a >= 700 && a < 756) {
+        const int day = (a - 700) / 8, lesson = (a - 700) % 8;
+        const auto& classes = timetable_.days[day];
+        if (lesson < static_cast<int>(classes.size()) && !classes[lesson].empty()) {
+            auto text = std::string(kWeekdays[day]) + " 第" + std::to_string(lesson + 1) + "节：" +
+                        classes[lesson];
+            Toast(text.c_str());
+        }
+        return;
+    }
     if (a >= 0 && a < 6) {
         Render(static_cast<Page>(a + 1));
         return;
@@ -767,6 +945,15 @@ void HanDisplay::UpdateStatusBar(bool) {
                                 : &han_status_battery_full;
     }
     lv_image_set_src(battery_image_, battery);
+    const int64_t date_key = valid_time ? static_cast<int64_t>(tm.tm_year) * 366 + tm.tm_yday : -1;
+    if (date_key != timetable_date_key_) {
+        timetable_date_key_ = date_key;
+        timetable_today_ = valid_time ? (tm.tm_wday + 6) % 7 : -1;
+        supplies_checked_.fill(false);
+        supplies_page_ = 0;
+        if (page_ == Page::Timetable)
+            Render(Page::Timetable);
+    }
     if (network_info_)
         lv_label_set_text(network_info_, network.c_str());
     // Daily alarm is based on synchronized system time; RTC wake-up is not implied.
@@ -862,26 +1049,9 @@ void HanDisplay::Worker(void* ptr) {
                 audio.EnableWakeWordDetection(true);
             self->local_audio_ = false;
         } else if (job.type == 2) {
-            std::string data, timetable, weather;
+            std::string data, weather;
             if (store.ready() && store.Read("timetable.json", data, 8192)) {
-                auto root = cJSON_Parse(data.c_str());
-                auto days = cJSON_GetObjectItemCaseSensitive(root, "days");
-                const char* names[] = {"周一", "周二", "周三", "周四", "周五"};
-                if (cJSON_IsArray(days) && cJSON_GetArraySize(days) == 5) {
-                    for (int d = 0; d < 5; ++d) {
-                        timetable += std::string(names[d]) + "： ";
-                        auto subjects = cJSON_GetArrayItem(days, d);
-                        for (int j = 0; cJSON_IsArray(subjects) &&
-                                        j < std::min(cJSON_GetArraySize(subjects), 8);
-                             ++j) {
-                            auto s = cJSON_GetArrayItem(subjects, j);
-                            if (cJSON_IsString(s) && s->valuestring && strlen(s->valuestring) <= 24)
-                                timetable += std::string(s->valuestring) + "  ";
-                        }
-                        timetable += "\n\n";
-                    }
-                }
-                cJSON_Delete(root);
+                self->ApplyTimetable(data);
             }
             if (store.ready() && store.Read("weather.json", data, 4096)) {
                 auto root = cJSON_Parse(data.c_str());
@@ -893,7 +1063,6 @@ void HanDisplay::Worker(void* ptr) {
                 cJSON_Delete(root);
             }
             DisplayLockGuard guard(self);
-            self->timetable_text_ = timetable;
             self->weather_text_ = weather;
             if (self->page_ == Page::Timetable || self->page_ == Page::Weather)
                 self->Render(self->page_);

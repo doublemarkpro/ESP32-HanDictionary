@@ -12,7 +12,11 @@ const fontTool = require.resolve('lv_font_conv/lv_font_conv.js');
 const files = fs.readdirSync(path.join(root, 'main/han_dictionary')).filter(f=>/\.(cc|h)$/.test(f));
 const entriesDir = path.join(root,'content/sdcard/handict/dictionary/entries');
 const strings = files.map(f=>fs.readFileSync(path.join(root,'main/han_dictionary',f),'utf8')).join('') +
-  fs.readdirSync(entriesDir).filter(f=>f.endsWith('.json')).map(f=>fs.readFileSync(path.join(entriesDir,f),'utf8')).join('');
+  fs.readdirSync(entriesDir).filter(f=>f.endsWith('.json')).map(f=>fs.readFileSync(path.join(entriesDir,f),'utf8')).join('') +
+  ['content/sdcard/handict/timetable.json', 'docs/examples/timetable.example.json'].map(f => {
+    const data = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
+    return JSON.stringify([data.days, data.supplies]);
+  }).join('');
 const chinese = [...new Set(strings.match(/[\u2000-\u206f\u3000-\u9fff\uff00-\uffef]/g))].join('');
 for(const size of [28,40]) {
   const name=`han_font_${size}`;
