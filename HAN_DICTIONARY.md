@@ -10,6 +10,8 @@
 - 内置“规”字演示数据；
 - Windows 环境探测、构建、硬件识别与跨电脑导出脚本。
 
+第一版 Tab5 主界面设计见 [`docs/ui/README.md`](docs/ui/README.md)。
+
 ## 公司电脑首次构建
 
 ```powershell
