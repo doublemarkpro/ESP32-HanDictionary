@@ -1,5 +1,7 @@
 # UI 视觉稿生成提示词
 
+英语音标学习页与六入口主页 v2 的完整提示词见 [PROMPTS-phonetics.md](PROMPTS-phonetics.md)。
+
 所有图片均使用内置 ImageGen 生成，类型为 `ui-mockup`，目标是 M5Stack Tab5 的 1280×720 横屏嵌入式产品界面。通用约束如下：
 
 ```text
