@@ -2,98 +2,113 @@ name: Build Boards
 
 on:
   push:
-    branches:
-      - main
-      - ci/* # for ci test
+    branches: [main, 'ci/*']
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/ui/**/*.png'
+      - 'docs/ui/**/*.ppm'
   pull_request:
-    branches:
-      - main
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/ui/**/*.png'
+      - 'docs/ui/**/*.ppm'
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'tab5: product builds; all: full IDF 6.0.2 board matrix'
+        type: choice
+        options: [tab5, all]
+        default: tab5
+      include_s31:
+        description: 'With all: also run experimental ESP32-S31 / IDF 6.1 (known UHCI incompatibility)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# Replace outdated automatic runs for the same branch/PR. Keep manual diagnostics separate.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.scope || 'tab5' }}
+  cancel-in-progress: true
+
 jobs:
   prepare:
-    name: Determine variants to build
+    name: Test code and resources; select variants
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: espressif/idf:v6.0.2
     outputs:
       variants: ${{ steps.select.outputs.variants }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-
-      - name: Test build tooling
+          persist-credentials: false
+      - name: Test build and content tooling
         run: python -m unittest discover -s scripts/tests -v
-
-      - id: list
-        name: Get all variant list
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test graphics and font resources
         run: |
-          echo "all_variants=$(python scripts/build.py --list-boards --json)" >> $GITHUB_OUTPUT
-
+          npm ci --prefix tools/ui-assets
+          node --test tools/ui-assets/*.test.cjs
       - id: select
-        name: Select variants based on changes
+        name: Select product variants (full matrix only on manual request)
         shell: bash
         env:
-          ALL_VARIANTS: ${{ steps.list.outputs.all_variants }}
+          BUILD_SCOPE: ${{ inputs.scope || 'tab5' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          EVENT_NAME="${{ github.event_name }}"
-
-          # push 到 main 分支，编译全部变体
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            echo "variants=$ALL_VARIANTS" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # pull_request 场景
-          # actions/checkout checks out GitHub's synthetic PR merge commit. Its
-          # first and second parents are the exact base and head commits used
-          # for this run, even when the event SHAs are not exposed as refs in
-          # the job container.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          BASE_SHA="HEAD^1"
-          HEAD_SHA="HEAD^2"
-          echo "Base: $(git rev-parse "$BASE_SHA"), Head: $(git rev-parse "$HEAD_SHA")"
-
-          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          echo -e "Changed files:\n$CHANGED"
-
-          SELECTED=$(printf '%s\n' "$CHANGED" | python scripts/build.py --select-changed)
-          echo "variants=$SELECTED" >> $GITHUB_OUTPUT
+          python scripts/build.py --list-boards --json > /tmp/han-variants.json
+          SELECTED=$(python scripts/select_ci_variants.py --event "$EVENT_NAME" --scope "$BUILD_SCOPE" < /tmp/han-variants.json)
+          echo "variants=$SELECTED" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.full_name }}
     needs: prepare
-    if: ${{ needs.prepare.outputs.variants != '[]' }}
     strategy:
-      fail-fast: false  # 单个变体失败不影响其它变体
+      fail-fast: false
+      max-parallel: 4
       matrix:
         include: ${{ fromJson(needs.prepare.outputs.variants) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     container:
       image: espressif/idf:v6.0.2
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Build current variant
         shell: bash
+        env:
+          BOARD: ${{ matrix.board }}
+          VARIANT: ${{ matrix.name }}
         run: |
-          source $IDF_PATH/export.sh
-          python scripts/build.py ${{ matrix.board }} --name ${{ matrix.name }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          source "$IDF_PATH/export.sh"
+          if [[ "$VARIANT" == m5stack-tab5-han-dictionary* ]]; then
+            python scripts/build.py "$BOARD" --name "$VARIANT" --language zh-CN --wake-word nihaoxiaozhi
+          else
+            python scripts/build.py "$BOARD" --name "$VARIANT"
+          fi
+      - name: Enforce product flash capacity (512 KiB minimum free)
+        if: startsWith(matrix.name, 'm5stack-tab5-han-dictionary')
+        run: python tools/capacity_report.py
+      - uses: actions/upload-artifact@v6
         with:
           name: xiaozhi_${{ matrix.full_name }}_${{ github.sha }}
           path: build/merged-binary.bin
           if-no-files-found: error
+          retention-days: 7
 
   esp32s31-idf61:
-    name: Build ${{ matrix.full_name }} with IDF 6.1
+    name: Experimental ${{ matrix.full_name }} with IDF 6.1
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'all' && inputs.include_s31
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -105,21 +120,24 @@ jobs:
             name: esp32-s31-korvo-1
             full_name: espressif-esp32-s31-korvo-1
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     container:
       image: espressif/idf:release-v6.1
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build ESP32-S31 variant
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build ESP32-S31 variant (failure remains visible)
         shell: bash
+        env:
+          BOARD: ${{ matrix.board }}
+          VARIANT: ${{ matrix.name }}
         run: |
-          source $IDF_PATH/export.sh
-          python scripts/build.py ${{ matrix.board }} --name ${{ matrix.name }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          source "$IDF_PATH/export.sh"
+          python scripts/build.py "$BOARD" --name "$VARIANT"
+      - uses: actions/upload-artifact@v6
         with:
           name: xiaozhi_${{ matrix.full_name }}_${{ github.sha }}
           path: build/merged-binary.bin
           if-no-files-found: error
+          retention-days: 7
