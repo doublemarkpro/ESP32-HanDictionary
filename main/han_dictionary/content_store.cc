@@ -112,6 +112,35 @@ bool ContentStore::Initialize() {
     return true;
 }
 
+std::string ContentStore::StrokePath(const std::string& character, int frame) {
+    if (!Codepoint(character) || frame < 0 || frame >= 64)
+        return {};
+    char path[64];
+    snprintf(path, sizeof(path), "dictionary/strokes/%04X/%02d.png",
+             static_cast<unsigned>(Codepoint(character)), frame + 1);
+    return path;
+}
+
+bool ContentStore::IsStrokePng(const std::string& data) {
+    // Bound decoded dimensions as well as compressed size before passing to the PNG decoder.
+    static constexpr unsigned char header[] = {137, 80, 78,  71,  13,  10,  26, 10, 0, 0,
+                                               0,   13, 'I', 'H', 'D', 'R', 0,  0,  1, 44,
+                                               0,   0,  1,   44,  8,   6,   0,  0,  0};
+    static constexpr unsigned char end[] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 174, 66, 96, 130};
+    return data.size() >= 45 && data.size() <= 128 * 1024 &&
+           memcmp(data.data(), header, sizeof(header)) == 0 &&
+           memcmp(data.data() + data.size() - sizeof(end), end, sizeof(end)) == 0;
+}
+
+bool ContentStore::ReadStroke(const std::string& path, std::string& data) const {
+    if (!ready_ || path.compare(0, 19, "dictionary/strokes/") != 0 ||
+        !Read(path, data, 128 * 1024) || !IsStrokePng(data)) {
+        data.clear();
+        return false;
+    }
+    return true;
+}
+
 bool ContentStore::ParseEntry(const std::string& json, const std::string& character, Entry& entry) {
     if (json.size() > 16384)
         return false;

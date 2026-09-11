@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 主页 | [home.png](rendered/home.png) | 六入口、可见返回、点击说话；非按住说话 |
 | 查字 | [dictionary.png](rendered/dictionary.png) | 规字八步笔顺、MCP 结果联动；未知页码不猜测 |
-| 音标 | [phonetics.png](rendered/phonetics.png) | 17 张入门卡、SD 点读接口；教学录音未提供 |
+| 音标 | [phonetics.png](rendered/phonetics.png) | 44 张入门卡、分类分页、SD 点读接口；教学录音未提供 |
 | 联网 | [network.png](rendered/network.png) | 复用手机热点配网；屏上 Wi-Fi 列表/键盘待做 |
 | 课程 | [timetable.png](rendered/timetable.png) | 读取 SD 周课表；编辑与今日高亮待做 |
 | 计时 | [timer.png](rendered/timer.png) | 分科计时、暂停/完成/恢复；本次记录而非周统计 |
@@ -18,6 +18,8 @@
 | 天气 | [weather.png](rendered/weather.png) | 可读取明确标记的缓存；尚无在线天气 API |
 
 首轮采用可复现的字体、轻量图标和 LVGL 控件，尚未做到概念稿的全部插画细节。下列设计规范仍包含后续目标，不能作为已实现功能清单。完整状态见 [实施计划](../IMPLEMENTATION_PLAN.md)。
+
+第二轮新增实际截图：[θ 点读页](rendered/phonetics-theta.png)、[最后一页辅音](rendered/phonetics-last.png)、[SD 矩字笔顺](rendered/dictionary-ju.png)。容量与完整状态见 [DEVELOPMENT_STATUS](../DEVELOPMENT_STATUS.md)。
 
 ## 页面总览
 

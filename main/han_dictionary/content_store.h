@@ -22,6 +22,9 @@ public:
     bool Initialize();
     bool Lookup(const std::string& query, Entry& entry) const;
     bool Read(const std::string& relative, std::string& data, size_t limit) const;
+    bool ReadStroke(const std::string& path, std::string& data) const;
+    static std::string StrokePath(const std::string& character, int frame);
+    static bool IsStrokePng(const std::string& data);
     bool ready() const { return ready_; }
     const std::string& notice() const { return notice_; }
     static Entry Demo();

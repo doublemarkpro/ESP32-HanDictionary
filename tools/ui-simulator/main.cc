@@ -4,8 +4,10 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "han_display.h"
+#include "phonetics.h"
 
 DictionaryService& DictionaryService::GetInstance() {
     static DictionaryService d;
@@ -42,13 +44,22 @@ void Click(const char* label) {
 }
 void Shot(const std::filesystem::path& folder, const char* name) {
     lv_refr_now(nullptr);
+    size_t title_ink = 0;
+    for (int y = 20; y < 90; ++y)
+        for (int x = 110; x < 600; ++x) {
+            const auto i = (y * 1280 + x) * 3;
+            if (pixels[i] < 60 && pixels[i + 1] < 80 && pixels[i + 2] < 120)
+                ++title_ink;
+        }
+    Check(title_ink > 100, "screenshot must contain visibly rendered title text");
     std::ofstream f(folder / (std::string(name) + ".ppm"), std::ios::binary);
     f << "P6\n1280 720\n255\n";
     f.write(reinterpret_cast<const char*>(pixels.data()), pixels.size());
 }
 int main(int argc, char** argv) {
     try {
-        Check(argc == 2, "Pass output directory");
+        Check(argc == 2 || argc == 3,
+              "Pass output directory and optional generated content directory");
         const std::filesystem::path folder(argv[1]);
         std::filesystem::create_directories(folder);
         han::StudyTimer timer;
@@ -86,6 +97,18 @@ int main(int argc, char** argv) {
         cJSON_free(modified);
         cJSON_Delete(obj);
         lv_init();
+        Check(LV_USE_FONT_COMPRESSED == 1, "compressed fonts enabled");
+        lv_font_glyph_dsc_t probe{};
+        Check(lv_font_get_glyph_dsc(&han_font_40, &probe, 'A', 0), "font probe descriptor");
+        auto bitmap =
+            lv_draw_buf_create(probe.box_w, probe.box_h, LV_COLOR_FORMAT_A8, LV_STRIDE_AUTO);
+        Check(bitmap != nullptr, "font probe buffer");
+        Check(lv_font_get_glyph_bitmap(&probe, bitmap) != nullptr, "font bitmap decode");
+        size_t alpha = 0;
+        for (uint32_t i = 0; i < bitmap->data_size; ++i)
+            alpha += bitmap->data[i];
+        Check(alpha > 1000, "font raster must contain visible pixels");
+        lv_draw_buf_destroy(bitmap);
         auto display = lv_display_create(1280, 720);
         lv_display_set_color_format(display, LV_COLOR_FORMAT_XRGB8888);
         static uint8_t buffer[1280 * 48 * 4];
@@ -107,9 +130,24 @@ int main(int argc, char** argv) {
                 Click("上一步");
             }
             if (i == 1) {
+                Click("下一页");
+                Check(FindLabel(lv_screen_active(), "ɒ"), "second vowel page");
+                Click("上一页");
                 Click("双元音");
                 Check(FindLabel(lv_screen_active(), "eɪ"), "category");
+                Click("下一页");
+                Check(FindLabel(lv_screen_active(), "ʊə"), "second diphthong page");
                 Click("辅音");
+                Click("下一页");
+                Check(FindLabel(lv_screen_active(), "θ"), "theta glyph and consonant page");
+                Click("θ");
+                Shot(folder, "phonetics-theta");
+                Click("下一页");
+                Click("下一页");
+                Check(FindLabel(lv_screen_active(), "j"), "last consonant page");
+                Shot(folder, "phonetics-last");
+                Click("下一页");
+                Check(FindLabel(lv_screen_active(), "p"), "pagination wraps");
                 Click("单元音");
             }
             if (i == 3) {
@@ -130,6 +168,44 @@ int main(int argc, char** argv) {
         Click("<");
         ui.ShowEntry(han::ContentStore::Demo());
         Check(FindLabel(lv_screen_active(), "查字典"), "MCP result opens dictionary");
+        for (const auto& sound : han::kSounds) {
+            for (const unsigned char* p = reinterpret_cast<const unsigned char*>(sound.ipa); *p;) {
+                uint32_t cp = *p++;
+                if (cp >= 0xc0) {
+                    const int tail = cp < 0xe0 ? 1 : 2;
+                    cp &= tail == 1 ? 31 : 15;
+                    for (int j = 0; j < tail; ++j)
+                        cp = (cp << 6) | (*p++ & 63);
+                }
+                lv_font_glyph_dsc_t glyph{};
+                Check(lv_font_get_glyph_dsc(&han_font_40, &glyph, cp, 0), "small IPA glyph exists");
+                Check(!glyph.is_placeholder, "small IPA is not a placeholder");
+                Check(lv_font_get_glyph_dsc(&han_font_large, &glyph, cp, 0),
+                      "large IPA glyph exists");
+                Check(!glyph.is_placeholder, "large IPA is not a placeholder");
+            }
+        }
+        Check(han::ContentStore::StrokePath("矩", 0) == "dictionary/strokes/77E9/01.png",
+              "stroke path");
+        Check(han::ContentStore::StrokePath("../", 0).empty(), "unsafe stroke target");
+        Check(han::ContentStore::StrokePath("矩", 64).empty(), "stroke bound");
+        if (argc == 3) {
+            han::ContentStore generated(argv[2]);
+            Check(generated.Initialize(), "generated card");
+            Check(generated.Lookup("规矩的矩", entry), "second dictionary entry");
+            ui.ShowEntry(entry);
+            const auto first = han::ContentStore::StrokePath("矩", 0);
+            Check(generated.ReadStroke(first, json), "read real matrix frame");
+            Check(ui.ApplyStrokeFrame(first, json), "apply current frame");
+            Shot(folder, "dictionary-ju");
+            Click("下一步");
+            Check(!ui.ApplyStrokeFrame(first, json), "reject stale asynchronous frame");
+            const auto second = han::ContentStore::StrokePath("矩", 1);
+            Check(generated.ReadStroke(second, json) && ui.ApplyStrokeFrame(second, json),
+                  "apply next SD frame");
+            Click("<");
+            Check(!ui.ApplyStrokeFrame(second, json), "discard frame after leaving dictionary");
+        }
         std::cout << "PASS: actual LVGL pages rendered; navigation, IPA categories, strokes, timer "
                      "and lookup checks passed.\n";
     } catch (const std::exception& e) {

@@ -16,7 +16,7 @@ class ContentPackTests(unittest.TestCase):
         self.entry = json.loads((ROOT / "content/sdcard/handict/dictionary/entries/89C4.json").read_text(encoding="utf-8"))
 
     def test_starter_pack_has_no_invented_page(self):
-        self.assertEqual(pack.validate(ROOT / "content/sdcard/handict"), 1)
+        self.assertEqual(pack.validate(ROOT / "content/sdcard/handict"), 2)
         self.assertIsNone(self.entry["reference"]["page"])
 
     def test_wrong_edition_cannot_supply_page(self):
@@ -36,7 +36,7 @@ class ContentPackTests(unittest.TestCase):
     def test_prepare_preserves_existing_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "card"
-            self.assertEqual(pack.prepare(target), 1)
+            self.assertEqual(pack.prepare(target), 2)
             with self.assertRaises(ValueError): pack.prepare(target)
 
     def test_import_duplicate_detected_before_output_created(self):
@@ -51,6 +51,18 @@ class ContentPackTests(unittest.TestCase):
         # Synthetic fixture verifies storage only; this value is not a real dictionary page.
         self.entry["reference"].update(page=123, verified=True)
         self.assertEqual(pack.validate_entry(self.entry), "规")
+
+    def test_stroke_png_validation(self):
+        data = (ROOT / "assets/source/strokes/gui-1.png").read_bytes()
+        pack.validate_stroke_png(data)
+        for broken in [data[:-8], data + b"tail", data[:20] + b"\0" * 4 + data[24:], b"fake", data[:40] + b"bad" + data[43:]]:
+            with self.assertRaises(ValueError): pack.validate_stroke_png(broken)
+
+    def test_missing_stroke_frames_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pack.prepare(tmp + "/card")
+            (Path(tmp) / "card/handict/dictionary/strokes/89C4/01.png").unlink()
+            with self.assertRaises(ValueError): pack.validate(Path(tmp) / "card/handict")
 
 
 if __name__ == "__main__": unittest.main()

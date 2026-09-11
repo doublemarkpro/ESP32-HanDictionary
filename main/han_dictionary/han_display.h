@@ -25,6 +25,7 @@ public:
     void UpdateStatusBar(bool update_all = false) override;
     void ShowEntry(const han::Entry& entry);
     bool OpenPage(const std::string& page);
+    bool ApplyStrokeFrame(const std::string& path, std::string data);
 
 private:
     enum class Page { Home, Dictionary, Phonetics, Timetable, Timer, Alarm, Weather, Network };
@@ -68,6 +69,10 @@ private:
     lv_obj_t* totals_[3]{};
     lv_obj_t* stroke_value_ = nullptr;
     lv_obj_t* stroke_image_ = nullptr;
+    lv_obj_t* stroke_placeholder_ = nullptr;
+    lv_image_dsc_t sd_stroke_{};
+    std::string stroke_png_;
+    std::string expected_stroke_path_;
     lv_obj_t* search_ = nullptr;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
@@ -79,6 +84,7 @@ private:
     Page page_ = Page::Home;
     int sound_ = 0;
     int category_ = 0;
+    int sound_page_ = 0;
     int stroke_ = 0;
     bool stroke_playing_ = false;
     int alarm_minutes_ = 405;

@@ -1,4 +1,6 @@
 #include "dictionary_service.h"
+#include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
 #include <cJSON.h>
 #include "mcp_server.h"
 
@@ -11,6 +13,28 @@ void DictionaryService::RegisterMcpTools() {
     if (tools_registered_)
         return;
     tools_registered_ = true;
+    McpServer::GetInstance().AddTool(
+        "self.study.capacity",
+        "只读查看设备运行内存和分区容量，数值单位为字节。PSRAM不是Flash；空闲总量不等于最大连续可分"
+        "配块。",
+        PropertyList(), [](const PropertyList&) -> ReturnValue {
+            auto result = cJSON_CreateObject();
+            cJSON_AddNumberToObject(result, "internal_free",
+                                    heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+            cJSON_AddNumberToObject(
+                result, "internal_largest_block",
+                heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+            cJSON_AddNumberToObject(result, "psram_free",
+                                    heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+            cJSON_AddNumberToObject(result, "psram_largest_block",
+                                    heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+            const auto partition = esp_ota_get_running_partition();
+            if (partition)
+                cJSON_AddNumberToObject(result, "app_partition_size", partition->size);
+            cJSON_AddBoolToObject(result, "sd_content_ready",
+                                  DictionaryService::GetInstance().store().ready());
+            return result;
+        });
     McpServer::GetInstance().AddTool(
         "self.dictionary.lookup",
         "查本机汉字数据并打开查字页。query优先传目标单字，也可传规矩的规。"

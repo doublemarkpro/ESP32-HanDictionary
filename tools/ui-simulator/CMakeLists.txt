@@ -4,6 +4,10 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 17)
 get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(LV_BUILD_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h" CACHE PATH "" FORCE)
+file(SHA256 "${LV_BUILD_CONF_PATH}" HAN_UI_CONFIG_HASH)
+# Also change compiler flags when config changes: some localized MSVC installations
+# fail to record /showIncludes header dependencies reliably.
+add_compile_definitions(HAN_UI_CONFIG_HASH="${HAN_UI_CONFIG_HASH}")
 set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)

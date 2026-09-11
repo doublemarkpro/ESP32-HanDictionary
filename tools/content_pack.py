@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import re
 import shutil
+import struct
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 ISBN = "9787100168076"
@@ -101,7 +103,40 @@ def validate(folder):
             header = stream.read(128)
         if header[:4] != b"OggS" or b"OpusHead" not in header:
             raise ValueError(f"Expected Ogg/Opus: {path}")
+    for directory in (folder / "dictionary/strokes").glob("*"):
+        if not directory.is_dir() or not re.fullmatch(r"[0-9A-F]{4}", directory.name):
+            raise ValueError("Invalid stroke directory")
+        entry = read_json(folder / "dictionary/entries" / (directory.name + ".json"), 16384)
+        expected = {f"{i:02d}.png" for i in range(1, entry["stroke_count"] + 1)}
+        if {p.name for p in directory.iterdir()} != expected:
+            raise ValueError("Stroke frames must exactly match entry count")
+        for filename in expected:
+            frame = directory / filename
+            if frame.stat().st_size > 128 * 1024: raise ValueError("Stroke frame too large")
+            validate_stroke_png(frame.read_bytes())
     return count
+
+
+def validate_stroke_png(data):
+    if not 45 <= len(data) <= 128 * 1024 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("Invalid stroke PNG size/signature")
+    if data[8:16] != b"\x00\x00\x00\rIHDR" or data[16:29] != struct.pack(">IIBBBBB", 300, 300, 8, 6, 0, 0, 0):
+        raise ValueError("Stroke PNG must be non-interlaced 300x300 RGBA8")
+    offset, ended, seen_data = 8, False, False
+    while offset + 12 <= len(data):
+        size = int.from_bytes(data[offset:offset+4], "big")
+        end = offset + 12 + size
+        if end > len(data): raise ValueError("Truncated PNG chunk")
+        chunk = data[offset+4:offset+8]
+        if offset > 8 and chunk == b"IHDR": raise ValueError("Duplicate IHDR")
+        crc = int.from_bytes(data[end-4:end], "big")
+        if zlib.crc32(data[offset+4:end-4]) != crc: raise ValueError("PNG checksum mismatch")
+        if chunk == b"IDAT": seen_data = True
+        if chunk == b"IEND":
+            ended = size == 0 and end == len(data)
+            break
+        offset = end
+    if not ended or not seen_data: raise ValueError("Incomplete PNG")
 
 
 def prepare(output, entries=None):

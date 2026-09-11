@@ -9,6 +9,7 @@
 #include "settings.h"
 #endif
 #include <cJSON.h>
+#include <src/misc/cache/instance/lv_image_cache.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -137,6 +138,12 @@ void HanDisplay::Render(Page page) {
     for (auto& label : totals_)
         label = nullptr;
     lv_obj_clean(body_);
+    // Remove objects/cache references before replacing backing bytes. Late worker results are
+    // ignored.
+    stroke_placeholder_ = nullptr;
+    expected_stroke_path_.clear();
+    lv_image_cache_drop(&sd_stroke_);
+    stroke_png_.clear();
     const char* titles[] = {"小小助手", "查字典", "英语音标", "课程表",
                             "作业计时", "闹钟",   "天气",     "联网设置"};
     lv_label_set_text(title_, titles[static_cast<int>(page)]);
@@ -198,8 +205,12 @@ void HanDisplay::Dictionary() {
         stroke_image_ = lv_image_create(grid);
         lv_image_set_src(stroke_image_, &han_gui_strokes[0]);
         lv_obj_set_pos(stroke_image_, 82, 14);
-    } else
-        Label(grid, entry_.character.c_str(), 180, 110, 160, &han_font_40);
+    } else {
+        stroke_image_ = lv_image_create(grid);
+        lv_obj_set_pos(stroke_image_, 82, 14);
+        lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+        stroke_placeholder_ = Label(grid, "笔顺资源待导入", 80, 138, 350);
+    }
     stroke_value_ = Label(grid, "", 24, 323, 420);
     UpdateStroke();
     Button(body_, "上一步", 0, 391, 140, 70, kGreen, 20);
@@ -220,8 +231,11 @@ void HanDisplay::Dictionary() {
                                  ? "新华字典第12版 · 第" + std::to_string(entry_.page) + "页"
                                  : "新华字典第12版 · 页码待核对";
     Label(details, page.c_str(), 24, 288, 690);
-    Label(details, entry_.source == "embedded-demo" ? "释义：开发示例" : "释义：SD 内容包", 24, 329,
-          680);
+    Label(details,
+          (entry_.source == "embedded-demo" || entry_.source == "project-authored-demo")
+              ? "释义：开发示例"
+              : "释义：SD 内容包",
+          24, 329, 680);
     Button(body_, "查“规”", 490, 391, 220, 70, kGreen, 23);
     Button(body_, "语音查字", 730, 391, 245, 70, kBlue, 8);
     Button(body_, "字库状态", 995, 391, 237, 70, kPurple, 24);
@@ -234,8 +248,34 @@ void HanDisplay::UpdateStroke() {
     auto value = std::to_string(stroke_ + 1) + " / " + std::to_string(entry_.strokes.size()) +
                  "    " + entry_.strokes[stroke_];
     lv_label_set_text(stroke_value_, value.c_str());
-    if (stroke_image_ && stroke_ < 8)
+    if (stroke_image_ && entry_.character == "规" && stroke_ < 8)
         lv_image_set_src(stroke_image_, &han_gui_strokes[stroke_]);
+    else if (stroke_image_) {
+        lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+        if (stroke_placeholder_)
+            lv_obj_remove_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
+        expected_stroke_path_ = han::ContentStore::StrokePath(entry_.character, stroke_);
+        Queue(3, expected_stroke_path_);
+    }
+}
+
+bool HanDisplay::ApplyStrokeFrame(const std::string& path, std::string data) {
+    DisplayLockGuard guard(this);
+    if (page_ != Page::Dictionary || path.empty() || path != expected_stroke_path_ ||
+        !stroke_image_ || !han::ContentStore::IsStrokePng(data))
+        return false;
+    lv_image_cache_drop(&sd_stroke_);
+    stroke_png_ = std::move(data);
+    sd_stroke_.header.magic = LV_IMAGE_HEADER_MAGIC;
+    sd_stroke_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
+    sd_stroke_.header.w = sd_stroke_.header.h = 300;
+    sd_stroke_.data_size = stroke_png_.size();
+    sd_stroke_.data = reinterpret_cast<const uint8_t*>(stroke_png_.data());
+    lv_image_set_src(stroke_image_, &sd_stroke_);
+    lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+    if (stroke_placeholder_)
+        lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    return true;
 }
 
 void HanDisplay::Phonetics() {
@@ -247,13 +287,19 @@ void HanDisplay::Phonetics() {
     for (int i = 0; i < static_cast<int>(std::size(han::kSounds)); ++i) {
         if (han::kSounds[i].category != category_)
             continue;
-        auto btn = Button(panel, han::kSounds[i].ipa, 14 + shown % 3 * 148, 18 + shown / 3 * 132,
-                          137, 112, i == sound_ ? 0xc3a5f4 : 0xffffff, 200 + i);
+        const int offset = shown++;
+        if (offset < sound_page_ * 6 || offset >= (sound_page_ + 1) * 6)
+            continue;
+        const int cell = offset % 6;
+        auto btn = Button(panel, han::kSounds[i].ipa, 14 + cell % 3 * 148, 18 + cell / 3 * 122, 137,
+                          112, i == sound_ ? 0xc3a5f4 : 0xffffff, 200 + i);
         lv_obj_set_style_text_font(lv_obj_get_child(btn, 0), &han_font_40, 0);
-        ++shown;
     }
-    Label(panel, "英式发音 · 入门内容包", 18, 318, 430);
-    Label(panel, "先听示范，再自己试一试", 18, 359, 430);
+    Button(panel, "上一页", 14, 271, 137, 58, kBlue, 120);
+    const auto page = std::to_string(sound_page_ + 1) + " / " + std::to_string((shown + 5) / 6);
+    Label(panel, page.c_str(), 190, 282, 130);
+    Button(panel, "下一页", 310, 271, 137, 58, kBlue, 121);
+    Label(panel, "英式音标 · 44 音学习卡", 18, 353, 430);
     auto detail = Box(body_, 490, 86, 742, 397, 0xffffff);
     auto& sound = han::kSounds[sound_];
     auto ipa = "/" + std::string(sound.ipa) + "/";
@@ -417,11 +463,19 @@ void HanDisplay::Action(int a) {
     }
     if (a >= 100 && a <= 102) {
         category_ = a - 100;
+        sound_page_ = 0;
         for (int i = 0; i < static_cast<int>(std::size(han::kSounds)); ++i)
             if (han::kSounds[i].category == category_) {
                 sound_ = i;
                 break;
             }
+        Render(Page::Phonetics);
+        return;
+    }
+    if (a == 120 || a == 121) {
+        const int pages = (han::SoundCount(category_) + 5) / 6;
+        sound_page_ = (sound_page_ + (a == 121 ? 1 : pages - 1)) % pages;
+        sound_ = han::SoundAt(category_, sound_page_ * 6);
         Render(Page::Phonetics);
         return;
     }
@@ -689,6 +743,10 @@ void HanDisplay::Worker(void* ptr) {
             self->weather_text_ = weather;
             if (self->page_ == Page::Timetable || self->page_ == Page::Weather)
                 self->Render(self->page_);
+        } else if (job.type == 3) {
+            std::string data;
+            if (store.ReadStroke(job.value, data))
+                self->ApplyStrokeFrame(job.value, std::move(data));
         }
     }
 }

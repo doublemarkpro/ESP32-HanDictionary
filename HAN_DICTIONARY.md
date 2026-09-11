@@ -7,7 +7,7 @@ UI 第一轮已落地（尚待真机验收）：
 - 固定的 ESP-IDF 6.0.2 开发环境；
 - Tab5 Legacy 与 P4X 两种芯片修订版的独立固件变体；
 - 六入口 LVGL 主页、返回导航、手机配网页面和持续可见的语音入口；
-- 查字结果联动、内置“规”字八步笔顺、17 个英式音标入门卡片与 SD 点读接口；
+- 查字结果联动、内置“规”字八步笔顺、SD “矩”字示例、44 个英式音标卡片与分页/点读接口；
 - 分科作业计时及重启恢复、单个每日提醒、课程表与天气缓存读取；
 - `self.dictionary.lookup`、`self.study.open` 本地 MCP 工具；
 - SD 内容包校验与导入，绑定新华字典第 12 版单色本 ISBN `9787100168076`；
@@ -18,6 +18,8 @@ UI 第一轮已落地（尚待真机验收）：
 ![实际主页](docs/ui/rendered/home.png)
 
 [实施计划与边界](docs/IMPLEMENTATION_PLAN.md) · [实际截图与设计基准](docs/ui/README.md) · [SD 卡准备](docs/SD_CARD.md)
+
+第二轮的容量评估、资源准备方法和逐模块完成度见 [开发状态](docs/DEVELOPMENT_STATUS.md)。
 
 ## 公司电脑首次构建
 

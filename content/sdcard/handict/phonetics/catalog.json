@@ -1,0 +1,713 @@
+{
+  "schema_version": 1,
+  "accent": "en-GB",
+  "inventory": "traditional-44",
+  "audio_included": false,
+  "note": "Teaching convention; accent variants exist, especially /ʊə/. r is the conventional teaching symbol. Audio must be independently licensed and reviewed.",
+  "sounds": [
+    {
+      "id": "i-long",
+      "ipa": "iː",
+      "words": [
+        "sheep",
+        "tree",
+        "tea"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/i-long/sound.ogg",
+        "phonetics/en-GB/i-long/sheep.ogg",
+        "phonetics/en-GB/i-long/tree.ogg",
+        "phonetics/en-GB/i-long/tea.ogg"
+      ]
+    },
+    {
+      "id": "i-short",
+      "ipa": "ɪ",
+      "words": [
+        "fish",
+        "ship",
+        "sit"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/i-short/sound.ogg",
+        "phonetics/en-GB/i-short/fish.ogg",
+        "phonetics/en-GB/i-short/ship.ogg",
+        "phonetics/en-GB/i-short/sit.ogg"
+      ]
+    },
+    {
+      "id": "e",
+      "ipa": "e",
+      "words": [
+        "bed",
+        "pen",
+        "red"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/e/sound.ogg",
+        "phonetics/en-GB/e/bed.ogg",
+        "phonetics/en-GB/e/pen.ogg",
+        "phonetics/en-GB/e/red.ogg"
+      ]
+    },
+    {
+      "id": "ae",
+      "ipa": "æ",
+      "words": [
+        "cat",
+        "hat",
+        "bag"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/ae/sound.ogg",
+        "phonetics/en-GB/ae/cat.ogg",
+        "phonetics/en-GB/ae/hat.ogg",
+        "phonetics/en-GB/ae/bag.ogg"
+      ]
+    },
+    {
+      "id": "wedge",
+      "ipa": "ʌ",
+      "words": [
+        "cup",
+        "sun",
+        "bus"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/wedge/sound.ogg",
+        "phonetics/en-GB/wedge/cup.ogg",
+        "phonetics/en-GB/wedge/sun.ogg",
+        "phonetics/en-GB/wedge/bus.ogg"
+      ]
+    },
+    {
+      "id": "a-long",
+      "ipa": "ɑː",
+      "words": [
+        "car",
+        "star",
+        "park"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/a-long/sound.ogg",
+        "phonetics/en-GB/a-long/car.ogg",
+        "phonetics/en-GB/a-long/star.ogg",
+        "phonetics/en-GB/a-long/park.ogg"
+      ]
+    },
+    {
+      "id": "o-short",
+      "ipa": "ɒ",
+      "words": [
+        "hot",
+        "dog",
+        "box"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/o-short/sound.ogg",
+        "phonetics/en-GB/o-short/hot.ogg",
+        "phonetics/en-GB/o-short/dog.ogg",
+        "phonetics/en-GB/o-short/box.ogg"
+      ]
+    },
+    {
+      "id": "o-long",
+      "ipa": "ɔː",
+      "words": [
+        "saw",
+        "ball",
+        "door"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/o-long/sound.ogg",
+        "phonetics/en-GB/o-long/saw.ogg",
+        "phonetics/en-GB/o-long/ball.ogg",
+        "phonetics/en-GB/o-long/door.ogg"
+      ]
+    },
+    {
+      "id": "u-short",
+      "ipa": "ʊ",
+      "words": [
+        "book",
+        "foot",
+        "good"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/u-short/sound.ogg",
+        "phonetics/en-GB/u-short/book.ogg",
+        "phonetics/en-GB/u-short/foot.ogg",
+        "phonetics/en-GB/u-short/good.ogg"
+      ]
+    },
+    {
+      "id": "u-long",
+      "ipa": "uː",
+      "words": [
+        "blue",
+        "food",
+        "moon"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/u-long/sound.ogg",
+        "phonetics/en-GB/u-long/blue.ogg",
+        "phonetics/en-GB/u-long/food.ogg",
+        "phonetics/en-GB/u-long/moon.ogg"
+      ]
+    },
+    {
+      "id": "er-long",
+      "ipa": "ɜː",
+      "words": [
+        "bird",
+        "nurse",
+        "turn"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/er-long/sound.ogg",
+        "phonetics/en-GB/er-long/bird.ogg",
+        "phonetics/en-GB/er-long/nurse.ogg",
+        "phonetics/en-GB/er-long/turn.ogg"
+      ]
+    },
+    {
+      "id": "schwa",
+      "ipa": "ə",
+      "words": [
+        "about",
+        "sofa",
+        "banana"
+      ],
+      "category": 0,
+      "audio": [
+        "phonetics/en-GB/schwa/sound.ogg",
+        "phonetics/en-GB/schwa/about.ogg",
+        "phonetics/en-GB/schwa/sofa.ogg",
+        "phonetics/en-GB/schwa/banana.ogg"
+      ]
+    },
+    {
+      "id": "ei",
+      "ipa": "eɪ",
+      "words": [
+        "day",
+        "rain",
+        "cake"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/ei/sound.ogg",
+        "phonetics/en-GB/ei/day.ogg",
+        "phonetics/en-GB/ei/rain.ogg",
+        "phonetics/en-GB/ei/cake.ogg"
+      ]
+    },
+    {
+      "id": "ai",
+      "ipa": "aɪ",
+      "words": [
+        "bike",
+        "kite",
+        "five"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/ai/sound.ogg",
+        "phonetics/en-GB/ai/bike.ogg",
+        "phonetics/en-GB/ai/kite.ogg",
+        "phonetics/en-GB/ai/five.ogg"
+      ]
+    },
+    {
+      "id": "oi",
+      "ipa": "ɔɪ",
+      "words": [
+        "boy",
+        "toy",
+        "coin"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/oi/sound.ogg",
+        "phonetics/en-GB/oi/boy.ogg",
+        "phonetics/en-GB/oi/toy.ogg",
+        "phonetics/en-GB/oi/coin.ogg"
+      ]
+    },
+    {
+      "id": "au",
+      "ipa": "aʊ",
+      "words": [
+        "cow",
+        "house",
+        "mouse"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/au/sound.ogg",
+        "phonetics/en-GB/au/cow.ogg",
+        "phonetics/en-GB/au/house.ogg",
+        "phonetics/en-GB/au/mouse.ogg"
+      ]
+    },
+    {
+      "id": "ou",
+      "ipa": "əʊ",
+      "words": [
+        "boat",
+        "go",
+        "home"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/ou/sound.ogg",
+        "phonetics/en-GB/ou/boat.ogg",
+        "phonetics/en-GB/ou/go.ogg",
+        "phonetics/en-GB/ou/home.ogg"
+      ]
+    },
+    {
+      "id": "ia",
+      "ipa": "ɪə",
+      "words": [
+        "ear",
+        "near",
+        "deer"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/ia/sound.ogg",
+        "phonetics/en-GB/ia/ear.ogg",
+        "phonetics/en-GB/ia/near.ogg",
+        "phonetics/en-GB/ia/deer.ogg"
+      ]
+    },
+    {
+      "id": "ea",
+      "ipa": "eə",
+      "words": [
+        "air",
+        "hair",
+        "chair"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/ea/sound.ogg",
+        "phonetics/en-GB/ea/air.ogg",
+        "phonetics/en-GB/ea/hair.ogg",
+        "phonetics/en-GB/ea/chair.ogg"
+      ]
+    },
+    {
+      "id": "ua",
+      "ipa": "ʊə",
+      "words": [
+        "pure",
+        "cure",
+        "tour"
+      ],
+      "category": 1,
+      "audio": [
+        "phonetics/en-GB/ua/sound.ogg",
+        "phonetics/en-GB/ua/pure.ogg",
+        "phonetics/en-GB/ua/cure.ogg",
+        "phonetics/en-GB/ua/tour.ogg"
+      ]
+    },
+    {
+      "id": "p",
+      "ipa": "p",
+      "words": [
+        "pen",
+        "pig",
+        "cap"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/p/sound.ogg",
+        "phonetics/en-GB/p/pen.ogg",
+        "phonetics/en-GB/p/pig.ogg",
+        "phonetics/en-GB/p/cap.ogg"
+      ]
+    },
+    {
+      "id": "b",
+      "ipa": "b",
+      "words": [
+        "bag",
+        "bed",
+        "bus"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/b/sound.ogg",
+        "phonetics/en-GB/b/bag.ogg",
+        "phonetics/en-GB/b/bed.ogg",
+        "phonetics/en-GB/b/bus.ogg"
+      ]
+    },
+    {
+      "id": "t",
+      "ipa": "t",
+      "words": [
+        "tea",
+        "top",
+        "cat"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/t/sound.ogg",
+        "phonetics/en-GB/t/tea.ogg",
+        "phonetics/en-GB/t/top.ogg",
+        "phonetics/en-GB/t/cat.ogg"
+      ]
+    },
+    {
+      "id": "d",
+      "ipa": "d",
+      "words": [
+        "dog",
+        "day",
+        "bed"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/d/sound.ogg",
+        "phonetics/en-GB/d/dog.ogg",
+        "phonetics/en-GB/d/day.ogg",
+        "phonetics/en-GB/d/bed.ogg"
+      ]
+    },
+    {
+      "id": "k",
+      "ipa": "k",
+      "words": [
+        "cat",
+        "key",
+        "back"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/k/sound.ogg",
+        "phonetics/en-GB/k/cat.ogg",
+        "phonetics/en-GB/k/key.ogg",
+        "phonetics/en-GB/k/back.ogg"
+      ]
+    },
+    {
+      "id": "g",
+      "ipa": "ɡ",
+      "words": [
+        "go",
+        "game",
+        "bag"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/g/sound.ogg",
+        "phonetics/en-GB/g/go.ogg",
+        "phonetics/en-GB/g/game.ogg",
+        "phonetics/en-GB/g/bag.ogg"
+      ]
+    },
+    {
+      "id": "f",
+      "ipa": "f",
+      "words": [
+        "fish",
+        "fan",
+        "leaf"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/f/sound.ogg",
+        "phonetics/en-GB/f/fish.ogg",
+        "phonetics/en-GB/f/fan.ogg",
+        "phonetics/en-GB/f/leaf.ogg"
+      ]
+    },
+    {
+      "id": "v",
+      "ipa": "v",
+      "words": [
+        "van",
+        "vet",
+        "five"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/v/sound.ogg",
+        "phonetics/en-GB/v/van.ogg",
+        "phonetics/en-GB/v/vet.ogg",
+        "phonetics/en-GB/v/five.ogg"
+      ]
+    },
+    {
+      "id": "th",
+      "ipa": "θ",
+      "words": [
+        "thin",
+        "think",
+        "bath"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/th/sound.ogg",
+        "phonetics/en-GB/th/thin.ogg",
+        "phonetics/en-GB/th/think.ogg",
+        "phonetics/en-GB/th/bath.ogg"
+      ]
+    },
+    {
+      "id": "dh",
+      "ipa": "ð",
+      "words": [
+        "this",
+        "that",
+        "mother"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/dh/sound.ogg",
+        "phonetics/en-GB/dh/this.ogg",
+        "phonetics/en-GB/dh/that.ogg",
+        "phonetics/en-GB/dh/mother.ogg"
+      ]
+    },
+    {
+      "id": "s",
+      "ipa": "s",
+      "words": [
+        "sun",
+        "sit",
+        "bus"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/s/sound.ogg",
+        "phonetics/en-GB/s/sun.ogg",
+        "phonetics/en-GB/s/sit.ogg",
+        "phonetics/en-GB/s/bus.ogg"
+      ]
+    },
+    {
+      "id": "z",
+      "ipa": "z",
+      "words": [
+        "zoo",
+        "zip",
+        "nose"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/z/sound.ogg",
+        "phonetics/en-GB/z/zoo.ogg",
+        "phonetics/en-GB/z/zip.ogg",
+        "phonetics/en-GB/z/nose.ogg"
+      ]
+    },
+    {
+      "id": "sh",
+      "ipa": "ʃ",
+      "words": [
+        "sheep",
+        "shoe",
+        "fish"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/sh/sound.ogg",
+        "phonetics/en-GB/sh/sheep.ogg",
+        "phonetics/en-GB/sh/shoe.ogg",
+        "phonetics/en-GB/sh/fish.ogg"
+      ]
+    },
+    {
+      "id": "zh",
+      "ipa": "ʒ",
+      "words": [
+        "vision",
+        "measure",
+        "usual"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/zh/sound.ogg",
+        "phonetics/en-GB/zh/vision.ogg",
+        "phonetics/en-GB/zh/measure.ogg",
+        "phonetics/en-GB/zh/usual.ogg"
+      ]
+    },
+    {
+      "id": "h",
+      "ipa": "h",
+      "words": [
+        "hat",
+        "hand",
+        "home"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/h/sound.ogg",
+        "phonetics/en-GB/h/hat.ogg",
+        "phonetics/en-GB/h/hand.ogg",
+        "phonetics/en-GB/h/home.ogg"
+      ]
+    },
+    {
+      "id": "ch",
+      "ipa": "tʃ",
+      "words": [
+        "chair",
+        "cheese",
+        "watch"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/ch/sound.ogg",
+        "phonetics/en-GB/ch/chair.ogg",
+        "phonetics/en-GB/ch/cheese.ogg",
+        "phonetics/en-GB/ch/watch.ogg"
+      ]
+    },
+    {
+      "id": "jh",
+      "ipa": "dʒ",
+      "words": [
+        "jam",
+        "juice",
+        "bridge"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/jh/sound.ogg",
+        "phonetics/en-GB/jh/jam.ogg",
+        "phonetics/en-GB/jh/juice.ogg",
+        "phonetics/en-GB/jh/bridge.ogg"
+      ]
+    },
+    {
+      "id": "m",
+      "ipa": "m",
+      "words": [
+        "moon",
+        "milk",
+        "room"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/m/sound.ogg",
+        "phonetics/en-GB/m/moon.ogg",
+        "phonetics/en-GB/m/milk.ogg",
+        "phonetics/en-GB/m/room.ogg"
+      ]
+    },
+    {
+      "id": "n",
+      "ipa": "n",
+      "words": [
+        "nose",
+        "net",
+        "sun"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/n/sound.ogg",
+        "phonetics/en-GB/n/nose.ogg",
+        "phonetics/en-GB/n/net.ogg",
+        "phonetics/en-GB/n/sun.ogg"
+      ]
+    },
+    {
+      "id": "ng",
+      "ipa": "ŋ",
+      "words": [
+        "sing",
+        "ring",
+        "long"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/ng/sound.ogg",
+        "phonetics/en-GB/ng/sing.ogg",
+        "phonetics/en-GB/ng/ring.ogg",
+        "phonetics/en-GB/ng/long.ogg"
+      ]
+    },
+    {
+      "id": "l",
+      "ipa": "l",
+      "words": [
+        "leg",
+        "leaf",
+        "ball"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/l/sound.ogg",
+        "phonetics/en-GB/l/leg.ogg",
+        "phonetics/en-GB/l/leaf.ogg",
+        "phonetics/en-GB/l/ball.ogg"
+      ]
+    },
+    {
+      "id": "r",
+      "ipa": "r",
+      "words": [
+        "red",
+        "rain",
+        "room"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/r/sound.ogg",
+        "phonetics/en-GB/r/red.ogg",
+        "phonetics/en-GB/r/rain.ogg",
+        "phonetics/en-GB/r/room.ogg"
+      ]
+    },
+    {
+      "id": "w",
+      "ipa": "w",
+      "words": [
+        "wet",
+        "win",
+        "water"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/w/sound.ogg",
+        "phonetics/en-GB/w/wet.ogg",
+        "phonetics/en-GB/w/win.ogg",
+        "phonetics/en-GB/w/water.ogg"
+      ]
+    },
+    {
+      "id": "y",
+      "ipa": "j",
+      "words": [
+        "yes",
+        "yellow",
+        "young"
+      ],
+      "category": 2,
+      "audio": [
+        "phonetics/en-GB/y/sound.ogg",
+        "phonetics/en-GB/y/yes.ogg",
+        "phonetics/en-GB/y/yellow.ogg",
+        "phonetics/en-GB/y/young.ogg"
+      ]
+    }
+  ]
+}

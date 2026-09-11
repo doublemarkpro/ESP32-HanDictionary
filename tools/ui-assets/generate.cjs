@@ -10,19 +10,22 @@ fs.mkdirSync(out, {recursive:true}); fs.mkdirSync(source, {recursive:true});
 const fonts = path.join(root, 'managed_components/lvgl__lvgl/scripts/built_in_font');
 const fontTool = require.resolve('lv_font_conv/lv_font_conv.js');
 const files = fs.readdirSync(path.join(root, 'main/han_dictionary')).filter(f=>/\.(cc|h)$/.test(f));
-const strings = files.map(f=>fs.readFileSync(path.join(root,'main/han_dictionary',f),'utf8')).join('');
+const entriesDir = path.join(root,'content/sdcard/handict/dictionary/entries');
+const strings = files.map(f=>fs.readFileSync(path.join(root,'main/han_dictionary',f),'utf8')).join('') +
+  fs.readdirSync(entriesDir).filter(f=>f.endsWith('.json')).map(f=>fs.readFileSync(path.join(entriesDir,f),'utf8')).join('');
 const chinese = [...new Set(strings.match(/[\u2000-\u206f\u3000-\u9fff\uff00-\uffef]/g))].join('');
 for(const size of [28,40]) {
   const name=`han_font_${size}`;
   execFileSync(process.execPath,[fontTool,'--font',path.join(fonts,'SourceHanSansSC-Normal.otf'),
-    '--symbols',chinese,'--font',path.join(fonts,'DejaVuSans.ttf'),'--range','0x20-0x7e,0xa0-0x2ff',
-    '--size',String(size),'--bpp','4','--format','lvgl','--no-compress','--no-kerning',
+    '--symbols',chinese,'--font',path.join(fonts,'DejaVuSans.ttf'),'--range','0x20-0x7e,0xa0-0x2ff,0x3b8',
+    '--size',String(size),'--bpp','4','--format','lvgl','--no-kerning',
     '--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')],{stdio:'inherit'});
 }
-for(const [size,symbols,name,font] of [[100,'0123456789:/iːɪeæʌɑɔaʊəpbt dfv','han_font_large','DejaVuSans.ttf'],
+const ipa = [...strings.matchAll(/\{"[a-z-]+",\s*"([^"]+)"/g)].map(m=>m[1]).join('');
+for(const [size,symbols,name,font] of [[100,'0123456789:/'+ipa,'han_font_large','DejaVuSans.ttf'],
  [240,'规','han_font_character','SourceHanSansSC-Normal.otf']]) {
  execFileSync(process.execPath,[fontTool,'--font',path.join(fonts,font),'--symbols',symbols,
- '--size',String(size),'--bpp','4','--format','lvgl','--no-compress','--no-kerning',
+ '--size',String(size),'--bpp','4','--format','lvgl','--no-kerning',
  '--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')],{stdio:'inherit'});
 }
 const icons={

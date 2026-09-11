@@ -19,5 +19,10 @@ if ($LASTEXITCODE -ne 0) {
     throw "构建失败，退出码：$LASTEXITCODE"
 }
 
+python .\tools\capacity_report.py
+if ($LASTEXITCODE -ne 0) {
+    throw "容量检查失败：修复分区溢出或应用安全余量后再打包。"
+}
+
 Write-Host "构建完成：$variant" -ForegroundColor Green
 Write-Host "固件目录：$PWD\build"

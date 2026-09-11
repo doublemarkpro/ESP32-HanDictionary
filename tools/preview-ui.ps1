@@ -1,4 +1,4 @@
-param([string]$OutputPath = "")
+param([string]$OutputPath = "", [string]$ContentPath = "")
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "setup.ps1")
 if (-not $OutputPath) { $OutputPath = Join-Path $PWD 'docs/ui/rendered' }
@@ -11,7 +11,8 @@ cmake -S tools/ui-simulator -B build/ui-simulator -G Ninja -DCMAKE_BUILD_TYPE=Re
 if ($LASTEXITCODE -ne 0) { throw 'UI simulator configure failed' }
 cmake --build build/ui-simulator --parallel 8
 if ($LASTEXITCODE -ne 0) { throw 'UI simulator build failed' }
-& .\build\ui-simulator\han_ui_sim.exe $OutputPath
+if ($ContentPath) { & .\build\ui-simulator\han_ui_sim.exe $OutputPath $ContentPath }
+else { & .\build\ui-simulator\han_ui_sim.exe $OutputPath }
 if ($LASTEXITCODE -ne 0) { throw 'UI simulator tests failed' }
 if (Test-Path tools/ui-assets/node_modules/sharp) {
     node tools/ui-simulator/render.cjs $OutputPath
