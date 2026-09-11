@@ -1,5 +1,8 @@
 # An MCP-based Chatbot
 
+> **ESP32-HanDictionary / Tab5 学习助手**：从 [进度、TODO 与周末接续清单](TODO.md) 开始；
+> 包含已完成界面、资源迁移计划、NAS MQTT 留言板待办和换电脑构建步骤。以下保留小智上游介绍。
+
 （中文 | [English](README.md) | [日本語](README_ja.md)）
 
 ## 介绍
