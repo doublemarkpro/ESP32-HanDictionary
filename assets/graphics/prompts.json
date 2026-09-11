@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "home-book",
+      "ref": "tab5-home-screen-v2.png",
+      "subject": "A smiling open children's book mascot like the reference: turquoise cyan hard cover, warm ivory curved pages, two dark oval eyes, tiny happy open mouth and rosy cheeks, tiny navy hands. Slight friendly three-quarter tilt, no other props. Blank pages except the face.",
+      "prompt": "Use case: stylized-concept. Asset type: one isolated production UI illustration for a child's M5Stack Tab5 learning assistant. The input screenshot is STYLE REFERENCE ONLY, not an edit target. Match its polished rounded soft 3D/storybook look, smooth matte gradients, top-left gentle light, cheerful restrained pastel colors and dark navy facial features. Output one single centered cutout on a GENUINELY TRANSPARENT background (alpha), generous 12% padding, entire object visible. No card, no UI screen, no writing, no numbers, no watermark, no border, no ground plane, no opaque or checkerboard backdrop. Must remain clear at 192px. A smiling open children's book mascot like the reference: turquoise cyan hard cover, warm ivory curved pages, two dark oval eyes, tiny happy open mouth and rosy cheeks, tiny navy hands. Slight friendly three-quarter tilt, no other props. Blank pages except the face.",
+      "source": "home-book.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-home-screen-v2.png"
+    },
+    {
+      "id": "home-headphones",
+      "ref": "tab5-home-screen-v2.png",
+      "subject": "A plump lavender purple pair of over-ear headphones standing around a small blank ivory rounded square card. Match the headphones in the reference, friendly chunky silhouette, softly rounded glossy highlights, tiny yellow sound accents. Leave the inner card absolutely blank; IPA will be drawn by code.",
+      "prompt": "Use case: stylized-concept. Asset type: one isolated production UI illustration for a child's M5Stack Tab5 learning assistant. The input screenshot is STYLE REFERENCE ONLY, not an edit target. Match its polished rounded soft 3D/storybook look, smooth matte gradients, top-left gentle light, cheerful restrained pastel colors and dark navy facial features. Output one single centered cutout on a GENUINELY TRANSPARENT background (alpha), generous 12% padding, entire object visible. No card, no UI screen, no writing, no numbers, no watermark, no border, no ground plane, no opaque or checkerboard backdrop. Must remain clear at 192px. A plump lavender purple pair of over-ear headphones standing around a small blank ivory rounded square card. Match the headphones in the reference, friendly chunky silhouette, softly rounded glossy highlights, tiny yellow sound accents. Leave the inner card absolutely blank; IPA will be drawn by code.",
+      "source": "home-headphones.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-home-screen-v2.png"
+    },
+    {
+      "id": "home-calendar",
+      "ref": "tab5-home-screen-v2.png",
+      "subject": "A chunky blue standing desktop flip calendar like the reference, softly rounded cobalt frame and three blue binder rings. Ivory face with a neat 3 by 3 grid of small pastel mint, blue, coral and lavender blank squares. No weekdays, letters or numbers. Slight three-quarter view.",
+      "prompt": "Use case: stylized-concept. Asset type: one isolated production UI illustration for a child's M5Stack Tab5 learning assistant. The input screenshot is STYLE REFERENCE ONLY, not an edit target. Match its polished rounded soft 3D/storybook look, smooth matte gradients, top-left gentle light, cheerful restrained pastel colors and dark navy facial features. Output one single centered cutout on a GENUINELY TRANSPARENT background (alpha), generous 12% padding, entire object visible. No card, no UI screen, no writing, no numbers, no watermark, no border, no ground plane, no opaque or checkerboard backdrop. Must remain clear at 192px. A chunky blue standing desktop flip calendar like the reference, softly rounded cobalt frame and three blue binder rings. Ivory face with a neat 3 by 3 grid of small pastel mint, blue, coral and lavender blank squares. No weekdays, letters or numbers. Slight three-quarter view.",
+      "source": "home-calendar.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-home-screen-v2.png"
+    },
+    {
+      "id": "home-timer",
+      "ref": "tab5-home-screen-v2.png",
+      "subject": "A friendly tomato-shaped orange/coral study timer with two fresh small green leaves on top, ivory circular face, clean orange tick marks and one short navy pointer, subtle pale blue and coral color sectors. No digits, no countdown text, no extra props. Closely match the homework timer illustration in the reference.",
+      "prompt": "Use case: stylized-concept. One isolated production UI illustration for a child's learning tablet. Input image is a STYLE REFERENCE ONLY. Match its polished rounded soft 3D/storybook look, smooth matte gradients, gentle top-left light, cheerful pastel color and clear chunky silhouette. GENUINELY TRANSPARENT alpha background. Centered, entire object inside image with 12% empty padding. No UI card, scene, text, numbers, brand, watermark, checkerboard or colored backdrop, no floor. Designed to remain clear at 192px. A friendly tomato-shaped orange/coral study timer with two fresh small green leaves on top, ivory circular face, clean orange tick marks and one short navy pointer, subtle pale blue and coral color sectors. No digits, no countdown text, no extra props. Closely match the homework timer illustration in the reference.",
+      "source": "home-timer.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-home-screen-v2.png"
+    },
+    {
+      "id": "home-alarm",
+      "ref": "tab5-home-screen-v2.png",
+      "subject": "A cheerful coral pink twin-bell alarm clock mascot, ivory face with two dark oval eyes and small smiling mouth, rosy cheeks, little coral feet and short rounded decorative clock hands like the reference. No digits or text. Slight three-quarter view.",
+      "prompt": "Use case: stylized-concept. One isolated production UI illustration for a child's learning tablet. Input image is a STYLE REFERENCE ONLY. Match its polished rounded soft 3D/storybook look, smooth matte gradients, gentle top-left light, cheerful pastel color and clear chunky silhouette. GENUINELY TRANSPARENT alpha background. Centered, entire object inside image with 12% empty padding. No UI card, scene, text, numbers, brand, watermark, checkerboard or colored backdrop, no floor. Designed to remain clear at 192px. A cheerful coral pink twin-bell alarm clock mascot, ivory face with two dark oval eyes and small smiling mouth, rosy cheeks, little coral feet and short rounded decorative clock hands like the reference. No digits or text. Slight three-quarter view.",
+      "source": "home-alarm.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-home-screen-v2.png"
+    },
+    {
+      "id": "home-weather",
+      "ref": "tab5-weather-screen.png",
+      "subject": "A cheerful golden yellow sun with a cute navy smile and rosy cheeks, soft pill-shaped rays, peeking above a big fluffy white-to-pale-blue cloud. Match the main sunny cloud in reference. Only sun and cloud; no skyline, no text, no rain.",
+      "prompt": "Use case: stylized-concept. One isolated production UI illustration for a child's learning tablet. Input image is a STYLE REFERENCE ONLY. Match its polished rounded soft 3D/storybook look, smooth matte gradients, gentle top-left light, cheerful pastel color and clear chunky silhouette. GENUINELY TRANSPARENT alpha background. Centered, entire object inside image with 12% empty padding. No UI card, scene, text, numbers, brand, watermark, checkerboard or colored backdrop, no floor. Designed to remain clear at 192px. A cheerful golden yellow sun with a cute navy smile and rosy cheeks, soft pill-shaped rays, peeking above a big fluffy white-to-pale-blue cloud. Match the main sunny cloud in reference. Only sun and cloud; no skyline, no text, no rain.",
+      "source": "home-weather.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-weather-screen.png"
+    },
+    {
+      "id": "decor-study-child",
+      "ref": "tab5-homework-timer-screen.png",
+      "subject": "A cheerful small child with short brown hair and a sky-blue hoodie, sitting at a small warm wooden desk and writing in an open ivory notebook with a pencil. Show upper body, both hands, notebook and compact desk, plus two simple books at the side. Match the lower-left illustration in the reference. No text on notebook. Keep the complete illustration inside the canvas, natural hands and pencil.",
+      "prompt": "Use case: illustration-story. Create ONE production illustration asset matching the soft rounded pastel 3D children's learning tablet STYLE REFERENCE. Not a full screen or mockup. Matte smooth shading, soft top-left light, warm friendly colors, clear chunky shapes, no lettering or words, no watermark. Entire subject visible and comfortably padded, genuinely TRANSPARENT alpha background, no background color/checkerboard. A cheerful small child with short brown hair and a sky-blue hoodie, sitting at a small warm wooden desk and writing in an open ivory notebook with a pencil. Show upper body, both hands, notebook and compact desk, plus two simple books at the side. Match the lower-left illustration in the reference. No text on notebook. Keep the complete illustration inside the canvas, natural hands and pencil.",
+      "source": "decor-study-child.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-homework-timer-screen.png"
+    },
+    {
+      "id": "decor-books-sprout",
+      "ref": "tab5-timetable-screen.png",
+      "subject": "A compact stack of three softly rounded closed books, blue, mint and peach covers, with a tiny green two-leaf sprout growing cheerfully from the top. Slight three-quarter view. Match the lower-right stack of books decoration in the reference, no labels or characters or extra objects.",
+      "prompt": "Use case: illustration-story. Create ONE production illustration asset matching the soft rounded pastel 3D children's learning tablet STYLE REFERENCE. Not a full screen or mockup. Matte smooth shading, soft top-left light, warm friendly colors, clear chunky shapes, no lettering or words, no watermark. Entire subject visible and comfortably padded, genuinely TRANSPARENT alpha background, no background color/checkerboard. A compact stack of three softly rounded closed books, blue, mint and peach covers, with a tiny green two-leaf sprout growing cheerfully from the top. Slight three-quarter view. Match the lower-right stack of books decoration in the reference, no labels or characters or extra objects.",
+      "source": "decor-books-sprout.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-timetable-screen.png"
+    },
+    {
+      "id": "decor-leaves",
+      "ref": "tab5-home-screen-v2.png",
+      "subject": "A low wide decorative cluster of large rounded mint, lime and teal leaves and small rolling pale-green foliage mounds. Like the bottom corner garden decoration in the reference. Entire leaf tips visible, a horizontal cluster, bottom-heavy composition; no flowers, characters, books or text. Will be reused as a corner ornament on a cream UI.",
+      "prompt": "Use case: illustration-story. Create ONE production illustration asset matching the soft rounded pastel 3D children's learning tablet STYLE REFERENCE. Not a full screen or mockup. Matte smooth shading, soft top-left light, warm friendly colors, clear chunky shapes, no lettering or words, no watermark. Entire subject visible and comfortably padded, genuinely TRANSPARENT alpha background, no background color/checkerboard. A low wide decorative cluster of large rounded mint, lime and teal leaves and small rolling pale-green foliage mounds. Like the bottom corner garden decoration in the reference. Entire leaf tips visible, a horizontal cluster, bottom-heavy composition; no flowers, characters, books or text. Will be reused as a corner ornament on a cream UI.",
+      "source": "decor-leaves.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-home-screen-v2.png"
+    }
+  ]
+}

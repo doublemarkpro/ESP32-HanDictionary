@@ -1,0 +1,3028 @@
+{
+  "schema_version": 1,
+  "theme": "cream-pastel-v1",
+  "lvgl_major": 9,
+  "png_format": "RGBA8, straight alpha, lossless",
+  "path_base": "handict/ui/graphics",
+  "default_storage": "SD; not linked into firmware",
+  "weather_fallback": "weather-unknown",
+  "small_c_pack": {
+    "weather_size": 96,
+    "control_size": 48,
+    "count": 72,
+    "png_bytes": 92335
+  },
+  "totals": {
+    "assets": 90,
+    "pngs": 252,
+    "png_bytes": 3047419
+  },
+  "assets": [
+    {
+      "id": "weather-clear-day",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-clear-day.svg",
+      "origin": "original-vector",
+      "source_sha256": "2546405851e975c99e64f4e48f0c3e18deb31ce073117f11456e16901f61e5f5",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-clear-day/96.png",
+          "bytes": 3103,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "0fff29724789c4f68a8051f60c0e64cdd66b2c53eea48973a9b24e8466e33815"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-clear-day/192.png",
+          "bytes": 6948,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "411bb370bef00589e8bb520f2c0dcfc8a60ae2fde91c7925d11bd627864f1797"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-clear-day/320.png",
+          "bytes": 12783,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "fc2d33e8a1622b2f0bd93c356c91724d3e0a916e207700accde3796e03342fd2"
+        }
+      ]
+    },
+    {
+      "id": "weather-clear-night",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-clear-night.svg",
+      "origin": "original-vector",
+      "source_sha256": "bc0a40801a9f788469a6b7d8436781d4f45ab19f63c0db53cc3712fb6ea05b42",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-clear-night/96.png",
+          "bytes": 2301,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "71826ec5ff4ff296603f5143c4dcc47ecce9f41d11b55f57cdf99d7f70a8f304"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-clear-night/192.png",
+          "bytes": 4545,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "d151b35b93f2e47434be06016194009dd50fc0249f2397dcd7fa3347c3c3a6b5"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-clear-night/320.png",
+          "bytes": 7566,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "e3d862b8fbd07f3654374c08ba20b2824e43d92e25fd6cdbcbf3f1e307ef9644"
+        }
+      ]
+    },
+    {
+      "id": "weather-partly-cloudy-day",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-partly-cloudy-day.svg",
+      "origin": "original-vector",
+      "source_sha256": "e4ad46bc279192069f6495e2c0fbcdaa615f05d9553c71b57aedc814b9dc2d50",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-partly-cloudy-day/96.png",
+          "bytes": 3872,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "005d654dc9f5169891a14fc1f8f9ddd98de95b45693723268e3533e3ac92fefb"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-partly-cloudy-day/192.png",
+          "bytes": 8352,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "6c5b841a1668bf3c72fbeb4b5078634b592bd9fc6bdbfa655bb01b3c25eef14e"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-partly-cloudy-day/320.png",
+          "bytes": 14595,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "ed078c214a974cf98aa31b2744407a8719b28fd4a8e72695ac3a61fa547fed60"
+        }
+      ]
+    },
+    {
+      "id": "weather-partly-cloudy-night",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-partly-cloudy-night.svg",
+      "origin": "original-vector",
+      "source_sha256": "5b104aadba4083a5cdb027d5a5bff0a2fdbd6663a3da428980c6d0c2a548f315",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-partly-cloudy-night/96.png",
+          "bytes": 3099,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "e1d51fc04f4757970f36731949443432ca92d043a259262096a655e13a8731a5"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-partly-cloudy-night/192.png",
+          "bytes": 6465,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "ca44a50b8e1f1972c699f95e5c2aa6408fd54ae5b182983f42511f8f8d9cd56e"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-partly-cloudy-night/320.png",
+          "bytes": 10781,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "139c5433ff7e7b7d6d3a9147afb263424c2c87a3bde550efad112776cbb3973a"
+        }
+      ]
+    },
+    {
+      "id": "weather-cloudy",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-cloudy.svg",
+      "origin": "original-vector",
+      "source_sha256": "b47825c87716e098d169763dbf5e15c8dbd47c797c6f27fbe433803600c00a61",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-cloudy/96.png",
+          "bytes": 3235,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "ca481885c59d12c7042aee86166fbbd2ba1fa230ba36115adc2c133ab8beb645"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-cloudy/192.png",
+          "bytes": 6820,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "cd6f76f77cd715661262b151838bc27bcfdc37da2a895f8559307238ea7c0213"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-cloudy/320.png",
+          "bytes": 11625,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "3af0c03d15330064a3448d98c4ed06fd0721f68347a11121a1c7f309c84d11d2"
+        }
+      ]
+    },
+    {
+      "id": "weather-overcast",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-overcast.svg",
+      "origin": "original-vector",
+      "source_sha256": "d817fce9f779854e51e4eb1efed0bcf24842e6630a0560fb8101f77330071fa4",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-overcast/96.png",
+          "bytes": 3529,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "09159711875379c38e8c98b0a871da6be7034d17306387b86e5511c45b3a32ef"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-overcast/192.png",
+          "bytes": 7181,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "3d46c5af119c27a5b77803e86092f792d1c2b86a308507773e7dbabf203929eb"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-overcast/320.png",
+          "bytes": 11984,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "a83597330ab887a8728a0cab3a674f5253545fca66a5692c8b08247829d19f38"
+        }
+      ]
+    },
+    {
+      "id": "weather-light-rain",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-light-rain.svg",
+      "origin": "original-vector",
+      "source_sha256": "9e4a03207411e3478a162eaea2867a109906c235a0206ffcad73bf6421c9afad",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-light-rain/96.png",
+          "bytes": 2541,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "905ed55c33aab1d897342aea0b2f8d18549d198a0046030fe35b4e428d3d19a1"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-light-rain/192.png",
+          "bytes": 5535,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "ff246cc14519a2adf2bd6737ea093a85eaebfc5cb51c8e0a6a5fb85b2ce5bb94"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-light-rain/320.png",
+          "bytes": 9270,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "e8f6e3e8e1a7b0a39e0cd1ad8b86b0e7506392344bf6463a3f3398b89a46bee9"
+        }
+      ]
+    },
+    {
+      "id": "weather-rain",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-rain.svg",
+      "origin": "original-vector",
+      "source_sha256": "35cc79ee6d1ccfa44a9c5638fa04ed32c0e977d99107c7889839817b0b6d4513",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-rain/96.png",
+          "bytes": 2886,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "6867966d9c00b1fe33adc7055faed8f71d73954393f0ae650a3324053cf77615"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-rain/192.png",
+          "bytes": 5905,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "a93f59fa5901ceb340c75dc31d674d9846d2a42cf02be802f778bf5e1d74cc97"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-rain/320.png",
+          "bytes": 9656,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "31115694b2e386dddb963073fc617451dae1aed5f46045eda5983ce61835ed39"
+        }
+      ]
+    },
+    {
+      "id": "weather-heavy-rain",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-heavy-rain.svg",
+      "origin": "original-vector",
+      "source_sha256": "23668210865337677860d2bbb253f17f907657b09260f765b50efd9dac142fea",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-heavy-rain/96.png",
+          "bytes": 3292,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "a8d88432190f9446d39c4750d6e22c92ad791b1c3d250cf062875408678f2289"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-heavy-rain/192.png",
+          "bytes": 6727,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "10c7a44b8ced78239ef954522ac6f377a53353dd6ebdc96ab3e9ea62861ec363"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-heavy-rain/320.png",
+          "bytes": 12545,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "96fcb5e9a585ff4ffee05e70608d8d9ee9f202c7b87abadc4cdecf4ddef6775e"
+        }
+      ]
+    },
+    {
+      "id": "weather-showers",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-showers.svg",
+      "origin": "original-vector",
+      "source_sha256": "5f4807a89ea51652939eba6c3a5c95ddd09328f3ba7065bd3606b2c78dd04f15",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-showers/96.png",
+          "bytes": 3656,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "e266b36dc330e143d768b77ca0853386b6a89860c8858d1cc234ff31e657f1a6"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-showers/192.png",
+          "bytes": 7793,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "56e32f9a1c4e3b60ae1c75aa7c2ce8673d17623bfb1df53543e448561db451b5"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-showers/320.png",
+          "bytes": 13271,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "ae6635cecc7d47045c3af43ff9636cc51f1c642766be2db53f05b5a5f0727d13"
+        }
+      ]
+    },
+    {
+      "id": "weather-thunderstorm",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-thunderstorm.svg",
+      "origin": "original-vector",
+      "source_sha256": "639982556bcd9a99cd6b46c0490c8c442988d8ea226af9f92288e569ef99bb0a",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-thunderstorm/96.png",
+          "bytes": 3414,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "2fd12ffad65ea40c704d9d0f1a55840745ed3f77bbbaef4eb05b2e4bad62abca"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-thunderstorm/192.png",
+          "bytes": 7171,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "7e1fc3bb112cc303a8eb65cfdf273663619bb7a73ca0418c81b26ae34129f261"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-thunderstorm/320.png",
+          "bytes": 11966,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "f208edaf708daaf873a0a4342a710ab86f46456456990a1d431a5768aa62817c"
+        }
+      ]
+    },
+    {
+      "id": "weather-snow",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-snow.svg",
+      "origin": "original-vector",
+      "source_sha256": "62822958c38a267f10698b9ec0f8df642e4291c11b78313849381aafcbdeef95",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-snow/96.png",
+          "bytes": 2826,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "791141ae0e0487119527c32a24b1f86cf6c679ca0c4743ec3a741512ecae45fa"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-snow/192.png",
+          "bytes": 5321,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "95187b78286149b112a3c2ac00d0ccdabe46139a390ae26d1a13f462f3300745"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-snow/320.png",
+          "bytes": 9170,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "fbb83e8dbc9540da690d26302e21dcf95b106eac4f4f3a88dd61f4e0e7cd0543"
+        }
+      ]
+    },
+    {
+      "id": "weather-sleet",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-sleet.svg",
+      "origin": "original-vector",
+      "source_sha256": "ae7253b1a46272ecc23e02882f43b75bc4b7269e12260a3d17150afb4e6fa5bf",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-sleet/96.png",
+          "bytes": 3175,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "37e6a17b3b58a4ef440db9bf8a7582ecfbfd5be54ccbdb6d397040b89ce7d9b1"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-sleet/192.png",
+          "bytes": 6697,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "1b72b5a3bf65d2b2da21e958331832d76245dc2e5001ba2a77e3c79d639bec9f"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-sleet/320.png",
+          "bytes": 11228,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "ec9f06c107892ba907c567a7a93b4ee6f523dc9c416115b415be1cf7cc6564a1"
+        }
+      ]
+    },
+    {
+      "id": "weather-hail",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-hail.svg",
+      "origin": "original-vector",
+      "source_sha256": "3b89f078d579da2b017b8aadec5c684a6dccb8f8683f0bdf250ec138a6c9ff82",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-hail/96.png",
+          "bytes": 2998,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "3ab9e958205c754b66cf5feb8aed3ba27e73fb26fbb3954c46525e98a60fc919"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-hail/192.png",
+          "bytes": 6043,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "75a0c7bca9fc568a97518497d647f61688fe232e1b7b23e4068df78379d8c87f"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-hail/320.png",
+          "bytes": 10121,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "329c49cbd894f33e1b10ca7c0ab52cb56ccb0d980cfb8402f6b9ff895b716c6b"
+        }
+      ]
+    },
+    {
+      "id": "weather-fog",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-fog.svg",
+      "origin": "original-vector",
+      "source_sha256": "39b396b80a623fc6cf780a74806c8dd9a299669b20b0f37fcf7b4c1960d87385",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-fog/96.png",
+          "bytes": 2168,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "9339881db8ad70207568aba46666ce996bce52b9935cbe41bdcfed881fc75d6e"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-fog/192.png",
+          "bytes": 4259,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "e65f7d660ba5555f86842f6d61a0ec8275f83e6c90e423867ecbcfbb475fc25d"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-fog/320.png",
+          "bytes": 7281,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "06269eb46571634ff22e44a84ded398c50b7b564ce0e68ba7648ef91bb2b2249"
+        }
+      ]
+    },
+    {
+      "id": "weather-wind",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-wind.svg",
+      "origin": "original-vector",
+      "source_sha256": "a359f06c4b53c37188e2686e386ad30dfcedcad7c69bce85101f462226bde9e5",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-wind/96.png",
+          "bytes": 1589,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "26d335af6d993182c26c75a78c0f49865af92d344f1f077d438709731938ceb6"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-wind/192.png",
+          "bytes": 3196,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "52a79bd4c6021023eb5ebecdcf69fcfb05aecd95f8e8b8bf9cb05a4de983ed10"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-wind/320.png",
+          "bytes": 5682,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "217ab32c94638c7f44f0741628d1a12b8509824e47aad1d22684e595f330eb1f"
+        }
+      ]
+    },
+    {
+      "id": "weather-sand",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-sand.svg",
+      "origin": "original-vector",
+      "source_sha256": "13cdbdeeb01703144808b9fb71a8f55a9f90ea3cc126ba32411f6bb280a72083",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-sand/96.png",
+          "bytes": 1055,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "378a596c90289d18af9a823763220ae2dfec0f6cac8f1580e772dfb597852ca8"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-sand/192.png",
+          "bytes": 1893,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "ca8c112402f9343f1b0334cc27f43332eaaa01c3cb74508756415a0a4b497ee2"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-sand/320.png",
+          "bytes": 3226,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "c63aca10f5d95ec3ed9b1dc3725db5751244621505105d094f79f27d8d5c345c"
+        }
+      ]
+    },
+    {
+      "id": "weather-hot",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-hot.svg",
+      "origin": "original-vector",
+      "source_sha256": "4e28764c4a306f4f93ff4c8640e48aea9e11cc4b3153eb6db91df300e8fd966c",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-hot/96.png",
+          "bytes": 3539,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "aa23f6a63cd0d83d2541a9620212661b775896b399dace6cd3f15c77059a280f"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-hot/192.png",
+          "bytes": 7614,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "628f2fe1371346c3d5a2c002b0c855ed4b8d19e0c6201fc41ff0752b6485e1ea"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-hot/320.png",
+          "bytes": 13155,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "d4b91e0d8c7e3a323d140ddfa24a38015892b9b8973ac25cd341c0da466ad768"
+        }
+      ]
+    },
+    {
+      "id": "weather-cold",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-cold.svg",
+      "origin": "original-vector",
+      "source_sha256": "e6c7eab27999b7623054c3e6b692a3bd56d6e9320bca995b599a8b8034bbe2ed",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-cold/96.png",
+          "bytes": 2075,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "8331cbe85afdc9e4227e458df45cf10aca0d986b5cb5b6e23301b3b19e5d1ac2"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-cold/192.png",
+          "bytes": 4123,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "59f2a9524f8a762d6d2c31528a3e3bd135787fa2c0593a7e4c36c812f6eb9e6c"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-cold/320.png",
+          "bytes": 7063,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "05493d712689cb8e64a5ca77e7ca3daabdea3827c11b7f7b9aec8d6e35e139fb"
+        }
+      ]
+    },
+    {
+      "id": "weather-sunrise",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-sunrise.svg",
+      "origin": "original-vector",
+      "source_sha256": "26f59455cfd4803124ab749f4fe4478f31748c333e846e30d71ebda44c3a2c73",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-sunrise/96.png",
+          "bytes": 1708,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "e56fb60bfbb30fa44db30e098b4c6f8f006f68a5ef1e1b2e0f07f0b54660d1ad"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-sunrise/192.png",
+          "bytes": 2991,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "bdb63e9ff660cc43bf9ec954975ee469e6ec3ba27d4dc5f09a2cd89b3eab4ea3"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-sunrise/320.png",
+          "bytes": 4866,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "663e8dc2c5b8e8fe6e4f5b170892fa1bcc794659d3a8730a78fccf3841ed3aff"
+        }
+      ]
+    },
+    {
+      "id": "weather-sunset",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-sunset.svg",
+      "origin": "original-vector",
+      "source_sha256": "1244ce23382c31d14bf592ee579e8fef24fd229b252887a07e4a3968a632b5c6",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-sunset/96.png",
+          "bytes": 1696,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "92119eeaa5b129fcbce0ca614443f8d3348ac6e15b659cafc62e0749b708bd27"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-sunset/192.png",
+          "bytes": 2962,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "f6ad2895b937294c61ae035524b3aadd547e836e2a11ee7d25a3685cb3a8690d"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-sunset/320.png",
+          "bytes": 4867,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "65f84b06463ac6f2332f208b4a84bdb436985080dd9684c4da57c00bd7e056da"
+        }
+      ]
+    },
+    {
+      "id": "weather-unknown",
+      "group": "weather",
+      "source": "assets/graphics/source/vector/weather-unknown.svg",
+      "origin": "original-vector",
+      "source_sha256": "49baf6525f8edd2957c9d3b9778a510d98db84935399e77d8a8df101bfc6401b",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 96,
+          "height": 96,
+          "path": "weather-unknown/96.png",
+          "bytes": 2603,
+          "decoded_rgba_bytes": 36864,
+          "sha256": "dc66228274805c587f4834edc6f052e0be6be67fcef4020929498653044d1717"
+        },
+        {
+          "width": 192,
+          "height": 192,
+          "path": "weather-unknown/192.png",
+          "bytes": 5497,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "774347aea55cd3b037bb5ce8862f2526730ccee7e6922b592d9a215071e7b86c"
+        },
+        {
+          "width": 320,
+          "height": 320,
+          "path": "weather-unknown/320.png",
+          "bytes": 9417,
+          "decoded_rgba_bytes": 409600,
+          "sha256": "a2c4bf5a7c50448b1a14d12a87f478004b97e785fb88170987b052cc6b044c6e"
+        }
+      ]
+    },
+    {
+      "id": "control-back",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-back.svg",
+      "origin": "original-vector",
+      "source_sha256": "a59ad7568f4cfbc261e7a747d9cd3509e09182a7b66bac48b64e859646697fe2",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-back/32.png",
+          "bytes": 297,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "f1cacf4226c37dda77a26a197452399f4f2e7c5e718f94ac72cfdd334b82b46a"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-back/48.png",
+          "bytes": 422,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "46ab681b7942eeba4bd0de6314e27627b513cefe37151e5d14b4f50f5cab380f"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-back/64.png",
+          "bytes": 498,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "31568235af58071f76e010086b6c41ab8c324d8d5b368fc4068170169c1c069f"
+        }
+      ]
+    },
+    {
+      "id": "control-next",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-next.svg",
+      "origin": "original-vector",
+      "source_sha256": "d0b6a68d3057a940f8fd867d95759e63025e500f18b2189e3c1e1f1819adcfff",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-next/32.png",
+          "bytes": 299,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "b45227d79b45f705dc5d51f76dd345a8c6ad1d1c6a8216b46d0bb08a78df4769"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-next/48.png",
+          "bytes": 423,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "74d03d2284aa596855325be554df63901214dc980243c5d56fc56d42e95b0dff"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-next/64.png",
+          "bytes": 517,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "c435b66f0ee727095156afbc8c4ad13e39da86dab536f18c4c026be7c20b6a51"
+        }
+      ]
+    },
+    {
+      "id": "control-home",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-home.svg",
+      "origin": "original-vector",
+      "source_sha256": "870ac5ff705a99addcb41a9bcd6ca8307de9bf79dc90ad5eaf6ed434d84b087a",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-home/32.png",
+          "bytes": 542,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "18fb81caacdc4da16402ccb6d3e96caf4fbfd62f742cff8deba48665130e1feb"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-home/48.png",
+          "bytes": 672,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "d7deefe7bcdd310595bf6828351682e5f8ef02d0831dc8b4cf5614ad20baa898"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-home/64.png",
+          "bytes": 809,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "f34f91ea4cc06db085ea2c2c14f139166a71fbb28b83d7fc1896cb551a3400d6"
+        }
+      ]
+    },
+    {
+      "id": "control-play",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-play.svg",
+      "origin": "original-vector",
+      "source_sha256": "71051cb2476008b96259c0455924c9013ae582d2d3b63dcc88dcdc795f79725a",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-play/32.png",
+          "bytes": 328,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "16a5a8dc820b8312eb9a4ab82ee9adbf5aa1b0dd22921122494e4e558b466bf0"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-play/48.png",
+          "bytes": 440,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "9382c0c6e4fdc3b001b97096461579645aa7deba9b5be3ee06fa1f50b9c87184"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-play/64.png",
+          "bytes": 520,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "10189388e024fb9ccdd700098689da590fe8b0f717475df4b6ac2c4fbeda84d0"
+        }
+      ]
+    },
+    {
+      "id": "control-pause",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-pause.svg",
+      "origin": "original-vector",
+      "source_sha256": "0c67d1909cccd13158c60e858d7084c6e53a880a42b04af7dbf29363ae527080",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-pause/32.png",
+          "bytes": 189,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "a913e9e8e4d15a6a8567e77e404a7a940b23714e0eb3f364d1a5bab9d9ddd0ef"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-pause/48.png",
+          "bytes": 230,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "eb8f6463e7063125cf03fcc6322875826f92367e2ffc37139420067efa8a9830"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-pause/64.png",
+          "bytes": 260,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "f602d2d31e73a91828624a6ab5a2f8d51be6991705f3077a487f132e5b4b5c50"
+        }
+      ]
+    },
+    {
+      "id": "control-stop",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-stop.svg",
+      "origin": "original-vector",
+      "source_sha256": "b1c8097776d5831ad0eed4ca247497418d7316e40523ad95fc3a4d30db7a343c",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-stop/32.png",
+          "bytes": 190,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "4e32bd9d927e455e027ebcb98e5b941a93f898ecf2e72c38bcf67fc49b2cdd89"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-stop/48.png",
+          "bytes": 210,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "ccedff73275bcede0fa7278e07836247b99068d1198d93b187aa82eddeff5363"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-stop/64.png",
+          "bytes": 247,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "c460f957283ac5a8438091b2455144eb1d613682c4afe58d5ca68dc7bdd5d03c"
+        }
+      ]
+    },
+    {
+      "id": "control-refresh",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-refresh.svg",
+      "origin": "original-vector",
+      "source_sha256": "cc03fa11d7e621d5c476b96b02d6a37718760b8b2cc075d14aa853a5e6c0eafa",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-refresh/32.png",
+          "bytes": 656,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "530cfd63a92fc3d35f894d44e5e5a82ae7ebdb9fdaec9f6688584f4e57c9517b"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-refresh/48.png",
+          "bytes": 899,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "f4736a44db635745bc28706948206528d20915e03f3034f27528072abfa14470"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-refresh/64.png",
+          "bytes": 1185,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "34a1400e9ad283ec2a066984a9909234cb0dfe236ad788e70bfd7f5030be19f4"
+        }
+      ]
+    },
+    {
+      "id": "control-check",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-check.svg",
+      "origin": "original-vector",
+      "source_sha256": "f2680048354f39a3021b19d05ad44157af3afd41ccaa470d160141ffce327e6a",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-check/32.png",
+          "bytes": 407,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "cc12f407c780655ff58d92d6cce05c22ffc9fdd2ce1c34f9d66251eda1362cb8"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-check/48.png",
+          "bytes": 585,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "e1602551f622cbe9546784bca078a04c26ee71c07734a46e7d9fc0e7e108f2b0"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-check/64.png",
+          "bytes": 735,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "f5d36933b8f949e5dfa272dec3a16fe4528fa0a5e3d08c24951b5043ad5a8976"
+        }
+      ]
+    },
+    {
+      "id": "control-close",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-close.svg",
+      "origin": "original-vector",
+      "source_sha256": "d5fbaaed19f8109cd78aec28f40138e0f34438595deeef017c2bee6a1d1792ec",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-close/32.png",
+          "bytes": 233,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "2b913db62d07fb90d6a2b2ae930d9bd475ee6a54b167da55b8d7db024a8135a6"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-close/48.png",
+          "bytes": 319,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "858a7c7b1d686bb1a8d1474a6d6ade7c0c551e576b406b046f60170cc995e1ed"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-close/64.png",
+          "bytes": 396,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "659102b78584d67ab867c626cef6749a5cb57284827e77bb1a042efa9ef89926"
+        }
+      ]
+    },
+    {
+      "id": "control-plus",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-plus.svg",
+      "origin": "original-vector",
+      "source_sha256": "0341fc49a0a198016046498cc3bf15592749970020841fa5fc876ed3a680679c",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-plus/32.png",
+          "bytes": 200,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "23504af87d81fc5b3a4d134c59eec37dfae4dfe6f4d69495ec7753c2805a0ad7"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-plus/48.png",
+          "bytes": 241,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "fc39045bc7b1fed1a449ee41fbec7751994be53e0e10cd043eca76378fc89251"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-plus/64.png",
+          "bytes": 287,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "7f3f2073d94e77dd945a0239060b5c2b9e026b36bad2bc9698ea225e0e2974e9"
+        }
+      ]
+    },
+    {
+      "id": "control-minus",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-minus.svg",
+      "origin": "original-vector",
+      "source_sha256": "207d27678d29b4457e4c341327ee0bc8e1fc2be72f573cd5291e1afdc286eddb",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-minus/32.png",
+          "bytes": 152,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "d1c5439829328f5da867ce0202cc64590ad3ae77e22c1345a900e1ac9f5a1a80"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-minus/48.png",
+          "bytes": 166,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "40c6aad61674f141d222abf4994abc07fa0749694add471d029c5f817129994f"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-minus/64.png",
+          "bytes": 189,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "7aab4b1a871c5f3faabe08deed431f95b36f1abaa8710867074bb6f0ab93477e"
+        }
+      ]
+    },
+    {
+      "id": "control-edit",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-edit.svg",
+      "origin": "original-vector",
+      "source_sha256": "a3aca2a41d61147bb54803a65e9bdf4bcce42ee8e6df51e27270464458cbcb74",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-edit/32.png",
+          "bytes": 399,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "1fcb0c1d054f02b3083d3599029734edfa6a0b120155f818b40fac553d6e3a86"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-edit/48.png",
+          "bytes": 510,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "a0128c1cb5d268c4ccfade68998827b9574ef9f73c8616b3d689b9c5e4adb54f"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-edit/64.png",
+          "bytes": 615,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "7c6ea95dfbed9ec887f555090adedb3a474e17e7b8ccbd661077b5750130b21d"
+        }
+      ]
+    },
+    {
+      "id": "control-lock",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-lock.svg",
+      "origin": "original-vector",
+      "source_sha256": "847440eb8d9774167f00fd5d02818092f87568bc5cfaedba97fb8bbd89a1f1ff",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-lock/32.png",
+          "bytes": 398,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "059b2c87416a5b3b1738efc41b8ebcf4562a0ae90ba6b8d4ed5c6f9fe4843dc7"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-lock/48.png",
+          "bytes": 547,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "d13ff25772ab28d9ddfc3031fc5c6a1791407787b9ace2e46578792cd132ae71"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-lock/64.png",
+          "bytes": 620,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "99bdb96ffd2c21227abc24033abb70f077c939c5bf20df4d2fa153a2d120fa55"
+        }
+      ]
+    },
+    {
+      "id": "control-eye",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-eye.svg",
+      "origin": "original-vector",
+      "source_sha256": "ce2634a5f3c0e020fc803c5c9f5cefd875e2654760f1b2462cc418a7fb321106",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-eye/32.png",
+          "bytes": 635,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "aef3e552303c25a0d377a25c1f10925ba15f8318b81c53675e1697fe986e5c47"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-eye/48.png",
+          "bytes": 949,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "e8b626816106dc054e8312657c24b38e49688ee759920bf34d5ed8485ed68b56"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-eye/64.png",
+          "bytes": 1210,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "7e2ebf80c9b0519a5690bc851d2b4e00192599e68ecae359d18394fa89bedeae"
+        }
+      ]
+    },
+    {
+      "id": "control-eye-off",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-eye-off.svg",
+      "origin": "original-vector",
+      "source_sha256": "9397078c434b7e0c8d494869e70e983cf3dd96c6b3cacdc2925dab81b27b39fa",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-eye-off/32.png",
+          "bytes": 750,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "fea7a170f7f9dfb2518f940b17cbb9730c43f7f6aec8c1e895d5670894266621"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-eye-off/48.png",
+          "bytes": 1028,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "a2da5da3960d1aa98cb24ba7ed5e6f1f6f35a004e0f20f01252b4ff73ab3c05b"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-eye-off/64.png",
+          "bytes": 1321,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "e28d02435f27bf3dbefb548a07f1288bd921d4fe3d822e378548f4afed7a59ed"
+        }
+      ]
+    },
+    {
+      "id": "control-mic",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-mic.svg",
+      "origin": "original-vector",
+      "source_sha256": "be2deb66dbce366722f80aa266cd9cb98e6a873f957178726011ee2e88c36f77",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-mic/32.png",
+          "bytes": 631,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "af3c404bb6a75c60ab0cdeb73fcd0cc36a15e4ed80ee5cd65477de2ed998adc0"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-mic/48.png",
+          "bytes": 907,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "fa80de99093a70408a28044a938ee02228fe214f894e16743d8fbcf5697bfc86"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-mic/64.png",
+          "bytes": 1123,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "7eb8e6e02cfebf1496a8a3e25be7b868c546bbbb08935ca74bf12e06efe5b1ca"
+        }
+      ]
+    },
+    {
+      "id": "control-mic-off",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-mic-off.svg",
+      "origin": "original-vector",
+      "source_sha256": "81e360e571d8c8b6d1cd9e9352d83cfa936adfde067f9de00fd5b937aa9401bc",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-mic-off/32.png",
+          "bytes": 705,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "16e2cecba4445d6271c779a7dbac0baf161741350596a707b63e4940ddea2a47"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-mic-off/48.png",
+          "bytes": 975,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "c3a3406774da8b848e3b7f378813329b22bf3b3c539a3d6735cc9e90c726bb9d"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-mic-off/64.png",
+          "bytes": 1254,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "9541f951804fa3492102cbad36bbf0015e484320e57635ebc99bd48aabccbd3c"
+        }
+      ]
+    },
+    {
+      "id": "control-speaker",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-speaker.svg",
+      "origin": "original-vector",
+      "source_sha256": "97a8e104a00f7c8ab49dca9c0ff41bcf2b4e18ae1a0d3ef543cfdc5531173c9b",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-speaker/32.png",
+          "bytes": 552,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "a00d7f0c21320a310a2372bbc3dbcb85d036b3f08e9bc6a48475a22e7f62bcfd"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-speaker/48.png",
+          "bytes": 753,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "9a42fbc3eb92cf505bf2ef5a922e1eab7ee3e578f05d0f0daa04e97d3fd09cc4"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-speaker/64.png",
+          "bytes": 971,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "53d4453d65d20b54d047949e366ff2842bd2f5eeb51a2ced014527a5164b92ec"
+        }
+      ]
+    },
+    {
+      "id": "control-speaker-off",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-speaker-off.svg",
+      "origin": "original-vector",
+      "source_sha256": "e80ab9737098f24fd7ef90b8e998aa328c5eb72f8b473dc6ddbd1d04128a0628",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-speaker-off/32.png",
+          "bytes": 390,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "3f63cc3210ac0795126ad3cdb15bffd941fd2a2d204a3b2784e09eb3235b98da"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-speaker-off/48.png",
+          "bytes": 533,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "e0a3efd79c0a309be749e495a09e657d086d5e2d9d7bc4b026c80e1a89c7b9da"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-speaker-off/64.png",
+          "bytes": 628,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "08c1cfcb55e8fabdbe4d1ed17196ca3ae297ea9b4fbea76b1277d422e7a62eb5"
+        }
+      ]
+    },
+    {
+      "id": "control-download",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-download.svg",
+      "origin": "original-vector",
+      "source_sha256": "4fe69e15cf6dd019e39e094a6576aca1e4c2198561df648f9a274bc087c0965b",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-download/32.png",
+          "bytes": 388,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "88bcb437448a458a753bf287a63d5d97ff0059efe9e1c4fe5102e63c68b46066"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-download/48.png",
+          "bytes": 495,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "55e13abd561401d9001dcb36f346c0896f08785594924b5315b0c976f5d3fb21"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-download/64.png",
+          "bytes": 607,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "60690a544ad4766cdc45296d6b7083ff2d9a69c78d7da01fe5d5f6e4a7d18570"
+        }
+      ]
+    },
+    {
+      "id": "control-sd",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-sd.svg",
+      "origin": "original-vector",
+      "source_sha256": "3b78b151e0fc7603082b687a7a515b3564b452f5e01918d35f24db93d9e3b585",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-sd/32.png",
+          "bytes": 360,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "f657a384604ea9310874c9f41c51c0d28b709abd58425585d1c220287609fc9e"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-sd/48.png",
+          "bytes": 488,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "d3074414aa1b67799bf4c800e7a42cbc40228dac5aefd641eb21602f3a498a6c"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-sd/64.png",
+          "bytes": 552,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "1d18c24d30f291d4e9f151c6084bb8ec0ac50f5fbd72a0f05184eb15a86a2f7d"
+        }
+      ]
+    },
+    {
+      "id": "control-warning",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-warning.svg",
+      "origin": "original-vector",
+      "source_sha256": "4c58a17311bde92ca4de75488f64961eeb11e7a767fbe0b2f8f24a97756be85f",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-warning/32.png",
+          "bytes": 519,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "fc890bba0434d044ce9b249f1797f20103c37d60f6266433111e82410a2ac27a"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-warning/48.png",
+          "bytes": 674,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "65034a98617b48f862f0307b53be60c95e93896e3013b55e20f5ebf56eb635fa"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-warning/64.png",
+          "bytes": 844,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "f09fba2660f511c64fa2ba7bd4554f89725ceb52708a8e3137cd3835d0a4c70e"
+        }
+      ]
+    },
+    {
+      "id": "control-info",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-info.svg",
+      "origin": "original-vector",
+      "source_sha256": "4641f605faba6e800cd51fba1ed97bab80df1359dce493fefeca4cb0699f8840",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-info/32.png",
+          "bytes": 668,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "51c0e0c27e9c11057836e31dc41e3139307a4dea9c5df4c1dfe5aab2b6f027f4"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-info/48.png",
+          "bytes": 950,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "e0d286d31a562ffd63c4f3e46e6d1c764073164663bcfd0f44d809334ad732ad"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-info/64.png",
+          "bytes": 1268,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "f85daaf039b488764c98e7c0bc6ae8aa631ebf68025777430975a115f4f0028d"
+        }
+      ]
+    },
+    {
+      "id": "control-search",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-search.svg",
+      "origin": "original-vector",
+      "source_sha256": "d3464d2006a24bb88ef8e3e99479d07088d64f161264ba439418af60afb8efe8",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-search/32.png",
+          "bytes": 531,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "1d900694eaef9f4302efc3159471c244730464d699c633d11dc4ebd90efba9cc"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-search/48.png",
+          "bytes": 665,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "61d6cab2fef510eab97f7ef42c621d112967d981048b0b5f9a92b801635f836b"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-search/64.png",
+          "bytes": 872,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "36c72c3a639ee86cd76c98c188f03a1e1140dfd819c7dda4a2bd6b2eed1eb4f2"
+        }
+      ]
+    },
+    {
+      "id": "control-clock",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-clock.svg",
+      "origin": "original-vector",
+      "source_sha256": "2aef6c0510254f3a0e1a02a4cd9fc34bd85820b9175d9183528861dbe7f50dab",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-clock/32.png",
+          "bytes": 749,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "7bbad1b67ee3dfb48b2d01d2e4ef617e9557f537ac2d1b19d12b57330a5f174a"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-clock/48.png",
+          "bytes": 1058,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "a65b1ca70782918de83744b2910ab2081acc987991a32ea313416646ab7b1fb9"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-clock/64.png",
+          "bytes": 1457,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "a954a86b6391a2a7b8f7b78746c555a344337dbe4f415e2123fd87dab66a2ed6"
+        }
+      ]
+    },
+    {
+      "id": "control-calendar",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-calendar.svg",
+      "origin": "original-vector",
+      "source_sha256": "2b708262cbd7e9aa4b2ff9618f15d330534750c3dee3e1aebfe0b21bb2eb4b14",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-calendar/32.png",
+          "bytes": 423,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "e96057ab68891407be216ce6362da1052b409c7a57c70406becf6c52572f3650"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-calendar/48.png",
+          "bytes": 679,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "38acaf4ba4b543ea6598d99fd03f8ec34202849f7ae430329f1821b4653ea83e"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-calendar/64.png",
+          "bytes": 615,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "d5618ebc46f4b9a4e678fea8fcbffe6b97633876ac35f95f9434f3af893bf13c"
+        }
+      ]
+    },
+    {
+      "id": "control-save",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-save.svg",
+      "origin": "original-vector",
+      "source_sha256": "e9b77b34c0771e753551b0611338d8a39d4e3ddc8591d9b6d671eef46281f43c",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-save/32.png",
+          "bytes": 434,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "da3087c15365048d599ab022f8a324b54a0745cb6cfda5ad62f077aaac6a5893"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-save/48.png",
+          "bytes": 535,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "24808bde7f3b8459e3730145e4380b972c690ff3ffba0702c733165d9cc95cf3"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-save/64.png",
+          "bytes": 645,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "275727df8daf3974b32c54ebc1d2015e72221966ca1b60abb9525994e88a1abc"
+        }
+      ]
+    },
+    {
+      "id": "control-trash",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-trash.svg",
+      "origin": "original-vector",
+      "source_sha256": "d4fd969dc530e100649d6e4bfe5e8812d4b2b206ef50b15c67eea8f1f10593d0",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-trash/32.png",
+          "bytes": 595,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "511265a697abad6d62a0a5aa63e5ebaf457a8e1754213a6dbbaea2637011a125"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-trash/48.png",
+          "bytes": 863,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "e9e6f0ce3ce70d4dd8b2523f77a820f596f40e14f8454f7fc7c7c314772b7399"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-trash/64.png",
+          "bytes": 1099,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "e888f405d488247eaab7fbef53fb2efa7c7b082287c8ef5b722c62c163dbac05"
+        }
+      ]
+    },
+    {
+      "id": "control-chevron-up",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-chevron-up.svg",
+      "origin": "original-vector",
+      "source_sha256": "be2097055b2cccce02f483116a60e3fe53c841e445e2c2478a8f5f4d25b952ca",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-chevron-up/32.png",
+          "bytes": 236,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "2c47db32163cffe45c8537bb30daa0faa13046a015907ebfae65d110ed83ab07"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-chevron-up/48.png",
+          "bytes": 293,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "c1629ba95f29796cd8bf60f6758d706c81e1e6f3fe4bc70c876fc99b4f71fe9d"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-chevron-up/64.png",
+          "bytes": 398,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "c56e2a96d4120027b4e25d9e263c7e0ed02efaaf1bfff9b17e3eb0c384711659"
+        }
+      ]
+    },
+    {
+      "id": "control-chevron-down",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-chevron-down.svg",
+      "origin": "original-vector",
+      "source_sha256": "63a132be3ff57adb369e61826e8e1b7be88816077b90907b77dc517938f51eda",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-chevron-down/32.png",
+          "bytes": 246,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "0d8518cf224a317f421f21cc737ef50651c543c159c4703d8df8188d1698e24e"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-chevron-down/48.png",
+          "bytes": 305,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "cb6886f536c0b931e93c3f19ddd85d0cc6749a2ac4f6373923d08a8c397538f4"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-chevron-down/64.png",
+          "bytes": 420,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "3c2b0bfdadc7c31e66688aaa86a95bc3e6823f74dbdc84ab325ec90eb3323d65"
+        }
+      ]
+    },
+    {
+      "id": "control-star",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-star.svg",
+      "origin": "original-vector",
+      "source_sha256": "77d26f3c099b40d7c0747195dc6c87253df1a37edb05369d6d72aa8b68767cfc",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-star/32.png",
+          "bytes": 601,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "7e5810db2e48eada01859efc2621939b4c15b834d39a317b08e3261a7ee83a12"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-star/48.png",
+          "bytes": 850,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "1f1bcddad0dbc7fe119a7481a81457c2006bba5d76dc7b0adea89f5b30791fbb"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-star/64.png",
+          "bytes": 1032,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "182d34dc356adfa872d62f81836b0c05084804ceacf72ef002df07c8dd4df3d7"
+        }
+      ]
+    },
+    {
+      "id": "control-book",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-book.svg",
+      "origin": "original-vector",
+      "source_sha256": "152c301b933d0da23dc82720b72af34e9a946a2e9affe60cde7ac5c4cac28e19",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-book/32.png",
+          "bytes": 565,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "f1c20f5151eab14516d5f12ffd23d29957ac391bf7e48f24f016f87bff677ccf"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-book/48.png",
+          "bytes": 752,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "74179c2ab0eba4f115dfc06926bef4eebf133e242694384d976c23e96575a124"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-book/64.png",
+          "bytes": 967,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "2b10c4ed403ad2d3bfc76e5ca452712b731b869a2d88a1ff9a18d39482143fd5"
+        }
+      ]
+    },
+    {
+      "id": "control-calculator",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-calculator.svg",
+      "origin": "original-vector",
+      "source_sha256": "6b2f9635106f28eb0f45235e3fdfae650ae0f594327fb66f76b994f4192c6c8b",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-calculator/32.png",
+          "bytes": 427,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "798e9421e237c43d31c1ebdc47d23fb2f890c68b6db1c766b21854526bf40af9"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-calculator/48.png",
+          "bytes": 556,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "39699e3f4e2ef48a5d223ecb047279530beeb4f19a384ab296d30fdb389c9946"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-calculator/64.png",
+          "bytes": 683,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "a18fd518990de3251a05f749245af78522e821ef303c60f5fb7a2897cc5be0be"
+        }
+      ]
+    },
+    {
+      "id": "control-science",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-science.svg",
+      "origin": "original-vector",
+      "source_sha256": "816b49e4607b856831d4b70abb7054fa6937041f7377ac8f13766bd23f03be30",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-science/32.png",
+          "bytes": 607,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "21334dfb69d7f10a7ef173e59c0600d0ec5c2cf7f88dc8a7d729138f84de34a5"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-science/48.png",
+          "bytes": 827,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "35ce57aab9b4b991791b15dae0803f2f369e11c7e290bd850cc2abbe258dcdcd"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-science/64.png",
+          "bytes": 1059,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "9fa7bf364da84c98005b614b9fab6b09ee53bf77abbaaee679d61bd2cef94727"
+        }
+      ]
+    },
+    {
+      "id": "control-art",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-art.svg",
+      "origin": "original-vector",
+      "source_sha256": "350cbccf4f8a63a48ec7cb14061d9596c46a2eec48eccfbec4f1895b1905fc7a",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-art/32.png",
+          "bytes": 805,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "db80f62de3bb7b095f70975d77580a71d7b8b31e4215ca01403556f3f115472e"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-art/48.png",
+          "bytes": 1170,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "2961cb57a9a3ce3ca61b899a0e86106e5b5d82722fd1f021ced4b8c6ee3b89fe"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-art/64.png",
+          "bytes": 1519,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "287f933bd0902fe1f9a1e7e41ebad9a01e09e2be0e42cbb591cd70d2f81f394a"
+        }
+      ]
+    },
+    {
+      "id": "control-sport",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-sport.svg",
+      "origin": "original-vector",
+      "source_sha256": "eb067db0b4b143c033a2ce5d931fcb7b2aa21fe411ac562b7dd23da278fb6697",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-sport/32.png",
+          "bytes": 631,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "1128ed12b5cddfdfb304200e85f87ea177dc2cf70c59709287b5e253045dc992"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-sport/48.png",
+          "bytes": 900,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "d0e54f64a48d7da288e8dc26b10d57ffba5f68f3ad9a7056c858e3e8a29f9be5"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-sport/64.png",
+          "bytes": 1129,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "eaaa88982c8fd075fce5f5984ede92f143026265a3b49660d1d5918e21b0267b"
+        }
+      ]
+    },
+    {
+      "id": "control-backpack",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-backpack.svg",
+      "origin": "original-vector",
+      "source_sha256": "276647253e3668d98813baae910e27cf4fae11750aff33061c526dde58142746",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-backpack/32.png",
+          "bytes": 492,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "6950b3d9914854655c40be23275e8e9d4ccc55604524a81618064edf4c6cd614"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-backpack/48.png",
+          "bytes": 624,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "e08ba9bd393f100b777212b87f13a11362c0cee891c1dfed5ca86ea2365032cf"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-backpack/64.png",
+          "bytes": 796,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "2993f5d041604170c838b4f44e58dafbb8c06b121f32437681656efbebc3f574"
+        }
+      ]
+    },
+    {
+      "id": "control-umbrella",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-umbrella.svg",
+      "origin": "original-vector",
+      "source_sha256": "4d86518f34bf05fd57c9d9ce3711ffd67733f3fb3b2db3d270826e27b36e9058",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-umbrella/32.png",
+          "bytes": 710,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "f35ad6c97686c218f5dcdcaefe3bfafc909e381d06ae00de6ff4d98edda949b9"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-umbrella/48.png",
+          "bytes": 1007,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "c764da57406c858a7533fd7749c7b9f319a08e5880efad74b4e96dc22ebfe914"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-umbrella/64.png",
+          "bytes": 1302,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "e8fdfca807811c3e12a22e1059d6c0556a6f4d58bfa73830508d0b9146afa1be"
+        }
+      ]
+    },
+    {
+      "id": "control-bottle",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-bottle.svg",
+      "origin": "original-vector",
+      "source_sha256": "fa61001feb8b03e129df271034ca555e9b2e9a4ef64b24adb604639d48530d1e",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-bottle/32.png",
+          "bytes": 370,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "51edc2a357abd9f16203ba43cfd9d98ae74594c11dceb330a866b55660d6bde2"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-bottle/48.png",
+          "bytes": 433,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "34e65daea8cf3fd40b37bf07af390ea1142bfa09c3e91441132fdb11ba7627f4"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-bottle/64.png",
+          "bytes": 547,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "d8451a70f4c4d787994e802b3f0b8c8f65fc15d650d5e4c06a3f78e24374bc4d"
+        }
+      ]
+    },
+    {
+      "id": "control-wifi-0",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-wifi-0.svg",
+      "origin": "original-vector",
+      "source_sha256": "5f3cc81961e2059404ca0fcbe1e099c437e125e3fc14bad2a83f4ab5ee458c03",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-wifi-0/32.png",
+          "bytes": 161,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "558845aefba922d9e25d08c3311c032098657ace8b4364cd97aa148d0f088501"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-wifi-0/48.png",
+          "bytes": 153,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "57d07c1fa0d1ef8fc44b141dd9f388f1e20396148c66e3283ef73a44c591292b"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-wifi-0/64.png",
+          "bytes": 213,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "68f29cdeb5db7f9dcc578378882cf52284d8c7f9eda6885c2a21d27b5bf72d82"
+        }
+      ]
+    },
+    {
+      "id": "control-wifi-1",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-wifi-1.svg",
+      "origin": "original-vector",
+      "source_sha256": "8ace2a646de166076bd0385ea74819ab52746b989a5d2a17168285950d056616",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-wifi-1/32.png",
+          "bytes": 248,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "d1b83e798b6b0e70fee9fba9b6a419b4566fa9fadfa3b36e9de6e68703510f96"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-wifi-1/48.png",
+          "bytes": 276,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "588dec5418be5cb99957cedd61c7e8a18d81d320971489ccd3c43196916e844a"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-wifi-1/64.png",
+          "bytes": 428,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "b9a8e5bb98580d54815d1c853bc33811cb058a338b025b72cb4249dda1c8e7b2"
+        }
+      ]
+    },
+    {
+      "id": "control-wifi-2",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-wifi-2.svg",
+      "origin": "original-vector",
+      "source_sha256": "85b29c8b4cec9c47a6e0e2a50eb75b7cbb8cc1330a9b43b37511d39fa02c25c1",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-wifi-2/32.png",
+          "bytes": 437,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "da564c24b329bcd9d704ed51b99ae04ae47f6752f8a1fc2c828efdec80397d3c"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-wifi-2/48.png",
+          "bytes": 493,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "6a0d7786b7117451afe0b5336e0c282a078f05707463a4481c419f22c6eff88a"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-wifi-2/64.png",
+          "bytes": 790,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "afbc98e71a3e25a0de10bee765f221416ac99943a40a01fc077639bf9ad69566"
+        }
+      ]
+    },
+    {
+      "id": "control-wifi-3",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-wifi-3.svg",
+      "origin": "original-vector",
+      "source_sha256": "e7017b921da6034019eee79abfcb4661fecf62195490b357c99160facfc89534",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-wifi-3/32.png",
+          "bytes": 700,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "ed68186c27e9cae9be74466cfa334cfc94421316cced6c1ed7a218fa078983e2"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-wifi-3/48.png",
+          "bytes": 854,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "3ce9b04febd194c55cc48046dfc0d16cdd9d4591f49a94ab07d6ee71ed28fd8f"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-wifi-3/64.png",
+          "bytes": 1248,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "57bf48d21f9107e99098c3835bffce14e35c0b6e9004cf8cecfd8dabd7afc214"
+        }
+      ]
+    },
+    {
+      "id": "control-wifi-off",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-wifi-off.svg",
+      "origin": "original-vector",
+      "source_sha256": "8e8bb1a8ef972b3334926ea9490a42ed8093b0d9dd6f9d2f7a03040d4d451fc4",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-wifi-off/32.png",
+          "bytes": 1026,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "cb08a4c4e04d2372367a73dc50be4f581d59c7846781a55d87bf83d218da7d56"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-wifi-off/48.png",
+          "bytes": 1348,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "9a0967d5efafdb0a5bbfcbad09ff5065b724a393e937314035b55890bec3c93a"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-wifi-off/64.png",
+          "bytes": 1896,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "ac16d6817d8e17074b713c80cf60107051b9ce0cf62788f124c9128671b97a65"
+        }
+      ]
+    },
+    {
+      "id": "control-battery-empty",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-battery-empty.svg",
+      "origin": "original-vector",
+      "source_sha256": "40bb3088e3b1fc8a2d86e669b44467b65a6a7daff062710e1fa9cf9ab06d2536",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-battery-empty/32.png",
+          "bytes": 361,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "c71c159bb813a716b9b8c58cb36a82f25d1cfc8331dc3a3d1dce06ef55452a05"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-battery-empty/48.png",
+          "bytes": 446,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "888619f4f1eb243f3dee0908208a6c632bae6ded7c6fba4c56e28055e024e389"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-battery-empty/64.png",
+          "bytes": 635,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "2c49025ef3715612b2a2441c0442360df11bf5d677c5b27254dc92443dbc04a3"
+        }
+      ]
+    },
+    {
+      "id": "control-battery-low",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-battery-low.svg",
+      "origin": "original-vector",
+      "source_sha256": "6e12aee94e4a6e6be3f98dfdf6fc3ac00720f1da0da0e59722b6bae603d1a1b6",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-battery-low/32.png",
+          "bytes": 414,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "5892175b01f736c9dd37ee1da0e62aea6d70b990de4dcd3941c520b1df0ee6f6"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-battery-low/48.png",
+          "bytes": 497,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "6a54ab72283155a13c980841a307b96c8679de653d0a823b7c400c26db7cec12"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-battery-low/64.png",
+          "bytes": 725,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "d0e57c587c420778faf737f8e5e56a82d8f677fffb465881cfa18e4b0bec3fb9"
+        }
+      ]
+    },
+    {
+      "id": "control-battery-half",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-battery-half.svg",
+      "origin": "original-vector",
+      "source_sha256": "6dc6395d2ba617298f29740737bb3f0351fce8ca022341515980bec29ef1ff75",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-battery-half/32.png",
+          "bytes": 414,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "52b5632f02fdf74dde7996bd80de68907e7caf77c753f176bd04c609f00dd57c"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-battery-half/48.png",
+          "bytes": 501,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "71b50d15f339a8ec840dd36a4262e57eb6eaab73bbbdc93080fdfeb4195c5c1e"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-battery-half/64.png",
+          "bytes": 732,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "03c869bfb3e83071f5b9c7c17f5f410b12afbc1f7bf120579f3d0066745a23f9"
+        }
+      ]
+    },
+    {
+      "id": "control-battery-full",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-battery-full.svg",
+      "origin": "original-vector",
+      "source_sha256": "da17ad30e86b3ee6721a2d22c9f83c9c209859398702093010c0d0495bc4346f",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-battery-full/32.png",
+          "bytes": 414,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "a3f1591131e1b5578577e0e373626dc9236b5f1ea11ffd7906a794476192e170"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-battery-full/48.png",
+          "bytes": 500,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "79e42a7cd5455ba17e4df32e5872bc26a0a06163dc60310be3e6748d6bdfa25b"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-battery-full/64.png",
+          "bytes": 734,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "d6f38be392663ea91e7b24b448d438bf1e97885bac00ab239befe32945870da7"
+        }
+      ]
+    },
+    {
+      "id": "control-battery-charging",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-battery-charging.svg",
+      "origin": "original-vector",
+      "source_sha256": "b56a14d5d2cd1980841da164d0fb99f4eab03231dff35e6275629a0d06d536a8",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-battery-charging/32.png",
+          "bytes": 855,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "18a228b0a33be0509d79107801936fd682cc7158ade107a2ff0ca4066a35167a"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-battery-charging/48.png",
+          "bytes": 1202,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "77bb2a90c4357d5f374178e3d6487fa613c0d0988d157469c1634fcd567c6776"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-battery-charging/64.png",
+          "bytes": 1631,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "5b7f87715b69fadb854584de7bb75ac2823fdd1eb08d678238afd2d993a53c7e"
+        }
+      ]
+    },
+    {
+      "id": "control-battery-unknown",
+      "group": "control",
+      "source": "assets/graphics/source/vector/control-battery-unknown.svg",
+      "origin": "original-vector",
+      "source_sha256": "ad7453153c26d802c52f31ab9c7dbbfe0cdfd8bd577acc5175ab9c64a9ebc768",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "control-battery-unknown/32.png",
+          "bytes": 582,
+          "decoded_rgba_bytes": 4096,
+          "sha256": "e319b76e6f6ac197453b61b04fff7f2410066947c3f14b2f8b541fd6979e8ab4"
+        },
+        {
+          "width": 48,
+          "height": 48,
+          "path": "control-battery-unknown/48.png",
+          "bytes": 772,
+          "decoded_rgba_bytes": 9216,
+          "sha256": "5d953f14d5294b364eb06e4451162b4bf8fa35ec7effb17b1df63baa57702d5a"
+        },
+        {
+          "width": 64,
+          "height": 64,
+          "path": "control-battery-unknown/64.png",
+          "bytes": 1080,
+          "decoded_rgba_bytes": 16384,
+          "sha256": "10b0b8bb02efa7cfdc5bc8292397ed29563bed61608e088109f0b1fbf6e25c3e"
+        }
+      ]
+    },
+    {
+      "id": "decor-leaves-left",
+      "group": "decor",
+      "source": "assets/graphics/source/vector/decor-leaves-left.svg",
+      "origin": "original-vector",
+      "source_sha256": "a5eb561bfa0877f46524f95e45070dd8c4827beff6ca2e82e71eeb70df2583b8",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 320,
+          "height": 220,
+          "path": "decor-leaves-left/320.png",
+          "bytes": 13396,
+          "decoded_rgba_bytes": 281600,
+          "sha256": "1ecd693b12306a09e7018c569b31d2f52e240fa0536f490085a3a4cc91f490cd"
+        }
+      ]
+    },
+    {
+      "id": "decor-leaves-right",
+      "group": "decor",
+      "source": "assets/graphics/source/vector/decor-leaves-right.svg",
+      "origin": "original-vector",
+      "source_sha256": "909423a78e17029da7a87b07496775b3b30cd58053a44ad8aceab3985660f86d",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 320,
+          "height": 220,
+          "path": "decor-leaves-right/320.png",
+          "bytes": 13743,
+          "decoded_rgba_bytes": 281600,
+          "sha256": "ec72e5988b78803f8274a5020654f44e7e4d77461464ac77092c86df4103afd2"
+        }
+      ]
+    },
+    {
+      "id": "background-cream",
+      "group": "background",
+      "source": "assets/graphics/source/vector/background-cream.svg",
+      "origin": "original-vector",
+      "source_sha256": "0738004c5886551129604e1737e8b5600201b77babe513f3ced4660aab87baa9",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": true,
+      "variants": [
+        {
+          "width": 1280,
+          "height": 720,
+          "path": "background-cream/1280.png",
+          "bytes": 6952,
+          "decoded_rgba_bytes": 3686400,
+          "sha256": "49e4e07486dbbcde36c9f32b74552bca2d6549bfabaab865ef3fce49c1a95a1f"
+        }
+      ]
+    },
+    {
+      "id": "panel-mint",
+      "group": "panel",
+      "source": "assets/graphics/source/vector/panel-mint.svg",
+      "origin": "original-vector",
+      "source_sha256": "2b8c587b2525bccea7ee29a44ab3b3a8e848954bd207b2c464737b4fcae465d2",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 396,
+          "height": 232,
+          "path": "panel-mint/396.png",
+          "bytes": 6406,
+          "decoded_rgba_bytes": 367488,
+          "sha256": "768ccc2a5ee0e9c914ddf63ec7b8e00e1eed0d710b0b8e06325ea003e8765703"
+        }
+      ]
+    },
+    {
+      "id": "panel-lavender",
+      "group": "panel",
+      "source": "assets/graphics/source/vector/panel-lavender.svg",
+      "origin": "original-vector",
+      "source_sha256": "351347e1fa8245b875a720727dbd36b19b460aa4dd5775b6bfb0c58b5dd854c6",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 396,
+          "height": 232,
+          "path": "panel-lavender/396.png",
+          "bytes": 5945,
+          "decoded_rgba_bytes": 367488,
+          "sha256": "30397cb4d1414f4996d0283486b5ba58c50ad23b0c8a95ee44d74bcfb7557e08"
+        }
+      ]
+    },
+    {
+      "id": "panel-sky",
+      "group": "panel",
+      "source": "assets/graphics/source/vector/panel-sky.svg",
+      "origin": "original-vector",
+      "source_sha256": "a98bdb0e8ba9f3ca575d22352ed139dc517fac4f277308ec97e9bb378c021c70",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 396,
+          "height": 232,
+          "path": "panel-sky/396.png",
+          "bytes": 5903,
+          "decoded_rgba_bytes": 367488,
+          "sha256": "6aecdcdf65abd7fcf00c20394d5b777348a303dd4fc7f312db618e7757dc9c91"
+        }
+      ]
+    },
+    {
+      "id": "panel-peach",
+      "group": "panel",
+      "source": "assets/graphics/source/vector/panel-peach.svg",
+      "origin": "original-vector",
+      "source_sha256": "29d6b6faa516a83e018aa348fabd588baa4900266d134fe275a5e599dd643891",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 396,
+          "height": 232,
+          "path": "panel-peach/396.png",
+          "bytes": 5404,
+          "decoded_rgba_bytes": 367488,
+          "sha256": "c823afd51887a24f70729c4968351d8ad0f2dfde9dceb816e5857b3335abfdab"
+        }
+      ]
+    },
+    {
+      "id": "panel-rose",
+      "group": "panel",
+      "source": "assets/graphics/source/vector/panel-rose.svg",
+      "origin": "original-vector",
+      "source_sha256": "3b81a3670acabe594e682df6808afcf89ebea9463f9d9fc19323a78985502206",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 396,
+          "height": 232,
+          "path": "panel-rose/396.png",
+          "bytes": 5515,
+          "decoded_rgba_bytes": 367488,
+          "sha256": "07125a7b1321580a8446e6e101d77359768710f70297ddbcb94c26b7eb9bd053"
+        }
+      ]
+    },
+    {
+      "id": "panel-sunrise",
+      "group": "panel",
+      "source": "assets/graphics/source/vector/panel-sunrise.svg",
+      "origin": "original-vector",
+      "source_sha256": "ec4a96c9fbf112592f1ce35701d60c8fceba30bf425d43b548ac885d2583a2ce",
+      "source_hash_encoding": "UTF-8 with LF line endings",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 396,
+          "height": 232,
+          "path": "panel-sunrise/396.png",
+          "bytes": 5608,
+          "decoded_rgba_bytes": 367488,
+          "sha256": "cd9c509e395945a9e6137aefbefd2849b1c0e80760b81a340b3ba473c6d36a7d"
+        }
+      ]
+    },
+    {
+      "id": "home-book",
+      "group": "home",
+      "source": "assets/graphics/source/raster/home-book.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "b2fa428e2e21cfffcc9061fc8bf0f7ae92e2e330bf6e349d018cda6bea41efeb",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 192,
+          "height": 128,
+          "path": "home-book/192.png",
+          "bytes": 20659,
+          "decoded_rgba_bytes": 98304,
+          "sha256": "1dfe7d2d3501b8bcc696ebc39a9a58801b1938dfa6866685efffd6ca7ddf68d9"
+        },
+        {
+          "width": 256,
+          "height": 171,
+          "path": "home-book/256.png",
+          "bytes": 33158,
+          "decoded_rgba_bytes": 175104,
+          "sha256": "2432fca8571a97c653e3c2a3c8b1db0e120bbb97571dd377199a066f4537a59d"
+        },
+        {
+          "width": 384,
+          "height": 256,
+          "path": "home-book/384.png",
+          "bytes": 66874,
+          "decoded_rgba_bytes": 393216,
+          "sha256": "de7d0045bc71febb65d69673d0d305459eb1d045d531f9b793eefdb5280016fe"
+        }
+      ]
+    },
+    {
+      "id": "home-headphones",
+      "group": "home",
+      "source": "assets/graphics/source/raster/home-headphones.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "8be303352719a3a01afba862a461aafd4fdd07cc8ffbb650fde58b2aa805cfae",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 192,
+          "height": 128,
+          "path": "home-headphones/192.png",
+          "bytes": 22248,
+          "decoded_rgba_bytes": 98304,
+          "sha256": "a7110f2ee5c172c221b0fd3ccdb6c293b9ac215a9efcc0270467d61604bdb5da"
+        },
+        {
+          "width": 256,
+          "height": 171,
+          "path": "home-headphones/256.png",
+          "bytes": 36346,
+          "decoded_rgba_bytes": 175104,
+          "sha256": "05a94824a1eb033f559edfcddca7fa4496665e7731c4e51b8e3dff2b8223fc4f"
+        },
+        {
+          "width": 384,
+          "height": 256,
+          "path": "home-headphones/384.png",
+          "bytes": 74239,
+          "decoded_rgba_bytes": 393216,
+          "sha256": "5f31d8cde984cfbbdb55e9d244953691ca1bdad1a5343762b71ccd6464d12942"
+        }
+      ]
+    },
+    {
+      "id": "home-calendar",
+      "group": "home",
+      "source": "assets/graphics/source/raster/home-calendar.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "8728b4cc6593111a46d89a8ee4719bef1ae72da42c4fc18038a2c49bf3907944",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 192,
+          "height": 128,
+          "path": "home-calendar/192.png",
+          "bytes": 24204,
+          "decoded_rgba_bytes": 98304,
+          "sha256": "4800219c4783fd86a67f4f3c6d5a8dfaa79ccb9122de258e2d3338c10b715184"
+        },
+        {
+          "width": 256,
+          "height": 171,
+          "path": "home-calendar/256.png",
+          "bytes": 38889,
+          "decoded_rgba_bytes": 175104,
+          "sha256": "37590015029832041dbe32b8fb0b471473b181929fdeec61dd026998be73cdc9"
+        },
+        {
+          "width": 384,
+          "height": 256,
+          "path": "home-calendar/384.png",
+          "bytes": 75327,
+          "decoded_rgba_bytes": 393216,
+          "sha256": "e7f3f05ea483934447ae72a82f8c4aa2373dc773c4f1ca1872bcb62c94564c67"
+        }
+      ]
+    },
+    {
+      "id": "home-timer",
+      "group": "home",
+      "source": "assets/graphics/source/raster/home-timer.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "215fd47595ef72f21a48f93c77ad9af07f6195c0934dfecfe3e807d51b07e8aa",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 192,
+          "height": 192,
+          "path": "home-timer/192.png",
+          "bytes": 38752,
+          "decoded_rgba_bytes": 147456,
+          "sha256": "f073ae3b2712e345098f3148026755d1088c924058f5c7ffb83e2f4a31571944"
+        },
+        {
+          "width": 256,
+          "height": 256,
+          "path": "home-timer/256.png",
+          "bytes": 63782,
+          "decoded_rgba_bytes": 262144,
+          "sha256": "97655a0de2010946aa99c2eafc5f381388b568a669a5cfcab2542b833ae5920c"
+        },
+        {
+          "width": 384,
+          "height": 384,
+          "path": "home-timer/384.png",
+          "bytes": 127159,
+          "decoded_rgba_bytes": 589824,
+          "sha256": "d8a54045d58847cdab4642ae67e617f0f5f69ac2dfbe865d51289c525a13cf49"
+        }
+      ]
+    },
+    {
+      "id": "home-alarm",
+      "group": "home",
+      "source": "assets/graphics/source/raster/home-alarm.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "d61c16789fedb8f4dcda0d54fc125c9983bf1fde7e8bab03791028527f670089",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 192,
+          "height": 172,
+          "path": "home-alarm/192.png",
+          "bytes": 33460,
+          "decoded_rgba_bytes": 132096,
+          "sha256": "2d40ff421c1e707764faa657eb86c1e7e2fa9db028f9fe29097eb6cb61623558"
+        },
+        {
+          "width": 256,
+          "height": 229,
+          "path": "home-alarm/256.png",
+          "bytes": 54123,
+          "decoded_rgba_bytes": 234496,
+          "sha256": "7e626491b75b1041004bfdfa268dc8e492d5967d67f7c78a3d83e2cbc761ad6f"
+        },
+        {
+          "width": 384,
+          "height": 344,
+          "path": "home-alarm/384.png",
+          "bytes": 108644,
+          "decoded_rgba_bytes": 528384,
+          "sha256": "05c601fe873106d9ca33c172a02e60640e119fb9444bef3f39387dfae3401912"
+        }
+      ]
+    },
+    {
+      "id": "home-weather",
+      "group": "home",
+      "source": "assets/graphics/source/raster/home-weather.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "be3f0f546b432999347346c6ad11ea2c68ffb23c9abb3e4528842881cba7cbed",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 192,
+          "height": 160,
+          "path": "home-weather/192.png",
+          "bytes": 26045,
+          "decoded_rgba_bytes": 122880,
+          "sha256": "a6ef1bf745ca5d520878bdeb682687e76e5912d07eac6f3976d8f0e3d1cdc538"
+        },
+        {
+          "width": 256,
+          "height": 213,
+          "path": "home-weather/256.png",
+          "bytes": 40949,
+          "decoded_rgba_bytes": 218112,
+          "sha256": "51714fb1f515e08018a7349a060305c16f97fe8bde88989aa063e228e8c3c4a5"
+        },
+        {
+          "width": 384,
+          "height": 320,
+          "path": "home-weather/384.png",
+          "bytes": 82937,
+          "decoded_rgba_bytes": 491520,
+          "sha256": "9d6c75af5d160a2cea51c233e22b1cbee36fe1bbde95bae1c922a197114967f8"
+        }
+      ]
+    },
+    {
+      "id": "decor-study-child",
+      "group": "illustration",
+      "source": "assets/graphics/source/raster/decor-study-child.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "0ce304efc155d60fd4f022c3de39d428b6a23c8e016100730a8d22c78fc23533",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 320,
+          "height": 292,
+          "path": "decor-study-child/320.png",
+          "bytes": 106342,
+          "decoded_rgba_bytes": 373760,
+          "sha256": "42bfddd17a7d0b2255308d3e7fa31218da7c6d52cf50f9721160e63b4cfccf81"
+        },
+        {
+          "width": 480,
+          "height": 439,
+          "path": "decor-study-child/480.png",
+          "bytes": 215301,
+          "decoded_rgba_bytes": 842880,
+          "sha256": "821caf8b96c2c137ca8c1c2734c0e9f7a27b33c4507f68a0d0034e49c847de40"
+        },
+        {
+          "width": 640,
+          "height": 585,
+          "path": "decor-study-child/640.png",
+          "bytes": 365743,
+          "decoded_rgba_bytes": 1497600,
+          "sha256": "aacc266fdd1fe120d626baf01f3e79f2172ac3b8e2e6c8657a7bd494113715b8"
+        }
+      ]
+    },
+    {
+      "id": "decor-books-sprout",
+      "group": "illustration",
+      "source": "assets/graphics/source/raster/decor-books-sprout.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "e0459d37cc3e667e67c62bd768c18e6e0a8657263517eb7540f7ac29fdadbe35",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 320,
+          "height": 267,
+          "path": "decor-books-sprout/320.png",
+          "bytes": 78215,
+          "decoded_rgba_bytes": 341760,
+          "sha256": "a8e8c69d1403d3c32c019ba2ef1a774f78b25e84b62b0eb636732305442a5b63"
+        },
+        {
+          "width": 480,
+          "height": 400,
+          "path": "decor-books-sprout/480.png",
+          "bytes": 156940,
+          "decoded_rgba_bytes": 768000,
+          "sha256": "8dc4eb973ed11de44b5176d411d3047612cff4b3b6e88e69a93483f4bf84289c"
+        },
+        {
+          "width": 640,
+          "height": 533,
+          "path": "decor-books-sprout/640.png",
+          "bytes": 265461,
+          "decoded_rgba_bytes": 1364480,
+          "sha256": "58dacf7f7a38f80e9eb3fe12a560b2376fc494f35d22086e5e5744caf8763221"
+        }
+      ]
+    },
+    {
+      "id": "decor-leaves",
+      "group": "illustration",
+      "source": "assets/graphics/source/raster/decor-leaves.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "d71dbc48ce75f5e28529dbf26ec13858a86a583f9d9952f6348829f4a490cdb2",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 320,
+          "height": 125,
+          "path": "decor-leaves/320.png",
+          "bytes": 54343,
+          "decoded_rgba_bytes": 160000,
+          "sha256": "e8ce31de269e257b970bf744cffbd961b3876ccf80d5ecc589037cdd743a10fc"
+        },
+        {
+          "width": 480,
+          "height": 188,
+          "path": "decor-leaves/480.png",
+          "bytes": 105004,
+          "decoded_rgba_bytes": 360960,
+          "sha256": "b39e8fe47f2979d056cf636457c2780bc9f917e1776dc7d4ed9248347c17fde6"
+        },
+        {
+          "width": 640,
+          "height": 251,
+          "path": "decor-leaves/640.png",
+          "bytes": 169682,
+          "decoded_rgba_bytes": 642560,
+          "sha256": "24855abcbd3d6110f428150cda80d45534116fbd3d36da391692346f21b5d96a"
+        }
+      ]
+    }
+  ]
+}
