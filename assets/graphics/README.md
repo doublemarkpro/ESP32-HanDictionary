@@ -6,6 +6,10 @@
 
 入口文档：[尺寸、资源 ID、LVGL 调用与验收](../../docs/ui/GRAPHICS.md)。
 
+UI3 新增 `home-skin/`：已经接入真实主页的精选优化素材，生成源为
+`tools/ui-assets/home-skin.cjs`。它与这里的完整 v1 SD 图形包并存；
+实际主页字体、交互和截图见 [UI3 说明](../../docs/ui/HOME_UI3.md)。
+
 - `source/raster/`：9 张带 alpha 的生成原图，保留原始分辨率，约 8.47 MiB；不要复制到 SD。
 - `source/vector/`：81 个 SVG 导出源；编辑 `tools/ui-assets/graphics-vectors.cjs` 后重新生成。
 - `lvgl/`：72 个小图标的可选 LVGL 9 C 资源包；当前没有加入固件。

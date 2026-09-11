@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 using esp_lcd_touch_handle_t = void*;
 using QueueHandle_t = void*;
 constexpr int pdTRUE = 1, pdPASS = 1, portMAX_DELAY = 0, ESP_OK = 0, ESP_FAIL = -1,
@@ -66,7 +67,13 @@ struct MipiLcdDisplay : Display {
 struct DisplayLockGuard {
     explicit DisplayLockGuard(Display*) {}
 };
-enum DeviceState { kDeviceStateIdle, kDeviceStateWifiConfiguring };
+enum DeviceState {
+    kDeviceStateIdle,
+    kDeviceStateWifiConfiguring,
+    kDeviceStateSpeaking,
+    kDeviceStateListening,
+    kDeviceStateConnecting
+};
 struct AudioService {
     void PlaySound(std::string_view) {}
     bool IsPlaybackIdle() { return true; }
@@ -74,33 +81,67 @@ struct AudioService {
     void EnableWakeWordDetection(bool) {}
 };
 struct Application {
+    bool defer = false;
+    std::vector<std::function<void()>> pending;
+    int starts = 0, stops = 0;
+    DeviceState state = kDeviceStateIdle;
     static Application& GetInstance() {
         static Application a;
         return a;
     }
-    void Schedule(std::function<void()> f) { f(); }
+    void Schedule(std::function<void()> f) {
+        if (defer)
+            pending.push_back(std::move(f));
+        else
+            f();
+    }
+    void Drain() {
+        auto tasks = std::move(pending);
+        pending.clear();
+        for (auto& f : tasks)
+            f();
+    }
     void ToggleChatState() {}
+    void StartListening() {
+        ++starts;
+        state = kDeviceStateListening;
+    }
+    void StopListening() {
+        ++stops;
+        state = kDeviceStateIdle;
+    }
+    void SetDeviceState(DeviceState value) { state = value; }
     void PlaySound(std::string_view) {}
     AudioService& GetAudioService() {
         static AudioService a;
         return a;
     }
-    DeviceState GetDeviceState() { return kDeviceStateIdle; }
+    DeviceState GetDeviceState() { return state; }
 };
 struct Board {
+    bool battery_known = false, charging = false;
+    int battery = 0;
     static Board& GetInstance() {
         static Board b;
         return b;
     }
-    bool GetBatteryLevel(int&, bool&, bool&) { return false; }
+    bool GetBatteryLevel(int& level, bool& charge, bool& discharge) {
+        level = battery;
+        charge = charging;
+        discharge = !charging;
+        return battery_known;
+    }
 };
 struct WifiManager {
+    bool connected = false;
+    int rssi = -55;
     static WifiManager& GetInstance() {
         static WifiManager w;
         return w;
     }
     bool IsConfigMode() { return false; }
-    bool IsConnected() { return false; }
+    bool IsConnected() { return connected; }
+    int GetRssi() { return rssi; }
     std::string GetApSsid() { return ""; }
     std::string GetApWebUrl() { return ""; }
     std::string GetSsid() { return ""; }

@@ -1,0 +1,150 @@
+{
+  "png_bytes": 170713,
+  "rgba_bytes": 3901504,
+  "assets": [
+    {
+      "name": "panel_dictionary",
+      "width": 394,
+      "height": 224,
+      "bytes": 11715
+    },
+    {
+      "name": "panel_phonetics",
+      "width": 394,
+      "height": 224,
+      "bytes": 11104
+    },
+    {
+      "name": "panel_timetable",
+      "width": 394,
+      "height": 224,
+      "bytes": 11471
+    },
+    {
+      "name": "panel_timer",
+      "width": 394,
+      "height": 224,
+      "bytes": 11490
+    },
+    {
+      "name": "panel_alarm",
+      "width": 394,
+      "height": 224,
+      "bytes": 11174
+    },
+    {
+      "name": "panel_weather",
+      "width": 394,
+      "height": 224,
+      "bytes": 11775
+    },
+    {
+      "name": "art_book",
+      "width": 190,
+      "height": 145,
+      "bytes": 11555
+    },
+    {
+      "name": "art_headphones",
+      "width": 264,
+      "height": 156,
+      "bytes": 13533
+    },
+    {
+      "name": "art_calendar",
+      "width": 234,
+      "height": 172,
+      "bytes": 15435
+    },
+    {
+      "name": "art_timer",
+      "width": 187,
+      "height": 178,
+      "bytes": 12711
+    },
+    {
+      "name": "art_alarm",
+      "width": 200,
+      "height": 172,
+      "bytes": 16077
+    },
+    {
+      "name": "art_weather",
+      "width": 262,
+      "height": 166,
+      "bytes": 13089
+    },
+    {
+      "name": "footer",
+      "width": 1280,
+      "height": 146,
+      "bytes": 7310
+    },
+    {
+      "name": "status_wifi_1",
+      "width": 48,
+      "height": 48,
+      "bytes": 306
+    },
+    {
+      "name": "status_wifi_2",
+      "width": 48,
+      "height": 48,
+      "bytes": 519
+    },
+    {
+      "name": "status_wifi_3",
+      "width": 48,
+      "height": 48,
+      "bytes": 934
+    },
+    {
+      "name": "status_wifi_off",
+      "width": 48,
+      "height": 48,
+      "bytes": 1522
+    },
+    {
+      "name": "status_battery_empty",
+      "width": 48,
+      "height": 48,
+      "bytes": 440
+    },
+    {
+      "name": "status_battery_low",
+      "width": 48,
+      "height": 48,
+      "bytes": 494
+    },
+    {
+      "name": "status_battery_half",
+      "width": 48,
+      "height": 48,
+      "bytes": 497
+    },
+    {
+      "name": "status_battery_full",
+      "width": 48,
+      "height": 48,
+      "bytes": 495
+    },
+    {
+      "name": "status_battery_charging",
+      "width": 48,
+      "height": 48,
+      "bytes": 1331
+    },
+    {
+      "name": "status_battery_unknown",
+      "width": 48,
+      "height": 48,
+      "bytes": 811
+    },
+    {
+      "name": "status_mic",
+      "width": 48,
+      "height": 48,
+      "bytes": 966
+    }
+  ]
+}

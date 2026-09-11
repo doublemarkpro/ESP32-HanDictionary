@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include "assets/home_skin.h"
 #include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "han_display.h"
@@ -35,6 +36,14 @@ lv_obj_t* FindLabel(lv_obj_t* obj, const char* text) {
     for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
         if (auto v = FindLabel(lv_obj_get_child(obj, i), text))
             return v;
+    return nullptr;
+}
+lv_obj_t* FindImage(lv_obj_t* obj, const lv_image_dsc_t* source) {
+    if (lv_obj_check_type(obj, &lv_image_class) && lv_image_get_src(obj) == source)
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto image = FindImage(lv_obj_get_child(obj, i), source))
+            return image;
     return nullptr;
 }
 void Click(const char* label) {
@@ -119,6 +128,84 @@ int main(int argc, char** argv) {
         ui.SetupUI();
         ui.UpdateStatusBar();
         Shot(folder, "home");
+        auto& app = Application::GetInstance();
+        auto talk = lv_obj_get_parent(FindLabel(lv_screen_active(), "按住说话"));
+        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
+        Check(app.starts == 0, "offline hold must not enter audio test or start listening");
+        auto offline_notice = FindLabel(lv_screen_active(), "请先联网，再按住说话");
+        Check(offline_notice != nullptr, "offline explanation");
+        lv_obj_add_flag(offline_notice, LV_OBJ_FLAG_HIDDEN);
+        WifiManager::GetInstance().connected = true;
+        Board::GetInstance().battery_known = true;
+        Board::GetInstance().battery = 86;
+        ui.UpdateStatusBar();
+        Check(FindImage(lv_screen_active(), &han_status_wifi_3), "connected Wi-Fi icon");
+        Check(FindImage(lv_screen_active(), &han_status_battery_full), "known battery icon");
+        Shot(folder, "home-online-fixture");
+        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
+        Check(app.starts == 1 && FindLabel(lv_screen_active(), "松开发送"),
+              "hold starts manual session");
+        lv_obj_send_event(talk, LV_EVENT_RELEASED, nullptr);
+        Check(app.stops == 1 && FindLabel(lv_screen_active(), "按住说话"), "release stops session");
+        lv_obj_send_event(talk, LV_EVENT_RELEASED, nullptr);
+        Check(app.stops == 1, "duplicate release is harmless");
+        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
+        app.state = kDeviceStateConnecting;
+        lv_obj_send_event(talk, LV_EVENT_PRESS_LOST, nullptr);
+        Check(app.stops == 2 && app.state == kDeviceStateIdle,
+              "lost pointer cancels connecting session");
+        app.defer = true;
+        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
+        lv_obj_send_event(talk, LV_EVENT_RELEASED, nullptr);
+        app.Drain();
+        Check(app.starts == 2 && app.stops == 2, "quick release cancels queued start");
+        app.defer = false;
+        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
+        lv_tick_inc(61000);
+        lv_timer_handler();
+        Check(app.starts == 3 && app.stops == 3, "60-second hold safety release");
+        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
+        Check(ui.OpenPage("dictionary"), "page navigation during hold");
+        Check(app.starts == 4 && app.stops == 4, "navigation releases microphone");
+        Check(ui.OpenPage("home"), "restore home");
+        WifiManager::GetInstance().rssi = -80;
+        Board::GetInstance().battery = 10;
+        ui.UpdateStatusBar();
+        Check(FindImage(lv_screen_active(), &han_status_wifi_1), "weak Wi-Fi icon");
+        Check(FindImage(lv_screen_active(), &han_status_battery_low), "low battery icon");
+        Board::GetInstance().charging = true;
+        ui.UpdateStatusBar();
+        Check(FindImage(lv_screen_active(), &han_status_battery_charging), "charging icon");
+        Board::GetInstance().battery_known = false;
+        WifiManager::GetInstance().connected = false;
+        ui.UpdateStatusBar();
+        Check(FindImage(lv_screen_active(), &han_status_battery_unknown),
+              "unknown is not full battery");
+        Check(FindImage(lv_screen_active(), &han_status_wifi_off), "offline icon");
+        // Exercise actual pointer hit testing over the inner character card, not just label
+        // callbacks.
+        auto pointer = lv_indev_create();
+        lv_indev_set_type(pointer, LV_INDEV_TYPE_POINTER);
+        lv_indev_set_display(pointer, display);
+        lv_indev_set_mode(pointer, LV_INDEV_MODE_EVENT);
+        static bool pressed = false;
+        lv_indev_set_read_cb(pointer, [](lv_indev_t*, lv_indev_data_t* data) {
+            data->point = {330, 270};
+            data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+        });
+        lv_obj_update_layout(lv_screen_active());
+        pressed = true;
+        lv_indev_read(pointer);
+        pressed = false;
+        lv_indev_read(pointer);
+        Check(FindLabel(lv_screen_active(), "播放笔顺"),
+              "character artwork does not swallow card touch");
+        lv_indev_delete(pointer);
+        ui.OpenPage("home");
+        // Typography is a real LVGL font, not lettering baked into a background.
+        Check(lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "英语音标"), LV_PART_MAIN) ==
+                  &han_font_home,
+              "home uses heavyweight rounded type");
         const char* pages[] = {"查字典", "英语音标", "课程表", "作业计时", "闹钟", "天气"};
         const char* files[] = {"dictionary", "phonetics", "timetable", "timer", "alarm", "weather"};
         for (int i = 0; i < 6; ++i) {
@@ -162,7 +249,9 @@ int main(int argc, char** argv) {
             Click("<");
             Check(FindLabel(lv_screen_active(), "小小助手"), "back home");
         }
-        Click("联网");
+        auto wifi = FindImage(lv_screen_active(), &han_status_wifi_off);
+        Check(wifi != nullptr, "Wi-Fi action present");
+        lv_obj_send_event(lv_obj_get_parent(wifi), LV_EVENT_CLICKED, nullptr);
         ui.UpdateStatusBar();
         Shot(folder, "network");
         Click("<");

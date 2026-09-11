@@ -34,6 +34,8 @@ private:
         char value[128];
     };
     static void OnClick(lv_event_t* event);
+    static void OnTalk(lv_event_t* event);
+    void ReleaseTalk();
     static void Tick(lv_timer_t* timer);
     static void Worker(void* self);
     void Action(int action);
@@ -63,6 +65,16 @@ private:
     lv_obj_t* title_ = nullptr;
     lv_obj_t* back_ = nullptr;
     lv_obj_t* clock_ = nullptr;
+    lv_obj_t* date_ = nullptr;
+    lv_obj_t* mascot_ = nullptr;
+    lv_obj_t* wifi_image_ = nullptr;
+    lv_obj_t* battery_image_ = nullptr;
+    lv_obj_t* talk_button_ = nullptr;
+    lv_obj_t* talk_label_ = nullptr;
+    std::atomic<bool> talk_held_{false};
+    std::atomic<bool> talk_started_{false};
+    std::atomic<bool> talk_release_pending_{false};
+    int64_t talk_pressed_ms_ = 0;
     lv_obj_t* message_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
     lv_obj_t* timer_value_ = nullptr;

@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include "assets/home_skin.h"
 #include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "phonetics.h"
@@ -22,6 +23,13 @@ namespace {
 constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0xd9edfc;
 constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
 const char* kSubjects[] = {"语文", "数学", "英语"};
+lv_obj_t* Image(lv_obj_t* parent, const lv_image_dsc_t* source, int x, int y) {
+    auto image = lv_image_create(parent);
+    lv_image_set_src(image, source);
+    lv_obj_set_pos(image, x, y);
+    lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
+    return image;
+}
 int64_t NowMs() { return esp_timer_get_time() / 1000; }
 std::string Duration(int64_t ms) {
     auto sec = ms / 1000;
@@ -58,6 +66,7 @@ lv_obj_t* HanDisplay::Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t
     lv_obj_set_style_radius(obj, 24, 0);
     lv_obj_set_style_bg_color(obj, lv_color_hex(color), 0);
     lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
     return obj;
 }
 
@@ -69,6 +78,7 @@ lv_obj_t* HanDisplay::Label(lv_obj_t* parent, const char* text, int x, int y, in
     lv_obj_set_style_text_font(obj, font ? font : &han_font_28, 0);
     lv_obj_set_style_text_color(obj, lv_color_hex(kInk), 0);
     lv_label_set_text(obj, text);
+    lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
     return obj;
 }
 
@@ -99,18 +109,47 @@ void HanDisplay::SetupUI() {
     Display::SetupUI();
     root_ = Box(lv_display_get_screen_active(display_), 0, 0, 1280, 720, kBg);
     lv_obj_set_style_radius(root_, 0, 0);
+    Image(root_, &han_footer, 0, 574);
+    mascot_ = Image(root_, &han_art_book, 36, 0);
+    lv_image_set_scale(mascot_, 195);
+    lv_image_set_pivot(mascot_, 0, 0);
     back_ = Button(root_, "<", 24, 14, 72, 72, kGreen, 6);
-    title_ = Label(root_, "小小助手", 115, 27, 400, &han_font_40);
-    clock_ = Label(root_, "时间待同步", 760, 32, 235);
-    network_label_ = Label(root_, "", 1010, 33, 1);
-    Button(root_, "联网", 1020, 18, 100, 64, kBlue, 7);
-    battery_label_ = Label(root_, "--", 1140, 34, 120);
+    title_ = Label(root_, "小小助手", 212, 26, 470, &han_font_brand);
+    date_ = Label(root_, "日期待同步", 747, 45, 208);
+    clock_ = Label(root_, "—:—", 970, 36, 132, &han_font_clock);
+    Box(root_, 952, 39, 1, 39, 0xd7d5d0);
+    Box(root_, 1101, 39, 1, 39, 0xd7d5d0);
+    auto wifi_button = Button(root_, "", 1115, 22, 72, 72, kBg, 7);
+    lv_obj_set_style_bg_opa(wifi_button, LV_OPA_TRANSP, 0);
+    wifi_image_ = Image(wifi_button, &han_status_wifi_off, 12, 12);
+    battery_image_ = Image(root_, &han_status_battery_unknown, 1194, 34);
     body_ = Box(root_, 24, 104, 1232, 490, kBg);
-    Button(root_, "点击说话", 24, 616, 226, 80, 0x88c9ff, 8);
-    status_label_ = Label(root_, "准备好了", 274, 610, 950);
-    notification_label_ = Label(root_, "", 274, 610, 950);
+    lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
+    talk_button_ = Box(root_, 466, 579, 350, 86, 0x49b7ff);
+    lv_obj_add_flag(talk_button_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(talk_button_, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_set_style_radius(talk_button_, 43, 0);
+    lv_obj_set_style_bg_grad_color(talk_button_, lv_color_hex(0x087dff), 0);
+    lv_obj_set_style_bg_grad_dir(talk_button_, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_border_color(talk_button_, lv_color_hex(0xbeeaff), 0);
+    lv_obj_set_style_border_width(talk_button_, 2, 0);
+    lv_obj_set_style_shadow_color(talk_button_, lv_color_hex(0x5cb6f5), 0);
+    lv_obj_set_style_shadow_width(talk_button_, 20, 0);
+    lv_obj_set_style_shadow_opa(talk_button_, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_ofs_y(talk_button_, 6, 0);
+    Image(talk_button_, &han_status_mic, 54, 17);
+    talk_label_ = Label(talk_button_, "按住说话", 119, 19, 205, &han_font_talk);
+    lv_obj_set_style_text_color(talk_label_, lv_color_white(), 0);
+    lv_obj_add_event_cb(talk_button_, OnTalk, LV_EVENT_ALL, this);
+    status_label_ = Label(root_, "", 844, 596, 365);
+    notification_label_ = Label(root_, "", 844, 596, 365);
+    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
+    lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(status_label_, 62);
+    lv_obj_set_height(notification_label_, 62);
     lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
-    message_ = Label(root_, "试试说：规矩的规怎么写", 274, 656, 950);
+    message_ = Label(root_, "试试说：我想学英语音标", 240, 677, 800);
+    lv_obj_set_style_text_align(message_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(message_, LV_LABEL_LONG_SCROLL_CIRCULAR);
     tick_ = lv_timer_create(Tick, 800, this);
     Render(Page::Home);
@@ -131,6 +170,7 @@ void HanDisplay::ClearChatMessages() { SetChatMessage("", ""); }
 void HanDisplay::Toast(const char* text) { ShowNotification(text, 4500); }
 
 void HanDisplay::Render(Page page) {
+    ReleaseTalk();
     page_ = page;
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
@@ -147,10 +187,23 @@ void HanDisplay::Render(Page page) {
     const char* titles[] = {"小小助手", "查字典", "英语音标", "课程表",
                             "作业计时", "闹钟",   "天气",     "联网设置"};
     lv_label_set_text(title_, titles[static_cast<int>(page)]);
-    if (page == Page::Home)
+    if (page == Page::Home) {
         lv_obj_add_flag(back_, LV_OBJ_FLAG_HIDDEN);
-    else
+        lv_obj_remove_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(title_, 212);
+        lv_obj_set_pos(body_, 38, 118);
+        lv_obj_set_size(body_, 1204, 448);
+    } else {
         lv_obj_remove_flag(back_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(title_, 115);
+        lv_obj_set_pos(body_, 24, 104);
+        lv_obj_set_size(body_, 1232, 490);
+    }
+    lv_obj_set_y(talk_button_, page == Page::Home ? 579 : 606);
+    lv_obj_set_height(talk_button_, page == Page::Home ? 86 : 66);
+    lv_obj_set_y(talk_label_, page == Page::Home ? 19 : 9);
+    lv_obj_set_y(lv_obj_get_child(talk_button_, 0), page == Page::Home ? 17 : 7);
     switch (page) {
         case Page::Home:
             Home();
@@ -181,16 +234,97 @@ void HanDisplay::Render(Page page) {
 
 void HanDisplay::Home() {
     const char* titles[] = {"查字典", "英语音标", "课程表", "作业计时", "闹钟", "天气"};
-    const uint32_t colors[] = {kGreen, kPurple, kBlue, kOrange, kPink, kBlue};
-    const lv_image_dsc_t* icons[] = {&han_icon_dictionary, &han_icon_phonetics, &han_icon_timetable,
-                                     &han_icon_timer,      &han_icon_alarm,     &han_icon_weather};
+    const uint32_t colors[] = {0x073e14, 0x211453, 0x082c51, 0x682900, 0x751315, 0x072a50};
+    const lv_image_dsc_t* panels[] = {&han_panel_dictionary, &han_panel_phonetics,
+                                      &han_panel_timetable,  &han_panel_timer,
+                                      &han_panel_alarm,      &han_panel_weather};
+    const lv_image_dsc_t* icons[] = {&han_art_book,  &han_art_headphones, &han_art_calendar,
+                                     &han_art_timer, &han_art_alarm,      &han_art_weather};
+    const int xs[] = {42, 69, 140, 161, 142, 119};
+    const int ys[] = {75, 67, 44, 37, 40, 47};
     for (int i = 0; i < 6; ++i) {
-        auto card = Button(body_, "", (i % 3) * 418, (i / 3) * 250, 396, 232, colors[i], i);
-        Label(card, titles[i], 24, 24, 340, &han_font_40);
-        auto img = lv_image_create(card);
-        lv_image_set_src(img, icons[i]);
-        lv_obj_align(img, LV_ALIGN_BOTTOM_RIGHT, -24, -12);
+        auto card = Button(body_, "", (i % 3) * 405, (i / 3) * 236, 394, i < 3 ? 224 : 212, kBg, i);
+        lv_obj_set_style_radius(card, 28, 0);
+        lv_obj_set_style_clip_corner(card, true, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_hex(0xdacc9d), 0);
+        lv_obj_set_style_shadow_width(card, 14, 0);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+        lv_obj_set_style_shadow_ofs_y(card, 5, 0);
+        Image(card, panels[i], 0, 0);
+        auto img = Image(card, icons[i], xs[i], ys[i]);
+        if (i == 0) {
+            lv_image_set_scale(img, 230);
+            lv_image_set_pivot(img, 0, 0);
+            auto grid = Box(card, 237, 77, 122, 128, 0xfffefa);
+            lv_obj_set_style_radius(grid, 12, 0);
+            lv_obj_set_style_border_width(grid, 4, 0);
+            lv_obj_set_style_border_color(grid, lv_color_white(), 0);
+            Box(grid, 60, 5, 1, 116, 0x9ed7aa);
+            Box(grid, 4, 63, 113, 1, 0x9ed7aa);
+            Image(grid, &han_home_gui, 0, 3);
+        }
+        if (i == 1) {
+            auto ipa = Label(card, "/iː/", 155, 146, 110, &han_font_40);
+            // The heading font does not contain IPA: use the existing verified phonetic font.
+            lv_obj_set_style_text_font(ipa, &han_font_40, 0);
+            lv_obj_set_style_text_align(ipa, LV_TEXT_ALIGN_CENTER, 0);
+        }
+        auto label = Label(card, titles[i], 34, 17, 350, &han_font_home);
+        lv_obj_set_style_text_color(label, lv_color_hex(colors[i]), 0);
     }
+}
+
+void HanDisplay::OnTalk(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    const auto code = lv_event_get_code(event);
+    if (code == LV_EVENT_PRESSED) {
+        auto& app = Application::GetInstance();
+        const auto state = app.GetDeviceState();
+        if (self->talk_held_ || self->talk_release_pending_)
+            return;
+        if (self->local_audio_ || (state != kDeviceStateIdle && state != kDeviceStateSpeaking)) {
+            self->Toast("请稍候再说话");
+            return;
+        }
+        if (!WifiManager::GetInstance().IsConnected()) {
+            self->Toast("请先联网，再按住说话");
+            return;
+        }
+        self->talk_held_ = true;
+        self->talk_pressed_ms_ = NowMs();
+        lv_label_set_text(self->talk_label_, "松开发送");
+        app.Schedule([self] {
+            if (!self->talk_held_)
+                return;
+            const auto state = Application::GetInstance().GetDeviceState();
+            if (state != kDeviceStateIdle && state != kDeviceStateSpeaking)
+                return;
+            self->talk_started_ = true;
+            Application::GetInstance().StartListening();
+        });
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST ||
+               code == LV_EVENT_DELETE) {
+        self->ReleaseTalk();
+    }
+}
+
+void HanDisplay::ReleaseTalk() {
+    if (!talk_held_.exchange(false))
+        return;
+    if (talk_label_)
+        lv_label_set_text(talk_label_, "按住说话");
+    talk_release_pending_ = true;
+    Application::GetInstance().Schedule([this] {
+        auto& app = Application::GetInstance();
+        if (talk_started_.exchange(false)) {
+            // Cancel a not-yet-open manual session as well as stopping an active one.
+            // Use the public state machine, never edit core protocol fields.
+            if (app.GetDeviceState() == kDeviceStateConnecting)
+                app.SetDeviceState(kDeviceStateIdle);
+            app.StopListening();
+        }
+        talk_release_pending_ = false;
+    });
 }
 
 void HanDisplay::Dictionary() {
@@ -553,6 +687,8 @@ void HanDisplay::Action(int a) {
 
 void HanDisplay::Tick(lv_timer_t* timer) {
     auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    if (self->talk_held_ && NowMs() - self->talk_pressed_ms_ >= 60000)
+        self->ReleaseTalk();
     self->UpdateTimer();
     if (self->study_.running() && NowMs() - self->last_checkpoint_ms_ >= 60000) {
         self->last_checkpoint_ms_ = NowMs();
@@ -604,15 +740,33 @@ void HanDisplay::UpdateStatusBar(bool) {
     auto now = time(nullptr);
     struct tm tm{};
     localtime_r(&now, &tm);
-    char clock[48] = "时间待同步";
+    char clock[48] = "—:—", date[64] = "日期待同步";
     const bool valid_time = tm.tm_year >= 125;
-    if (valid_time)
-        strftime(clock, sizeof(clock), "%m/%d  %H:%M", &tm);
+    if (valid_time) {
+        strftime(clock, sizeof(clock), "%H:%M", &tm);
+        const char* weekdays[] = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+        snprintf(date, sizeof(date), "%d月%d日 %s", tm.tm_mon + 1, tm.tm_mday,
+                 weekdays[tm.tm_wday]);
+    }
+    const int rssi = wifi.IsConnected() ? wifi.GetRssi() : -127;
     DisplayLockGuard guard(this);
     if (!setup_ui_called_)
         return;
     lv_label_set_text(clock_, clock);
-    lv_label_set_text(battery_label_, known ? (std::to_string(level) + "%").c_str() : "电量--");
+    lv_label_set_text(date_, date);
+    lv_image_set_src(wifi_image_, !wifi.IsConnected() ? &han_status_wifi_off
+                                  : rssi >= -65       ? &han_status_wifi_3
+                                  : rssi >= -75       ? &han_status_wifi_2
+                                                      : &han_status_wifi_1);
+    const lv_image_dsc_t* battery = &han_status_battery_unknown;
+    if (known && level >= 0 && level <= 100) {
+        battery = charging      ? &han_status_battery_charging
+                  : level <= 5  ? &han_status_battery_empty
+                  : level <= 20 ? &han_status_battery_low
+                  : level <= 65 ? &han_status_battery_half
+                                : &han_status_battery_full;
+    }
+    lv_image_set_src(battery_image_, battery);
     if (network_info_)
         lv_label_set_text(network_info_, network.c_str());
     // Daily alarm is based on synchronized system time; RTC wake-up is not implied.
