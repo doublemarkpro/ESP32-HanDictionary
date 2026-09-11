@@ -44,6 +44,13 @@ set(SOURCES "audio/audio_codec.cc"
 
 set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols")
 
+# Product-specific features are opt-in so the upstream board variants keep
+# their original binary size and behavior.
+if(CONFIG_HAN_DICTIONARY)
+    list(APPEND SOURCES "han_dictionary/dictionary_service.cc")
+    list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
+endif()
+
 # Add board common files
 list(APPEND SOURCES
     "boards/common/board.cc"

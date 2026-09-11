@@ -1083,4 +1083,15 @@ menu "TAIJIPAI_S3_CONFIG"
         启动双声道
 endmenu
 
+menu "Han Dictionary"
+    config HAN_DICTIONARY
+        bool "Enable the local Han Dictionary service"
+        default n
+        depends on BOARD_TYPE_M5STACK_CORE_TAB5
+        help
+            Adds the local dictionary MCP tool used by the Han Dictionary
+            product. The first milestone contains a small embedded demo data
+            set; production dictionary data will be loaded from microSD.
+endmenu
+
 endmenu

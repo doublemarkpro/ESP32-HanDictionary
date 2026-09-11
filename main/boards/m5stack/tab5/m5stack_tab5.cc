@@ -23,6 +23,10 @@
 #include "esp_lcd_touch_st7123.h"
 #include <cstring>
 
+#if CONFIG_HAN_DICTIONARY
+#include "dictionary_service.h"
+#endif
+
 #define TAG "M5StackTab5Board"
 
 #define AUDIO_CODEC_ES8388_ADDR ES8388_CODEC_DEFAULT_ADDR
@@ -484,6 +488,9 @@ public:
         SetUsb5vEn(true);
         SetExt5vEn(true);
         GetBacklight()->RestoreBrightness();
+#if CONFIG_HAN_DICTIONARY
+        DictionaryService::GetInstance().RegisterMcpTools();
+#endif
     }
 
     virtual AudioCodec* GetAudioCodec() override {

@@ -54,8 +54,20 @@ def get_project_version() -> Optional[str]:
     return None
 
 
+def _idf_command() -> list[str]:
+    """Return the configured command for invoking ESP-IDF's idf.py."""
+    idf_python = os.environ.get("XIAOZHI_IDF_PYTHON", "").strip()
+    idf_path = os.environ.get("IDF_PATH", "").strip()
+    if idf_python and idf_path:
+        idf_script = Path(idf_path) / "tools" / "idf.py"
+        if Path(idf_python).is_file() and idf_script.is_file():
+            return [idf_python, str(idf_script)]
+
+    return ["idf.py"]
+
+
 def _run_idf(*args: str, preview: bool = False) -> None:
-    command = ["idf.py"]
+    command = _idf_command()
     if preview:
         command.append("--preview")
     command.extend(args)
@@ -702,7 +714,7 @@ def _detect_idf_version() -> tuple[int, int, int]:
 
     try:
         output = subprocess.run(
-            ["idf.py", "--version"],
+            [*_idf_command(), "--version"],
             check=True,
             capture_output=True,
             text=True,
