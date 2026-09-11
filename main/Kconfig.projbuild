@@ -1085,13 +1085,13 @@ endmenu
 
 menu "Han Dictionary"
     config HAN_DICTIONARY
-        bool "Enable the local Han Dictionary service"
+        bool "Enable the Han Dictionary learning UI and service"
         default n
         depends on BOARD_TYPE_M5STACK_CORE_TAB5
         help
-            Adds the local dictionary MCP tool used by the Han Dictionary
-            product. The first milestone contains a small embedded demo data
-            set; production dictionary data will be loaded from microSD.
+            Adds the Tab5 learning UI, local dictionary MCP tool, and optional
+            microSD content reader. Includes a small embedded demonstration,
+            not a complete dictionary. Requires the product partition layout.
 endmenu
 
 endmenu

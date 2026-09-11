@@ -47,7 +47,12 @@ set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg"
 # Product-specific features are opt-in so the upstream board variants keep
 # their original binary size and behavior.
 if(CONFIG_HAN_DICTIONARY)
-    list(APPEND SOURCES "han_dictionary/dictionary_service.cc")
+    list(APPEND SOURCES "han_dictionary/dictionary_service.cc"
+        "han_dictionary/content_store.cc" "han_dictionary/han_display.cc"
+        "han_dictionary/assets/han_icons.c" "han_dictionary/assets/han_font_28.c"
+        "han_dictionary/assets/han_font_40.c" "han_dictionary/assets/han_font_large.c"
+        "han_dictionary/assets/han_strokes.c"
+        "han_dictionary/assets/han_font_character.c")
     list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
 endif()
 

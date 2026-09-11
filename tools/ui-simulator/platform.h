@@ -1,0 +1,122 @@
+#pragma once
+// Host-only hardware doubles. The LVGL page implementation/assets are compiled unchanged.
+#include <lvgl.h>
+#include <chrono>
+#include <cstdint>
+#include <ctime>
+#include <functional>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+using esp_lcd_touch_handle_t = void*;
+using QueueHandle_t = void*;
+constexpr int pdTRUE = 1, pdPASS = 1, portMAX_DELAY = 0, ESP_OK = 0, ESP_FAIL = -1,
+              ESP_ERR_NO_MEM = -2;
+#define pdMS_TO_TICKS(x) (x)
+#define ESP_ERROR_CHECK(x)                               \
+    do {                                                 \
+        if ((x) != 0)                                    \
+            throw std::runtime_error("ESP stub failed"); \
+    } while (0)
+inline int64_t esp_timer_get_time() { return lv_tick_get() * 1000LL; }
+inline void localtime_r(const time_t* t, tm* result) { localtime_s(result, t); }
+inline void vTaskDelay(int) {}
+inline QueueHandle_t xQueueCreate(int, int) { return reinterpret_cast<void*>(1); }
+inline int xQueueSend(QueueHandle_t, const void*, int) { return 1; }
+inline int xQueueReceive(QueueHandle_t, void*, int) { return 0; }
+inline int xTaskCreate(void (*)(void*), const char*, int, void*, int, void*) { return 1; }
+struct lvgl_port_touch_cfg_t {
+    lv_display_t* disp;
+    void* handle;
+    struct {
+        float x, y;
+    } scale;
+};
+inline void* lvgl_port_add_touch(lvgl_port_touch_cfg_t*) { return reinterpret_cast<void*>(1); }
+struct Theme {};
+struct Display {
+    bool setup_ui_called_ = false;
+    Theme* current_theme_ = nullptr;
+    int width_ = 1280, height_ = 720;
+    virtual ~Display() = default;
+    virtual void SetupUI() { setup_ui_called_ = true; }
+    virtual void SetTheme(Theme*) {}
+    virtual void SetEmotion(const char*) {}
+    virtual void SetChatMessage(const char*, const char*) {}
+    virtual void ClearChatMessages() {}
+    virtual void UpdateStatusBar(bool = false) {}
+};
+struct MipiLcdDisplay : Display {
+    lv_display_t* display_ = nullptr;
+    lv_obj_t* status_label_ = nullptr;
+    lv_obj_t* notification_label_ = nullptr;
+    lv_obj_t* network_label_ = nullptr;
+    lv_obj_t* battery_label_ = nullptr;
+    MipiLcdDisplay(void*, void*, int, int, int, int, bool, bool, bool) {
+        display_ = lv_display_get_default();
+    }
+    void ShowNotification(const char* text, int) {
+        if (notification_label_) {
+            lv_label_set_text(notification_label_, text);
+            lv_obj_remove_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+};
+struct DisplayLockGuard {
+    explicit DisplayLockGuard(Display*) {}
+};
+enum DeviceState { kDeviceStateIdle, kDeviceStateWifiConfiguring };
+struct AudioService {
+    void PlaySound(std::string_view) {}
+    bool IsPlaybackIdle() { return true; }
+    bool IsWakeWordRunning() { return false; }
+    void EnableWakeWordDetection(bool) {}
+};
+struct Application {
+    static Application& GetInstance() {
+        static Application a;
+        return a;
+    }
+    void Schedule(std::function<void()> f) { f(); }
+    void ToggleChatState() {}
+    void PlaySound(std::string_view) {}
+    AudioService& GetAudioService() {
+        static AudioService a;
+        return a;
+    }
+    DeviceState GetDeviceState() { return kDeviceStateIdle; }
+};
+struct Board {
+    static Board& GetInstance() {
+        static Board b;
+        return b;
+    }
+    bool GetBatteryLevel(int&, bool&, bool&) { return false; }
+};
+struct WifiManager {
+    static WifiManager& GetInstance() {
+        static WifiManager w;
+        return w;
+    }
+    bool IsConfigMode() { return false; }
+    bool IsConnected() { return false; }
+    std::string GetApSsid() { return ""; }
+    std::string GetApWebUrl() { return ""; }
+    std::string GetSsid() { return ""; }
+};
+struct Settings {
+    inline static std::map<std::string, int> values;
+    std::string ns;
+    explicit Settings(std::string name, bool = false) : ns(name) {}
+    int GetInt(std::string key, int fallback) {
+        auto p = values.find(ns + key);
+        return p == values.end() ? fallback : p->second;
+    }
+    bool GetBool(std::string key, bool fallback) { return GetInt(key, fallback) != 0; }
+    void SetInt(std::string key, int v) { values[ns + key] = v; }
+    void SetBool(std::string key, bool v) { SetInt(key, v); }
+};
+namespace Lang::Sounds {
+inline constexpr const char* OGG_SUCCESS = "";
+}

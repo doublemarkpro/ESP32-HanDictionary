@@ -17,6 +17,16 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(build)
 
 
+@contextlib.contextmanager
+def restore_cwd():
+    """Leave a temporary working directory before Windows attempts to remove it."""
+    previous = Path.cwd()
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
 class VersionTests(unittest.TestCase):
     def test_parse_and_match(self):
         self.assertEqual(build._parse_version("ESP-IDF v6.0.1"), (6, 0, 1))
@@ -717,7 +727,7 @@ class TargetConfigurationTests(unittest.TestCase):
     def test_configure_build_uses_all_cmake_values_in_one_run(self):
         previous_cwd = Path.cwd()
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir, restore_cwd():
                 os.chdir(temp_dir)
                 Path("sdkconfig").write_text(
                     'CONFIG_IDF_TARGET="esp32s3"\nCONFIG_OLD_VARIANT=y\n',
@@ -762,7 +772,7 @@ class TargetConfigurationTests(unittest.TestCase):
     def test_configure_build_replaces_stale_sdkconfig_backup(self):
         previous_cwd = Path.cwd()
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir, restore_cwd():
                 os.chdir(temp_dir)
                 Path("sdkconfig").write_text(
                     'CONFIG_IDF_TARGET="esp32s3"\n',
@@ -953,7 +963,7 @@ class BuildOptionTests(unittest.TestCase):
     def test_configured_build_options_are_verified(self):
         previous_cwd = Path.cwd()
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir, restore_cwd():
                 os.chdir(temp_dir)
                 Path("sdkconfig").write_text(
                     "CONFIG_LANGUAGE_EN_US=y\n",
@@ -1389,7 +1399,7 @@ class ZipTests(unittest.TestCase):
     def test_zip_is_always_recreated(self):
         previous_cwd = Path.cwd()
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory() as temp_dir, restore_cwd():
                 os.chdir(temp_dir)
                 Path("build").mkdir()
                 Path("build/merged-binary.bin").write_bytes(b"new firmware")

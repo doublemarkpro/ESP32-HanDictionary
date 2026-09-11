@@ -25,6 +25,14 @@
 
 #if CONFIG_HAN_DICTIONARY
 #include "dictionary_service.h"
+#include "driver/sdspi_host.h"
+#include "esp_vfs_fat.h"
+#include "han_display.h"
+#include "mcp_server.h"
+#include "sdmmc_cmd.h"
+using Tab5ProductDisplay = HanDisplay;
+#else
+using Tab5ProductDisplay = MipiLcdDisplay;
 #endif
 
 #define TAG "M5StackTab5Board"
@@ -267,8 +275,9 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-        display_ = new MipiLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X,
-                                      DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+        display_ = new Tab5ProductDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                          DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X,
+                                          DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
     }
 
     void InitializeSt7123Display() {
@@ -367,8 +376,9 @@ private:
             goto err;
         }
 
-        display_ = new MipiLcdDisplay(io, disp_panel, 720, 1280, DISPLAY_OFFSET_X,
-                                      DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+        display_ =
+            new Tab5ProductDisplay(io, disp_panel, 720, 1280, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
+                                   DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
 
         ESP_LOGI(TAG, "ST7123 Display initialized with resolution %dx%d", 720, 1280);
 
@@ -481,6 +491,25 @@ public:
         I2cDetect();
         InitializePi4ioe();
         InitializeDisplay();  // Auto-detect and initialize display + touch
+#if CONFIG_HAN_DICTIONARY
+        auto product = static_cast<HanDisplay*>(display_);
+        product->AttachTouch(touch_);
+        product->SetNetworkAction([this] {
+            if (!IsInWifiConfigMode())
+                EnterWifiConfigMode();
+        });
+        InitializeContentCard();
+        DictionaryService::GetInstance().SetResultCallback(
+            [product](const han::Entry& entry) { product->ShowEntry(entry); });
+        McpServer::GetInstance().AddTool(
+            "self.study.open",
+            "打开学习界面。page可选home、dictionary、phonetics、timetable、timer、alarm、weather、n"
+            "etwork。用户说学习英语音标时传phonetics。本工具只导航，不会设置闹钟或开始计时。",
+            PropertyList({Property("page", kPropertyTypeString)}),
+            [product](const PropertyList& args) -> ReturnValue {
+                return product->OpenPage(args["page"].value<std::string>());
+            });
+#endif
         InitializeCamera();
         InitializeButtons();
         SetChargeQcEn(true);
@@ -523,6 +552,41 @@ public:
     }
 
     // BSP power control functions
+#if CONFIG_HAN_DICTIONARY
+    void InitializeContentCard() {
+        // Official Tab5 SPI pins. Wi-Fi uses its separate SDIO bus; never reconfigure it.
+        spi_bus_config_t bus{};
+        bus.mosi_io_num = GPIO_NUM_44;
+        bus.miso_io_num = GPIO_NUM_39;
+        bus.sclk_io_num = GPIO_NUM_43;
+        bus.quadwp_io_num = -1;
+        bus.quadhd_io_num = -1;
+        bus.max_transfer_sz = 4096;
+        auto err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "SD SPI unavailable: %s", esp_err_to_name(err));
+            return;
+        }
+        sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+        host.slot = SPI2_HOST;
+        host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+        sdspi_device_config_t slot = SDSPI_DEVICE_CONFIG_DEFAULT();
+        slot.host_id = SPI2_HOST;
+        slot.gpio_cs = GPIO_NUM_42;
+        esp_vfs_fat_sdmmc_mount_config_t mount{};
+        mount.format_if_mount_failed = false;
+        mount.max_files = 6;
+        mount.allocation_unit_size = 16 * 1024;
+        sdmmc_card_t* card = nullptr;
+        err = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount, &card);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "No usable SD card (%s); using embedded sample", esp_err_to_name(err));
+            spi_bus_free(SPI2_HOST);
+            return;
+        }
+        DictionaryService::GetInstance().store().Initialize();
+    }
+#endif
     void SetChargeQcEn(bool en) {
         if (pi4ioe2_) {
             uint8_t value = pi4ioe2_->ReadOutSet();

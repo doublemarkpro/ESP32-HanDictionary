@@ -38,7 +38,15 @@ idf.py flash monitor
 > 进入下载模式：长按复位按键（约 2 秒），直至内部绿色 LED 指示灯开始快速闪烁，松开按键。
 
 
-## log
+## Han Dictionary 产品变体
+
+`m5stack-tab5-han-dictionary` 与 `m5stack-tab5-han-dictionary-p4x` 分别对应上述两种芯片版本，通过 `CONFIG_HAN_DICTIONARY` 启用 1280×720 横屏学习 UI。原小智变体不启用这些页面。
+
+产品使用 `partitions/han16m.csv`，首次从原版迁移需通过 USB 烧录完整分区表及资源。SD 使用 SPI CS42/SCK43/MOSI44/MISO39，不改变 Wi-Fi 的 SDIO 配置；缺卡可启动，不自动格式化。详细构建、资源与验收说明见仓库根目录 `HAN_DICTIONARY.md`。
+
+屏幕和触摸继续复用本文件夹已有驱动探测；新 UI 设置横屏旋转并注册触摸设备。尚未完成真机验证，需检查实际设备的 LCD/触摸版本和四角坐标。电量读取未接通时显示未知，不提供模拟百分比。
+
+## 历史测试记录
 
 @2025/05/17 测试问题
 

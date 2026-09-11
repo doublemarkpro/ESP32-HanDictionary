@@ -1,0 +1,694 @@
+#include "han_display.h"
+#ifndef HAN_UI_HOST_SIM
+#include <esp_lvgl_port.h>
+#include <esp_timer.h>
+#include <wifi_manager.h>
+#include "application.h"
+#include "assets/lang_config.h"
+#include "board.h"
+#include "settings.h"
+#endif
+#include <cJSON.h>
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include "assets/ui_assets.h"
+#include "dictionary_service.h"
+#include "phonetics.h"
+
+namespace {
+constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0xd9edfc;
+constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
+const char* kSubjects[] = {"语文", "数学", "英语"};
+int64_t NowMs() { return esp_timer_get_time() / 1000; }
+std::string Duration(int64_t ms) {
+    auto sec = ms / 1000;
+    char out[40];
+    snprintf(out, sizeof(out), "%02lld:%02lld:%02lld", sec / 3600, sec / 60 % 60, sec % 60);
+    return out;
+}
+const char* JString(cJSON* object, const char* key) {
+    auto v = cJSON_GetObjectItemCaseSensitive(object, key);
+    return cJSON_IsString(v) && v->valuestring ? v->valuestring : "";
+}
+}  // namespace
+
+void HanDisplay::AttachTouch(esp_lcd_touch_handle_t touch) {
+    DisplayLockGuard guard(this);
+    // LVGL software rotation transforms display AND the registered pointer input.
+    lv_display_set_rotation(display_, LV_DISPLAY_ROTATION_90);
+    width_ = 1280;
+    height_ = 720;
+    lvgl_port_touch_cfg_t cfg{};
+    cfg.disp = display_;
+    cfg.handle = touch;
+    cfg.scale.x = 1;
+    cfg.scale.y = 1;
+    ESP_ERROR_CHECK(lvgl_port_add_touch(&cfg) ? ESP_OK : ESP_FAIL);
+}
+
+lv_obj_t* HanDisplay::Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color) {
+    auto obj = lv_obj_create(parent);
+    lv_obj_set_pos(obj, x, y);
+    lv_obj_set_size(obj, w, h);
+    lv_obj_set_style_pad_all(obj, 0, 0);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    lv_obj_set_style_radius(obj, 24, 0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(color), 0);
+    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    return obj;
+}
+
+lv_obj_t* HanDisplay::Label(lv_obj_t* parent, const char* text, int x, int y, int w,
+                            const lv_font_t* font) {
+    auto obj = lv_label_create(parent);
+    lv_obj_set_pos(obj, x, y);
+    lv_obj_set_width(obj, w);
+    lv_obj_set_style_text_font(obj, font ? font : &han_font_28, 0);
+    lv_obj_set_style_text_color(obj, lv_color_hex(kInk), 0);
+    lv_label_set_text(obj, text);
+    return obj;
+}
+
+lv_obj_t* HanDisplay::Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h,
+                             uint32_t color, int action) {
+    auto obj = Box(parent, x, y, w, h, color);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(obj, this);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_70, LV_STATE_PRESSED);
+    lv_obj_add_event_cb(obj, OnClick, LV_EVENT_CLICKED,
+                        reinterpret_cast<void*>(static_cast<intptr_t>(action)));
+    auto text_obj = Label(obj, text, 8, 0, w - 16);
+    lv_obj_set_style_text_align(text_obj, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(text_obj, LV_ALIGN_CENTER, 0, 0);
+    return obj;
+}
+
+void HanDisplay::SetupUI() {
+    if (setup_ui_called_)
+        return;
+    LoadPreferences();
+    jobs_ = xQueueCreate(4, sizeof(Job));
+    ESP_ERROR_CHECK(jobs_ ? ESP_OK : ESP_ERR_NO_MEM);
+    ESP_ERROR_CHECK(xTaskCreate(Worker, "han_content", 8192, this, 2, nullptr) == pdPASS
+                        ? ESP_OK
+                        : ESP_ERR_NO_MEM);
+    DisplayLockGuard guard(this);
+    Display::SetupUI();
+    root_ = Box(lv_display_get_screen_active(display_), 0, 0, 1280, 720, kBg);
+    lv_obj_set_style_radius(root_, 0, 0);
+    back_ = Button(root_, "<", 24, 14, 72, 72, kGreen, 6);
+    title_ = Label(root_, "小小助手", 115, 27, 400, &han_font_40);
+    clock_ = Label(root_, "时间待同步", 760, 32, 235);
+    network_label_ = Label(root_, "", 1010, 33, 1);
+    Button(root_, "联网", 1020, 18, 100, 64, kBlue, 7);
+    battery_label_ = Label(root_, "--", 1140, 34, 120);
+    body_ = Box(root_, 24, 104, 1232, 490, kBg);
+    Button(root_, "点击说话", 24, 616, 226, 80, 0x88c9ff, 8);
+    status_label_ = Label(root_, "准备好了", 274, 610, 950);
+    notification_label_ = Label(root_, "", 274, 610, 950);
+    lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
+    message_ = Label(root_, "试试说：规矩的规怎么写", 274, 656, 950);
+    lv_label_set_long_mode(message_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    tick_ = lv_timer_create(Tick, 800, this);
+    Render(Page::Home);
+    Queue(2, "");  // Read optional timetable/weather content off the LVGL/main tasks.
+}
+
+void HanDisplay::SetTheme(Theme* theme) {
+    // A fixed children's theme owns its fonts independently of cloud font/theme updates.
+    current_theme_ = theme;
+}
+
+void HanDisplay::SetChatMessage(const char*, const char* text) {
+    DisplayLockGuard guard(this);
+    if (message_)
+        lv_label_set_text(message_, text ? text : "");
+}
+void HanDisplay::ClearChatMessages() { SetChatMessage("", ""); }
+void HanDisplay::Toast(const char* text) { ShowNotification(text, 4500); }
+
+void HanDisplay::Render(Page page) {
+    page_ = page;
+    stroke_playing_ = false;
+    timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
+    alarm_hour_ = alarm_minute_ = nullptr;
+    for (auto& label : totals_)
+        label = nullptr;
+    lv_obj_clean(body_);
+    const char* titles[] = {"小小助手", "查字典", "英语音标", "课程表",
+                            "作业计时", "闹钟",   "天气",     "联网设置"};
+    lv_label_set_text(title_, titles[static_cast<int>(page)]);
+    if (page == Page::Home)
+        lv_obj_add_flag(back_, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_remove_flag(back_, LV_OBJ_FLAG_HIDDEN);
+    switch (page) {
+        case Page::Home:
+            Home();
+            break;
+        case Page::Dictionary:
+            Dictionary();
+            break;
+        case Page::Phonetics:
+            Phonetics();
+            break;
+        case Page::Timetable:
+            Timetable();
+            break;
+        case Page::Timer:
+            Timer();
+            break;
+        case Page::Alarm:
+            Alarm();
+            break;
+        case Page::Weather:
+            Weather();
+            break;
+        case Page::Network:
+            Network();
+            break;
+    }
+}
+
+void HanDisplay::Home() {
+    const char* titles[] = {"查字典", "英语音标", "课程表", "作业计时", "闹钟", "天气"};
+    const uint32_t colors[] = {kGreen, kPurple, kBlue, kOrange, kPink, kBlue};
+    const lv_image_dsc_t* icons[] = {&han_icon_dictionary, &han_icon_phonetics, &han_icon_timetable,
+                                     &han_icon_timer,      &han_icon_alarm,     &han_icon_weather};
+    for (int i = 0; i < 6; ++i) {
+        auto card = Button(body_, "", (i % 3) * 418, (i / 3) * 250, 396, 232, colors[i], i);
+        Label(card, titles[i], 24, 24, 340, &han_font_40);
+        auto img = lv_image_create(card);
+        lv_image_set_src(img, icons[i]);
+        lv_obj_align(img, LV_ALIGN_BOTTOM_RIGHT, -24, -12);
+    }
+}
+
+void HanDisplay::Dictionary() {
+    auto grid = Box(body_, 0, 0, 465, 375, 0xfff1e9);
+    for (int i = 1; i < 2; ++i) {
+        auto h = Box(grid, 14, 186, 436, 2, 0xefc8bd);
+        auto v = Box(grid, 232, 14, 2, 347, 0xefc8bd);
+        (void)h;
+        (void)v;
+    }
+    if (entry_.character == "规") {
+        stroke_image_ = lv_image_create(grid);
+        lv_image_set_src(stroke_image_, &han_gui_strokes[0]);
+        lv_obj_set_pos(stroke_image_, 82, 14);
+    } else
+        Label(grid, entry_.character.c_str(), 180, 110, 160, &han_font_40);
+    stroke_value_ = Label(grid, "", 24, 323, 420);
+    UpdateStroke();
+    Button(body_, "上一步", 0, 391, 140, 70, kGreen, 20);
+    Button(body_, "播放笔顺", 151, 391, 166, 70, kOrange, 21);
+    Button(body_, "下一步", 328, 391, 137, 70, kBlue, 22);
+    auto details = Box(body_, 490, 0, 742, 375, 0xffffff);
+    std::string title = entry_.character + "   " + entry_.pinyin;
+    Label(details, title.c_str(), 24, 20, 690, &han_font_40);
+    std::string info = "部首 " + entry_.radical + "   " + std::to_string(entry_.stroke_count) +
+                       "画   " + entry_.structure;
+    Label(details, info.c_str(), 24, 83, 690);
+    Label(details, entry_.definition.c_str(), 24, 139, 690);
+    std::string words = "组词：";
+    for (const auto& word : entry_.words)
+        words += word + "  ";
+    Label(details, words.c_str(), 24, 238, 690);
+    const std::string page = entry_.page
+                                 ? "新华字典第12版 · 第" + std::to_string(entry_.page) + "页"
+                                 : "新华字典第12版 · 页码待核对";
+    Label(details, page.c_str(), 24, 288, 690);
+    Label(details, entry_.source == "embedded-demo" ? "释义：开发示例" : "释义：SD 内容包", 24, 329,
+          680);
+    Button(body_, "查“规”", 490, 391, 220, 70, kGreen, 23);
+    Button(body_, "语音查字", 730, 391, 245, 70, kBlue, 8);
+    Button(body_, "字库状态", 995, 391, 237, 70, kPurple, 24);
+}
+
+void HanDisplay::UpdateStroke() {
+    if (!stroke_value_ || entry_.strokes.empty())
+        return;
+    stroke_ = std::clamp(stroke_, 0, static_cast<int>(entry_.strokes.size()) - 1);
+    auto value = std::to_string(stroke_ + 1) + " / " + std::to_string(entry_.strokes.size()) +
+                 "    " + entry_.strokes[stroke_];
+    lv_label_set_text(stroke_value_, value.c_str());
+    if (stroke_image_ && stroke_ < 8)
+        lv_image_set_src(stroke_image_, &han_gui_strokes[stroke_]);
+}
+
+void HanDisplay::Phonetics() {
+    const char* cats[] = {"单元音", "双元音", "辅音"};
+    for (int i = 0; i < 3; ++i)
+        Button(body_, cats[i], i * 418, 0, 396, 66, i == category_ ? 0xc3a5f4 : kBlue, 100 + i);
+    auto panel = Box(body_, 0, 86, 465, 397, kPurple);
+    int shown = 0;
+    for (int i = 0; i < static_cast<int>(std::size(han::kSounds)); ++i) {
+        if (han::kSounds[i].category != category_)
+            continue;
+        auto btn = Button(panel, han::kSounds[i].ipa, 14 + shown % 3 * 148, 18 + shown / 3 * 132,
+                          137, 112, i == sound_ ? 0xc3a5f4 : 0xffffff, 200 + i);
+        lv_obj_set_style_text_font(lv_obj_get_child(btn, 0), &han_font_40, 0);
+        ++shown;
+    }
+    Label(panel, "英式发音 · 入门内容包", 18, 318, 430);
+    Label(panel, "先听示范，再自己试一试", 18, 359, 430);
+    auto detail = Box(body_, 490, 86, 742, 397, 0xffffff);
+    auto& sound = han::kSounds[sound_];
+    auto ipa = "/" + std::string(sound.ipa) + "/";
+    auto big = Label(detail, ipa.c_str(), 20, 12, 700, &han_font_large);
+    lv_obj_set_style_text_align(big, LV_TEXT_ALIGN_CENTER, 0);
+    Button(detail, "听示范", 155, 134, 430, 64, kPurple, 110);
+    for (int i = 0; i < 3; ++i)
+        Button(detail, sound.words[i], 20 + i * 237, 220, 220, 70, kGreen, 111 + i);
+    auto record = Button(detail, "录音跟读（后续）", 20, 314, 340, 62, kBlue, 114);
+    lv_obj_add_state(record, LV_STATE_DISABLED);
+    Label(detail, "音频需放入 SD 卡", 384, 331, 330);
+}
+
+void HanDisplay::Timetable() {
+    auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
+    Label(card, "我的课程表", 28, 24, 1000, &han_font_40);
+    auto text =
+        Label(card,
+              timetable_text_.empty() ? "还没有课程表\n\n请用内容准备工具填写每周课程后放入 SD 卡。"
+                                      : timetable_text_.c_str(),
+              28, 92, 1170);
+    lv_obj_set_height(text, 360);
+    lv_label_set_long_mode(text, LV_LABEL_LONG_SCROLL_CIRCULAR);
+}
+
+void HanDisplay::Timer() {
+    auto left = Box(body_, 0, 0, 710, 480, 0xffffff);
+    for (int i = 0; i < 3; ++i)
+        Button(left, kSubjects[i], 20 + i * 229, 20, 210, 66,
+               i == study_.subject() ? 0x9bceff : kBlue, 300 + i);
+    timer_value_ = Label(left, "00:00:00", 24, 138, 660, &han_font_large);
+    lv_obj_set_style_text_align(timer_value_, LV_TEXT_ALIGN_CENTER, 0);
+    Button(left, study_.running() ? "暂停" : "开始 / 继续", 24, 300, 310, 82, kOrange, 310);
+    Button(left, "完成本科", 356, 300, 326, 82, kGreen, 311);
+    Label(left, "返回主页后仍继续计时", 150, 415, 540);
+    auto right = Box(body_, 734, 0, 498, 480, kGreen);
+    Label(right, "本次作业记录", 24, 24, 445, &han_font_40);
+    for (int i = 0; i < 3; ++i)
+        totals_[i] = Label(right, "", 24, 103 + i * 77, 450);
+    Button(right, "新一轮作业", 24, 373, 450, 72, 0xffffff, 312);
+    UpdateTimer();
+}
+
+void HanDisplay::UpdateTimer() {
+    if (timer_value_)
+        lv_label_set_text(timer_value_,
+                          Duration(study_.Elapsed(study_.subject(), NowMs())).c_str());
+    for (int i = 0; i < 3; ++i)
+        if (totals_[i]) {
+            auto label = std::string(kSubjects[i]) + "  " + Duration(study_.Elapsed(i, NowMs())) +
+                         (study_.completed(i) ? " 已完成" : "");
+            lv_label_set_text(totals_[i], label.c_str());
+        }
+}
+
+void HanDisplay::Alarm() {
+    auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
+    Label(card, "每日提醒", 28, 22, 700, &han_font_40);
+    Label(card, "小时", 220, 105, 220);
+    Label(card, "分钟", 530, 105, 220);
+    alarm_hour_ = lv_roller_create(card);
+    lv_roller_set_options(alarm_hour_,
+                          "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n13\n14\n15\n16\n17\n"
+                          "18\n19\n20\n21\n22\n23",
+                          LV_ROLLER_MODE_NORMAL);
+    alarm_minute_ = lv_roller_create(card);
+    std::string minutes;
+    for (int i = 0; i < 60; ++i) {
+        char s[5];
+        snprintf(s, sizeof(s), "%02d", i);
+        if (i)
+            minutes += '\n';
+        minutes += s;
+    }
+    lv_roller_set_options(alarm_minute_, minutes.c_str(), LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(alarm_hour_, alarm_minutes_ / 60, LV_ANIM_OFF);
+    lv_roller_set_selected(alarm_minute_, alarm_minutes_ % 60, LV_ANIM_OFF);
+    int x = 200;
+    for (auto roller : {alarm_hour_, alarm_minute_}) {
+        lv_obj_set_pos(roller, x, 156);
+        lv_obj_set_width(roller, 240);
+        lv_obj_set_style_text_font(roller, &han_font_40, 0);
+        lv_roller_set_visible_row_count(roller, 3);
+        x += 310;
+    }
+    Button(card, alarm_enabled_ ? "保存并保持开启" : "保存并开启", 820, 160, 370, 78, kGreen, 400);
+    Button(card, alarm_ringing_ ? "停止铃声" : "关闭提醒", 820, 263, 370, 78, kPink, 401);
+    Label(card, "需要设备开机且时间已同步；关机唤醒后续接入", 28, 414, 1170);
+}
+
+void HanDisplay::Weather() {
+    auto card = Box(body_, 0, 0, 1232, 480, kBlue);
+    auto img = lv_image_create(card);
+    lv_image_set_src(img, &han_icon_weather);
+    lv_obj_set_pos(img, 35, 28);
+    Label(card, "天气", 190, 57, 800, &han_font_40);
+    Label(card,
+          weather_text_.empty()
+              ? "暂无天气数据\n\n联网天气服务待接入。\n导入缓存后会明确显示更新时间。"
+              : weather_text_.c_str(),
+          35, 182, 1160);
+}
+
+void HanDisplay::Network() {
+    auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
+    Label(card, "请家长帮助联网", 28, 22, 1120, &han_font_40);
+    network_info_ = Label(card, "正在读取网络状态…", 28, 100, 1130);
+    Button(card, "打开手机配网", 28, 298, 430, 80, kBlue, 10);
+    Label(card, "第一版沿用小智手机配网，触屏选网键盘后续接入", 28, 415, 1160);
+}
+
+void HanDisplay::OnClick(lv_event_t* e) {
+    auto self = static_cast<HanDisplay*>(lv_obj_get_user_data(lv_event_get_target_obj(e)));
+    self->Action(static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e))));
+}
+
+void HanDisplay::Action(int a) {
+    if (a >= 0 && a < 6) {
+        Render(static_cast<Page>(a + 1));
+        return;
+    }
+    if (a == 6) {
+        Render(Page::Home);
+        return;
+    }
+    if (a == 7) {
+        Render(Page::Network);
+        return;
+    }
+    if (a == 8) {
+        if (local_audio_) {
+            Toast("请听完当前发音再说话");
+            return;
+        }
+        Application::GetInstance().ToggleChatState();
+        return;
+    }
+    if (a == 10 && network_action_) {
+        Application::GetInstance().Schedule([this] { network_action_(); });
+        return;
+    }
+    if (a == 20 || a == 22) {
+        stroke_playing_ = false;
+        stroke_ += a == 20 ? -1 : 1;
+        UpdateStroke();
+        return;
+    }
+    if (a == 21) {
+        stroke_playing_ = !stroke_playing_;
+        if (stroke_ + 1 >= static_cast<int>(entry_.strokes.size()))
+            stroke_ = -1;
+        return;
+    }
+    if (a == 23) {
+        Queue(0, "规");
+        return;
+    }
+    if (a == 24) {
+        Toast(DictionaryService::GetInstance().store().notice().c_str());
+        return;
+    }
+    if (a >= 100 && a <= 102) {
+        category_ = a - 100;
+        for (int i = 0; i < static_cast<int>(std::size(han::kSounds)); ++i)
+            if (han::kSounds[i].category == category_) {
+                sound_ = i;
+                break;
+            }
+        Render(Page::Phonetics);
+        return;
+    }
+    if (a >= 200 && a < 200 + static_cast<int>(std::size(han::kSounds))) {
+        sound_ = a - 200;
+        Render(Page::Phonetics);
+        return;
+    }
+    if (a >= 110 && a <= 113) {
+        const auto& sound = han::kSounds[sound_];
+        auto path = "phonetics/en-GB/" + std::string(sound.id) + "/" +
+                    (a == 110 ? "sound" : sound.words[a - 111]) + ".ogg";
+        Queue(1, path);
+        return;
+    }
+    if (a >= 300 && a <= 302) {
+        if (study_.running()) {
+            Toast("请先暂停当前科目");
+            return;
+        }
+        study_.Select(a - 300);
+        Render(Page::Timer);
+        return;
+    }
+    if (a == 310) {
+        if (study_.running())
+            study_.Pause(NowMs());
+        else
+            study_.Start(study_.subject(), NowMs());
+        SaveTimer();
+        Render(Page::Timer);
+        return;
+    }
+    if (a == 311) {
+        study_.Complete(NowMs());
+        SaveTimer();
+        Render(Page::Timer);
+        return;
+    }
+    if (a == 312) {
+        if (study_.running()) {
+            Toast("请先暂停，再开始新一轮");
+            return;
+        }
+        // Explicit second click confirms clearing this local session.
+        static int64_t confirm_until = 0;
+        if (NowMs() > confirm_until) {
+            confirm_until = NowMs() + 5000;
+            Toast("再次点击将清空本轮记录");
+            return;
+        }
+        confirm_until = 0;
+        study_ = han::StudyTimer();
+        SaveTimer();
+        Render(Page::Timer);
+        return;
+    }
+    if (a == 400 || a == 401) {
+        alarm_enabled_ = a == 400;
+        if (a == 400)
+            alarm_minutes_ =
+                lv_roller_get_selected(alarm_hour_) * 60 + lv_roller_get_selected(alarm_minute_);
+        alarm_ringing_ = false;
+        const auto minutes = alarm_minutes_;
+        const auto enabled = alarm_enabled_;
+        Application::GetInstance().Schedule([minutes, enabled] {
+            Settings s("han_alarm", true);
+            s.SetInt("minutes", minutes);
+            s.SetBool("enabled", enabled);
+        });
+        Render(Page::Alarm);
+        Toast(a == 400 ? "每日提醒已保存" : "提醒已关闭");
+    }
+}
+
+void HanDisplay::Tick(lv_timer_t* timer) {
+    auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    self->UpdateTimer();
+    if (self->study_.running() && NowMs() - self->last_checkpoint_ms_ >= 60000) {
+        self->last_checkpoint_ms_ = NowMs();
+        self->SaveTimer();
+    }
+    if (self->stroke_playing_) {
+        ++self->stroke_;
+        if (self->stroke_ + 1 >= static_cast<int>(self->entry_.strokes.size()))
+            self->stroke_playing_ = false;
+        self->UpdateStroke();
+    }
+}
+
+void HanDisplay::ShowEntry(const han::Entry& entry) {
+    DisplayLockGuard guard(this);
+    entry_ = entry;
+    stroke_ = 0;
+    if (setup_ui_called_)
+        Render(Page::Dictionary);
+}
+
+bool HanDisplay::OpenPage(const std::string& page) {
+    const char* names[] = {"home",  "dictionary", "phonetics", "timetable",
+                           "timer", "alarm",      "weather",   "network"};
+    for (int i = 0; i < 8; ++i)
+        if (page == names[i]) {
+            DisplayLockGuard guard(this);
+            if (!setup_ui_called_)
+                return false;
+            Render(static_cast<Page>(i));
+            return true;
+        }
+    return false;
+}
+
+void HanDisplay::UpdateStatusBar(bool) {
+    auto& wifi = WifiManager::GetInstance();
+    std::string network;
+    const bool config = wifi.IsConfigMode();
+    if (config)
+        network = "手机连接热点：" + wifi.GetApSsid() + "\n浏览器打开：" + wifi.GetApWebUrl();
+    else if (wifi.IsConnected())
+        network = "已连接：" + wifi.GetSsid() + "\n需要更换网络时，打开手机配网。";
+    else
+        network = "尚未联网\n可以先使用本地学习功能，也可打开手机配网。";
+    int level = 0;
+    bool charging = false, discharging = false;
+    const bool known = Board::GetInstance().GetBatteryLevel(level, charging, discharging);
+    auto now = time(nullptr);
+    struct tm tm{};
+    localtime_r(&now, &tm);
+    char clock[48] = "时间待同步";
+    const bool valid_time = tm.tm_year >= 125;
+    if (valid_time)
+        strftime(clock, sizeof(clock), "%m/%d  %H:%M", &tm);
+    DisplayLockGuard guard(this);
+    if (!setup_ui_called_)
+        return;
+    lv_label_set_text(clock_, clock);
+    lv_label_set_text(battery_label_, known ? (std::to_string(level) + "%").c_str() : "电量--");
+    if (network_info_)
+        lv_label_set_text(network_info_, network.c_str());
+    // Daily alarm is based on synchronized system time; RTC wake-up is not implied.
+    const int64_t day = static_cast<int64_t>(tm.tm_year) * 366 + tm.tm_yday;
+    if (valid_time && alarm_enabled_ && alarm_last_day_ != day &&
+        tm.tm_hour * 60 + tm.tm_min == alarm_minutes_) {
+        alarm_last_day_ = day;
+        alarm_ringing_ = true;
+        Render(Page::Alarm);
+        Toast("时间到了！");
+        Application::GetInstance().Schedule(
+            [] { Application::GetInstance().PlaySound(Lang::Sounds::OGG_SUCCESS); });
+    }
+}
+
+void HanDisplay::LoadPreferences() {
+    Settings s("han_study");
+    for (int i = 0; i < 3; ++i) {
+        const auto key = std::to_string(i);
+        study_.Restore(i, static_cast<int64_t>(s.GetInt("s" + key, 0)) * 1000,
+                       s.GetBool("c" + key, false));
+    }
+    Settings a("han_alarm");
+    alarm_minutes_ = std::clamp(static_cast<int>(a.GetInt("minutes", 405)), 0, 1439);
+    alarm_enabled_ = a.GetBool("enabled", false);
+}
+
+void HanDisplay::SaveTimer() {
+    int seconds[3];
+    bool completed[3];
+    for (int i = 0; i < 3; ++i) {
+        seconds[i] = study_.Elapsed(i, NowMs()) / 1000;
+        completed[i] = study_.completed(i);
+    }
+    Application::GetInstance().Schedule([seconds, completed] {
+        Settings s("han_study", true);
+        for (int i = 0; i < 3; ++i) {
+            auto k = std::to_string(i);
+            s.SetInt("s" + k, seconds[i]);
+            s.SetBool("c" + k, completed[i]);
+        }
+    });
+}
+
+void HanDisplay::Queue(int type, const std::string& value) {
+    Job job{};
+    job.type = type;
+    if (value.size() >= sizeof(job.value)) {
+        Toast("内容路径过长");
+        return;
+    }
+    memcpy(job.value, value.data(), value.size());
+    if (!jobs_ || xQueueSend(jobs_, &job, 0) != pdTRUE)
+        Toast("正在处理，请稍后再试");
+}
+
+void HanDisplay::Worker(void* ptr) {
+    auto self = static_cast<HanDisplay*>(ptr);
+    Job job;
+    auto& store = DictionaryService::GetInstance().store();
+    for (;;) {
+        if (xQueueReceive(self->jobs_, &job, portMAX_DELAY) != pdTRUE)
+            continue;
+        if (job.type == 0) {
+            han::Entry entry;
+            if (store.Lookup(job.value, entry))
+                self->ShowEntry(entry);
+            else
+                self->Toast("未找到这个字，请检查内容包");
+        } else if (job.type == 1) {
+            auto& app = Application::GetInstance();
+            if (app.GetDeviceState() != kDeviceStateIdle &&
+                app.GetDeviceState() != kDeviceStateWifiConfiguring) {
+                self->Toast("请先结束当前语音对话");
+                continue;
+            }
+            std::string data;
+            if (!store.ready() || !store.Read(job.value, data, 256 * 1024) ||
+                data.compare(0, 4, "OggS") != 0 ||
+                data.substr(0, 128).find("OpusHead") == std::string::npos) {
+                self->Toast("缺少发音文件，请导入音标音频包");
+                continue;
+            }
+            self->local_audio_ = true;
+            auto& audio = app.GetAudioService();
+            const bool restore_wake = audio.IsWakeWordRunning();
+            audio.EnableWakeWordDetection(false);
+            audio.PlaySound(data);  // Bounded file, worker may wait on decoder queue.
+            const auto deadline = NowMs() + 12000;
+            while (!app.GetAudioService().IsPlaybackIdle() && NowMs() < deadline)
+                vTaskDelay(pdMS_TO_TICKS(50));
+            if (restore_wake && app.GetDeviceState() == kDeviceStateIdle)
+                audio.EnableWakeWordDetection(true);
+            self->local_audio_ = false;
+        } else if (job.type == 2) {
+            std::string data, timetable, weather;
+            if (store.ready() && store.Read("timetable.json", data, 8192)) {
+                auto root = cJSON_Parse(data.c_str());
+                auto days = cJSON_GetObjectItemCaseSensitive(root, "days");
+                const char* names[] = {"周一", "周二", "周三", "周四", "周五"};
+                if (cJSON_IsArray(days) && cJSON_GetArraySize(days) == 5) {
+                    for (int d = 0; d < 5; ++d) {
+                        timetable += std::string(names[d]) + "： ";
+                        auto subjects = cJSON_GetArrayItem(days, d);
+                        for (int j = 0; cJSON_IsArray(subjects) &&
+                                        j < std::min(cJSON_GetArraySize(subjects), 8);
+                             ++j) {
+                            auto s = cJSON_GetArrayItem(subjects, j);
+                            if (cJSON_IsString(s) && s->valuestring && strlen(s->valuestring) <= 24)
+                                timetable += std::string(s->valuestring) + "  ";
+                        }
+                        timetable += "\n\n";
+                    }
+                }
+                cJSON_Delete(root);
+            }
+            if (store.ready() && store.Read("weather.json", data, 4096)) {
+                auto root = cJSON_Parse(data.c_str());
+                auto city = std::string(JString(root, "city"));
+                auto updated = std::string(JString(root, "updated_at"));
+                if (!city.empty() && !updated.empty())
+                    weather =
+                        city + "（缓存）\n" + JString(root, "summary") + "\n\n更新时间：" + updated;
+                cJSON_Delete(root);
+            }
+            DisplayLockGuard guard(self);
+            self->timetable_text_ = timetable;
+            self->weather_text_ = weather;
+            if (self->page_ == Page::Timetable || self->page_ == Page::Weather)
+                self->Render(self->page_);
+        }
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "pack_id": "handict-starter-1",
+  "dictionary": {
+    "edition": "新华字典第12版",
+    "format": "单色本",
+    "publisher": "商务印书馆",
+    "isbn": "9787100168076",
+    "complete": false,
+    "notice": "仅含开发示例，未收录新华字典原文；页码待核对"
+  },
+  "phonetics": {"accent": "en-GB", "audio_included": false}
+}

@@ -1,35 +1,20 @@
-#ifndef HAN_DICTIONARY_DICTIONARY_SERVICE_H_
-#define HAN_DICTIONARY_DICTIONARY_SERVICE_H_
-
-#include <cstddef>
-#include <string>
-
-struct DictionaryEntry {
-    const char* character;
-    const char* traditional;
-    const char* pinyin;
-    const char* radical;
-    int stroke_count;
-    const char* structure;
-    const char* definition;
-    const char* const* words;
-    std::size_t word_count;
-    const char* const* stroke_order;
-    std::size_t stroke_order_count;
-};
+#pragma once
+#include <functional>
+#include "content_store.h"
 
 class DictionaryService {
 public:
     static DictionaryService& GetInstance();
-
     void RegisterMcpTools();
+    han::ContentStore& store() { return store_; }
+    // Set once during board initialization, before MCP calls can arrive.
+    void SetResultCallback(std::function<void(const han::Entry&)> callback) {
+        result_callback_ = std::move(callback);
+    }
 
 private:
     DictionaryService() = default;
-
-    const DictionaryEntry* FindEntry(const std::string& query) const;
-
+    han::ContentStore store_;
     bool tools_registered_ = false;
+    std::function<void(const han::Entry&)> result_callback_;
 };
-
-#endif  // HAN_DICTIONARY_DICTIONARY_SERVICE_H_
