@@ -241,7 +241,7 @@ RgbLcdDisplay::RgbLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
 
 MipiLcdDisplay::MipiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                                int width, int height, int offset_x, int offset_y, bool mirror_x,
-                               bool mirror_y, bool swap_xy)
+                               bool mirror_y, bool swap_xy, const MipiLcdDisplayConfig& config)
     : LcdDisplay(panel_io, panel, width, height) {
     ESP_LOGI(TAG, "Initialize LVGL library");
     lv_init();
@@ -255,7 +255,8 @@ MipiLcdDisplay::MipiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel
         .io_handle = panel_io,
         .panel_handle = panel,
         .control_handle = nullptr,
-        .buffer_size = static_cast<uint32_t>(width_ * 50),
+        .buffer_size =
+            config.buffer_pixels ? config.buffer_pixels : static_cast<uint32_t>(width_ * 50),
         .double_buffer = false,
         .hres = static_cast<uint32_t>(width_),
         .vres = static_cast<uint32_t>(height_),
@@ -270,7 +271,7 @@ MipiLcdDisplay::MipiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel
         .flags =
             {
                 .buff_dma = true,
-                .buff_spiram = false,
+                .buff_spiram = config.buffer_in_psram,
                 .sw_rotate = true,
             },
     };

@@ -49,6 +49,7 @@ set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg"
 if(CONFIG_HAN_DICTIONARY)
     list(APPEND SOURCES "han_dictionary/dictionary_service.cc"
         "han_dictionary/content_store.cc" "han_dictionary/han_display.cc"
+        "han_dictionary/qweather_service.cc"
         "han_dictionary/assets/han_icons.c" "han_dictionary/assets/han_font_28.c"
         "han_dictionary/assets/han_font_40.c" "han_dictionary/assets/han_font_large.c"
         "han_dictionary/assets/han_strokes.c"
@@ -1042,6 +1043,11 @@ if(CONFIG_IDF_TARGET_ESP32S3)
 endif()
 
 set(MAIN_PRIV_REQUIRES_EXTRA "")
+if(CONFIG_BOARD_TYPE_M5STACK_CORE_TAB5 AND CONFIG_HAN_DICTIONARY)
+    list(APPEND MAIN_PRIV_REQUIRES_EXTRA
+        espressif__esp_tinyusb
+    )
+endif()
 if(BOARD_TYPE STREQUAL "m5stack-stick-s3")
     list(APPEND MAIN_PRIV_REQUIRES_EXTRA
         m5stack__m5pm1

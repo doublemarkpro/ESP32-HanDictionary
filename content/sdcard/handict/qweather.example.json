@@ -1,0 +1,7 @@
+{
+  "api_host": "replace-with-your-host.qweatherapi.com",
+  "api_key": "replace-with-your-api-key",
+  "city": "青岛",
+  "latitude": 36.0662,
+  "longitude": 120.3826
+}

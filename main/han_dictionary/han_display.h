@@ -18,8 +18,12 @@ public:
     using MipiLcdDisplay::MipiLcdDisplay;
     void AttachTouch(esp_lcd_touch_handle_t touch);
     void SetNetworkAction(std::function<void()> action) { network_action_ = std::move(action); }
+    void SetUsbStorageAction(std::function<std::string()> action) {
+        usb_storage_action_ = std::move(action);
+    }
     void SetupUI() override;
     void SetTheme(Theme* theme) override;
+    void SetStatus(const char* status) override;
     void SetEmotion(const char*) override {}
     void SetChatMessage(const char* role, const char* content) override;
     void ClearChatMessages() override;
@@ -39,6 +43,7 @@ private:
     static void OnTalk(lv_event_t* event);
     void ReleaseTalk();
     static void Tick(lv_timer_t* timer);
+    static void OnRefresh(lv_event_t* event);
     static void Worker(void* self);
     void Action(int action);
     void Render(Page page);
@@ -54,11 +59,13 @@ private:
     void UpdateStroke();
     void SaveTimer();
     void LoadPreferences();
-    void Queue(int type, const std::string& value);
+    bool Queue(int type, const std::string& value);
     void Toast(const char* text);
     lv_obj_t* Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color);
     lv_obj_t* Label(lv_obj_t* parent, const char* text, int x, int y, int w,
                     const lv_font_t* font = nullptr);
+    const lv_font_t* DynamicTextFont() const;
+    void ApplyDynamicTextFont(lv_obj_t* label);
     lv_obj_t* Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h, uint32_t color,
                      int action);
 
@@ -91,8 +98,22 @@ private:
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
     lv_timer_t* tick_ = nullptr;
+    bool page_refresh_pending_ = false;
+    bool page_refresh_active_ = false;
+    int64_t page_render_started_ms_ = 0;
+    int64_t page_build_ms_ = 0;
+    int64_t refresh_started_ms_ = 0;
+    int64_t flush_started_us_ = 0;
+    int64_t flush_wait_started_us_ = 0;
+    int64_t flush_submit_us_ = 0;
+    int64_t flush_wait_us_ = 0;
+    uint32_t flush_count_ = 0;
+    uint32_t flush_pixels_ = 0;
     QueueHandle_t jobs_ = nullptr;
     std::function<void()> network_action_;
+    std::function<std::string()> usb_storage_action_;
+    std::atomic<bool> usb_storage_requested_{false};
+    std::atomic<bool> usb_storage_active_{false};
     han::Entry entry_ = han::ContentStore::Demo();
     han::StudyTimer study_;
     Page page_ = Page::Home;

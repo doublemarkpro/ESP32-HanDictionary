@@ -1,11 +1,14 @@
 #include "han_display.h"
 #ifndef HAN_UI_HOST_SIM
+#include <esp_heap_caps.h>
+#include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_timer.h>
 #include <wifi_manager.h>
 #include "application.h"
 #include "assets/lang_config.h"
 #include "board.h"
+#include "display/lvgl_display/lvgl_theme.h"
 #include "settings.h"
 #endif
 #include <cJSON.h>
@@ -19,10 +22,19 @@
 #include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "phonetics.h"
+#include "qweather_service.h"
 
 namespace {
 constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0xd9edfc;
 constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
+void SetTextIfChanged(lv_obj_t* label, const char* text) {
+    if (strcmp(lv_label_get_text(label), text) != 0)
+        lv_label_set_text(label, text);
+}
+void SetImageIfChanged(lv_obj_t* image, const lv_image_dsc_t* source) {
+    if (lv_image_get_src(image) != source)
+        lv_image_set_src(image, source);
+}
 const char* kSubjects[] = {"语文", "数学", "英语"};
 const char* kWeekdays[] = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
 int SubjectKind(const std::string& name) {
@@ -45,10 +57,6 @@ std::string Duration(int64_t ms) {
     char out[40];
     snprintf(out, sizeof(out), "%02lld:%02lld:%02lld", sec / 3600, sec / 60 % 60, sec % 60);
     return out;
-}
-const char* JString(cJSON* object, const char* key) {
-    auto v = cJSON_GetObjectItemCaseSensitive(object, key);
-    return cJSON_IsString(v) && v->valuestring ? v->valuestring : "";
 }
 }  // namespace
 
@@ -91,6 +99,20 @@ lv_obj_t* HanDisplay::Label(lv_obj_t* parent, const char* text, int x, int y, in
     return obj;
 }
 
+const lv_font_t* HanDisplay::DynamicTextFont() const {
+#ifndef HAN_UI_HOST_SIM
+    auto theme = dynamic_cast<LvglTheme*>(current_theme_);
+    if (theme != nullptr && theme->text_font() != nullptr && theme->text_font()->font() != nullptr)
+        return theme->text_font()->font();
+#endif
+    return &han_font_28;
+}
+
+void HanDisplay::ApplyDynamicTextFont(lv_obj_t* label) {
+    if (label != nullptr)
+        lv_obj_set_style_text_font(label, DynamicTextFont(), 0);
+}
+
 lv_obj_t* HanDisplay::Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h,
                              uint32_t color, int action) {
     auto obj = Box(parent, x, y, w, h, color);
@@ -116,6 +138,17 @@ void HanDisplay::SetupUI() {
                         : ESP_ERR_NO_MEM);
     DisplayLockGuard guard(this);
     Display::SetupUI();
+    // Keep decoded PNGs across partial refresh strips and page changes. Without a cache,
+    // repeatedly decoding the same artwork can starve audio processing on the device.
+    // This is an eviction budget, allocated on demand (large allocations use Tab5 PSRAM).
+    lv_image_cache_resize(8 * 1024 * 1024, true);
+#ifndef HAN_UI_HOST_SIM
+    constexpr lv_event_code_t refresh_events[] = {
+        LV_EVENT_REFR_START,   LV_EVENT_REFR_READY,       LV_EVENT_FLUSH_START,
+        LV_EVENT_FLUSH_FINISH, LV_EVENT_FLUSH_WAIT_START, LV_EVENT_FLUSH_WAIT_FINISH};
+    for (auto event : refresh_events)
+        lv_display_add_event_cb(display_, OnRefresh, event, this);
+#endif
     root_ = Box(lv_display_get_screen_active(display_), 0, 0, 1280, 720, kBg);
     lv_obj_set_style_radius(root_, 0, 0);
     Image(root_, &han_footer, 0, 574);
@@ -158,6 +191,9 @@ void HanDisplay::SetupUI() {
     lv_obj_set_height(notification_label_, 62);
     lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
     message_ = Label(root_, "试试说：我想学英语音标", 240, 677, 800);
+    ApplyDynamicTextFont(status_label_);
+    ApplyDynamicTextFont(notification_label_);
+    ApplyDynamicTextFont(message_);
     lv_obj_set_style_text_align(message_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(message_, LV_LABEL_LONG_SCROLL_CIRCULAR);
     tick_ = lv_timer_create(Tick, 800, this);
@@ -166,8 +202,21 @@ void HanDisplay::SetupUI() {
 }
 
 void HanDisplay::SetTheme(Theme* theme) {
-    // A fixed children's theme owns its fonts independently of cloud font/theme updates.
+    // Product artwork and headings keep their fixed fonts. Text received from the service uses
+    // the common Noto font so the server's dynamic glyph fallback can fill uncommon characters.
+    DisplayLockGuard guard(this);
     current_theme_ = theme;
+    ApplyDynamicTextFont(status_label_);
+    ApplyDynamicTextFont(notification_label_);
+    ApplyDynamicTextFont(message_);
+}
+
+void HanDisplay::SetStatus(const char* status) {
+#ifndef HAN_UI_HOST_SIM
+    if (status != nullptr && strcmp(status, Lang::Strings::STANDBY) == 0)
+        status = "";
+#endif
+    LvglDisplay::SetStatus(status ? status : "");
 }
 
 void HanDisplay::SetChatMessage(const char*, const char* text) {
@@ -178,7 +227,65 @@ void HanDisplay::SetChatMessage(const char*, const char* text) {
 void HanDisplay::ClearChatMessages() { SetChatMessage("", ""); }
 void HanDisplay::Toast(const char* text) { ShowNotification(text, 4500); }
 
+#ifndef HAN_UI_HOST_SIM
+void HanDisplay::OnRefresh(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    const auto code = lv_event_get_code(event);
+    if (code == LV_EVENT_REFR_START) {
+        self->page_refresh_active_ = self->page_refresh_pending_;
+        self->page_refresh_pending_ = false;
+        self->refresh_started_ms_ = NowMs();
+        self->flush_count_ = 0;
+        self->flush_pixels_ = 0;
+        self->flush_submit_us_ = 0;
+        self->flush_wait_us_ = 0;
+        return;
+    }
+    if (!self->page_refresh_active_)
+        return;
+    switch (code) {
+        case LV_EVENT_FLUSH_START: {
+            self->flush_started_us_ = esp_timer_get_time();
+            const auto area = static_cast<const lv_area_t*>(lv_event_get_param(event));
+            ++self->flush_count_;
+            self->flush_pixels_ += lv_area_get_size(area);
+            break;
+        }
+        case LV_EVENT_FLUSH_FINISH:
+            self->flush_submit_us_ += esp_timer_get_time() - self->flush_started_us_;
+            break;
+        case LV_EVENT_FLUSH_WAIT_START:
+            self->flush_wait_started_us_ = esp_timer_get_time();
+            break;
+        case LV_EVENT_FLUSH_WAIT_FINISH:
+            self->flush_wait_us_ += esp_timer_get_time() - self->flush_wait_started_us_;
+            break;
+        case LV_EVENT_REFR_READY: {
+            const auto now_ms = NowMs();
+            // The last asynchronous DMA copy can still be in flight at REFR_READY.
+            // Log only the frame following Render(), not every clock/status update.
+            ESP_LOGI("HanDisplay",
+                     "Page %d: build=%lld ms refresh=%lld ms queued=%lld ms "
+                     "flushes=%u pixels=%u submit=%lld us wait=%lld us PSRAM=%u",
+                     static_cast<int>(self->page_), self->page_build_ms_,
+                     now_ms - self->refresh_started_ms_, now_ms - self->page_render_started_ms_,
+                     static_cast<unsigned>(self->flush_count_),
+                     static_cast<unsigned>(self->flush_pixels_), self->flush_submit_us_,
+                     self->flush_wait_us_,
+                     static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+            self->page_refresh_active_ = false;
+            break;
+        }
+        default:
+            break;
+    }
+}
+#endif
+
 void HanDisplay::Render(Page page) {
+#ifndef HAN_UI_HOST_SIM
+    page_render_started_ms_ = NowMs();
+#endif
     ReleaseTalk();
     page_ = page;
     stroke_playing_ = false;
@@ -256,6 +363,15 @@ void HanDisplay::Render(Page page) {
             Network();
             break;
     }
+    if (page == Page::Home) {
+        // Submit the book mascot and page body together on the full-screen buffer.
+        // Otherwise separate invalidation areas make the mascot appear later.
+        lv_obj_invalidate(root_);
+    }
+#ifndef HAN_UI_HOST_SIM
+    page_build_ms_ = NowMs() - page_render_started_ms_;
+    page_refresh_pending_ = true;
+#endif
 }
 
 void HanDisplay::Home() {
@@ -618,13 +734,12 @@ void HanDisplay::Timer() {
 
 void HanDisplay::UpdateTimer() {
     if (timer_value_)
-        lv_label_set_text(timer_value_,
-                          Duration(study_.Elapsed(study_.subject(), NowMs())).c_str());
+        SetTextIfChanged(timer_value_, Duration(study_.Elapsed(study_.subject(), NowMs())).c_str());
     for (int i = 0; i < 3; ++i)
         if (totals_[i]) {
             auto label = std::string(kSubjects[i]) + "  " + Duration(study_.Elapsed(i, NowMs())) +
                          (study_.completed(i) ? " 已完成" : "");
-            lv_label_set_text(totals_[i], label.c_str());
+            SetTextIfChanged(totals_[i], label.c_str());
         }
 }
 
@@ -669,19 +784,35 @@ void HanDisplay::Weather() {
     lv_image_set_src(img, &han_icon_weather);
     lv_obj_set_pos(img, 35, 28);
     Label(card, "天气", 190, 57, 800, &han_font_40);
-    Label(card,
-          weather_text_.empty()
-              ? "暂无天气数据\n\n联网天气服务待接入。\n导入缓存后会明确显示更新时间。"
-              : weather_text_.c_str(),
-          35, 182, 1160);
+    auto weather =
+        Label(card,
+              weather_text_.empty() ? "暂无天气数据\n\n请在 SD 卡配置和风天气，然后点右侧刷新。"
+                                    : weather_text_.c_str(),
+              35, 150, 930);
+    ApplyDynamicTextFont(weather);
+    auto refresh = Button(card, "刷新天气", 985, 170, 210, 76, kGreen, 900);
+    ApplyDynamicTextFont(lv_obj_get_child(refresh, 0));
 }
 
 void HanDisplay::Network() {
     auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
+    if (usb_storage_active_) {
+        Label(card, "USB 读卡器已开启", 28, 22, 1120, &han_font_40);
+        auto message = Label(card,
+                             "电脑现在可以访问 microSD 卡。\n\n复制或格式化完成后，请先在电脑上安全弹出，"
+                             "再重启设备。",
+                             28, 118, 1130);
+        ApplyDynamicTextFont(message);
+        Label(card, "此模式下字典内容和语音唤醒暂停", 28, 415, 1160);
+        network_info_ = nullptr;
+        return;
+    }
     Label(card, "请家长帮助联网", 28, 22, 1120, &han_font_40);
     network_info_ = Label(card, "正在读取网络状态…", 28, 100, 1130);
     Button(card, "打开手机配网", 28, 298, 430, 80, kBlue, 10);
-    Label(card, "第一版沿用小智手机配网，触屏选网键盘后续接入", 28, 415, 1160);
+    Button(card, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 485, 298, 360, 80,
+           kGreen, 11);
+    Label(card, "USB 模式会暂停内容读取；电脑安全弹出后重启设备", 28, 415, 1160);
 }
 
 void HanDisplay::OnClick(lv_event_t* e) {
@@ -690,6 +821,8 @@ void HanDisplay::OnClick(lv_event_t* e) {
 }
 
 void HanDisplay::Action(int a) {
+    if (usb_storage_active_)
+        return;
     if (a == 500) {
         if (!WifiManager::GetInstance().IsConnected() ||
             Application::GetInstance().GetDeviceState() == kDeviceStateWifiConfiguring) {
@@ -731,6 +864,8 @@ void HanDisplay::Action(int a) {
     }
     if (a >= 0 && a < 6) {
         Render(static_cast<Page>(a + 1));
+        if (a == 5)
+            Queue(4, "");
         return;
     }
     if (a == 6) {
@@ -751,6 +886,29 @@ void HanDisplay::Action(int a) {
     }
     if (a == 10 && network_action_) {
         Application::GetInstance().Schedule([this] { network_action_(); });
+        return;
+    }
+    if (a == 11 && usb_storage_action_) {
+        auto& app = Application::GetInstance();
+        ESP_LOGI("HanDisplay", "USB storage requested (state=%d, local_audio=%d)",
+                 static_cast<int>(app.GetDeviceState()), static_cast<int>(local_audio_.load()));
+        if (local_audio_ || (app.GetDeviceState() != kDeviceStateIdle &&
+                             app.GetDeviceState() != kDeviceStateWifiConfiguring)) {
+            Toast("请先结束当前语音或播放");
+            return;
+        }
+        if (usb_storage_requested_.exchange(true))
+            return;
+        Render(Page::Network);
+        if (!Queue(5, "")) {
+            usb_storage_requested_ = false;
+            Render(Page::Network);
+        }
+        return;
+    }
+    if (a == 900) {
+        Toast("正在刷新天气…");
+        Queue(4, "");
         return;
     }
     if (a == 20 || a == 22) {
@@ -889,6 +1047,8 @@ void HanDisplay::ShowEntry(const han::Entry& entry) {
 }
 
 bool HanDisplay::OpenPage(const std::string& page) {
+    if (usb_storage_active_ || usb_storage_requested_)
+        return false;
     const char* names[] = {"home",  "dictionary", "phonetics", "timetable",
                            "timer", "alarm",      "weather",   "network"};
     for (int i = 0; i < 8; ++i)
@@ -930,12 +1090,12 @@ void HanDisplay::UpdateStatusBar(bool) {
     DisplayLockGuard guard(this);
     if (!setup_ui_called_)
         return;
-    lv_label_set_text(clock_, clock);
-    lv_label_set_text(date_, date);
-    lv_image_set_src(wifi_image_, !wifi.IsConnected() ? &han_status_wifi_off
-                                  : rssi >= -65       ? &han_status_wifi_3
-                                  : rssi >= -75       ? &han_status_wifi_2
-                                                      : &han_status_wifi_1);
+    SetTextIfChanged(clock_, clock);
+    SetTextIfChanged(date_, date);
+    SetImageIfChanged(wifi_image_, !wifi.IsConnected() ? &han_status_wifi_off
+                                   : rssi >= -65       ? &han_status_wifi_3
+                                   : rssi >= -75       ? &han_status_wifi_2
+                                                       : &han_status_wifi_1);
     const lv_image_dsc_t* battery = &han_status_battery_unknown;
     if (known && level >= 0 && level <= 100) {
         battery = charging      ? &han_status_battery_charging
@@ -944,7 +1104,7 @@ void HanDisplay::UpdateStatusBar(bool) {
                   : level <= 65 ? &han_status_battery_half
                                 : &han_status_battery_full;
     }
-    lv_image_set_src(battery_image_, battery);
+    SetImageIfChanged(battery_image_, battery);
     const int64_t date_key = valid_time ? static_cast<int64_t>(tm.tm_year) * 366 + tm.tm_yday : -1;
     if (date_key != timetable_date_key_) {
         timetable_date_key_ = date_key;
@@ -955,7 +1115,7 @@ void HanDisplay::UpdateStatusBar(bool) {
             Render(Page::Timetable);
     }
     if (network_info_)
-        lv_label_set_text(network_info_, network.c_str());
+        SetTextIfChanged(network_info_, network.c_str());
     // Daily alarm is based on synchronized system time; RTC wake-up is not implied.
     const int64_t day = static_cast<int64_t>(tm.tm_year) * 366 + tm.tm_yday;
     if (valid_time && alarm_enabled_ && alarm_last_day_ != day &&
@@ -998,16 +1158,19 @@ void HanDisplay::SaveTimer() {
     });
 }
 
-void HanDisplay::Queue(int type, const std::string& value) {
+bool HanDisplay::Queue(int type, const std::string& value) {
     Job job{};
     job.type = type;
     if (value.size() >= sizeof(job.value)) {
         Toast("内容路径过长");
-        return;
+        return false;
     }
     memcpy(job.value, value.data(), value.size());
-    if (!jobs_ || xQueueSend(jobs_, &job, 0) != pdTRUE)
+    if (!jobs_ || xQueueSend(jobs_, &job, 0) != pdTRUE) {
         Toast("正在处理，请稍后再试");
+        return false;
+    }
+    return true;
 }
 
 void HanDisplay::Worker(void* ptr) {
@@ -1049,27 +1212,47 @@ void HanDisplay::Worker(void* ptr) {
                 audio.EnableWakeWordDetection(true);
             self->local_audio_ = false;
         } else if (job.type == 2) {
-            std::string data, weather;
+            std::string data;
             if (store.ready() && store.Read("timetable.json", data, 8192)) {
                 self->ApplyTimetable(data);
             }
-            if (store.ready() && store.Read("weather.json", data, 4096)) {
-                auto root = cJSON_Parse(data.c_str());
-                auto city = std::string(JString(root, "city"));
-                auto updated = std::string(JString(root, "updated_at"));
-                if (!city.empty() && !updated.empty())
-                    weather =
-                        city + "（缓存）\n" + JString(root, "summary") + "\n\n更新时间：" + updated;
-                cJSON_Delete(root);
-            }
+            auto weather = han::QWeatherService::LoadCache(store);
             DisplayLockGuard guard(self);
             self->weather_text_ = weather;
             if (self->page_ == Page::Timetable || self->page_ == Page::Weather)
+                self->Render(self->page_);
+        } else if (job.type == 4) {
+            std::string weather, error;
+            if (!han::QWeatherService::Refresh(store, weather, error)) {
+                if (weather.empty())
+                    weather = han::QWeatherService::LoadCache(store);
+                self->Toast(error.c_str());
+            }
+            DisplayLockGuard guard(self);
+            if (!weather.empty())
+                self->weather_text_ = weather;
+            if (self->page_ == Page::Weather)
                 self->Render(self->page_);
         } else if (job.type == 3) {
             std::string data;
             if (store.ReadStroke(job.value, data))
                 self->ApplyStrokeFrame(job.value, std::move(data));
+        } else if (job.type == 5) {
+            auto& app = Application::GetInstance();
+            app.GetAudioService().EnableWakeWordDetection(false);
+            const auto error = self->usb_storage_action_ ? self->usb_storage_action_()
+                                                         : "当前设备不支持 USB 读卡器";
+            if (!error.empty()) {
+                self->usb_storage_requested_ = false;
+                if (app.GetDeviceState() == kDeviceStateIdle)
+                    app.GetAudioService().EnableWakeWordDetection(true);
+                self->Toast(error.c_str());
+            } else {
+                self->usb_storage_active_ = true;
+                self->usb_storage_requested_ = false;
+            }
+            DisplayLockGuard guard(self);
+            self->Render(Page::Network);
         }
     }
 }

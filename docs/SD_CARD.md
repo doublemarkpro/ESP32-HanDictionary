@@ -10,7 +10,7 @@
 | 规字示例与八个笔画显示帧 | 内部固件 | 已包含；释义是开发示例，不是新华字典原文 |
 | 正式字条、精确页码 | SD 卡 | 导入接口已完成，完整第12版数据未提供 |
 | 音标和例词发音 | SD 卡 | 播放接口已完成，教学录音待导入 |
-| 课程表、天气缓存 | SD 卡 | JSON 模板与读取已完成，默认空白 |
+| 课程表、和风天气配置与缓存 | SD 卡 | 在线刷新、离线缓存和 JSON 模板已完成 |
 | 作业时长、每日提醒设置 | NVS | 暂停/完成时保存；计时中约每分钟检查点 |
 | 全量笔顺 | SD 内容包 | 已支持按需读取帧；当前资源有规、矩，非全量 |
 | 完整字库字体、录音历史 | 后续 SD 内容包 | 尚未接入 |
@@ -42,6 +42,7 @@ SD:/handict/
   phonetics/en-GB/i-long/tea.ogg
   timetable.json
   weather.json
+  qweather.example.json
 ```
 
 音频目录为需要自行补齐的路径说明；仓库不带这些发音文件。音频格式和转换方式见 [音频说明](../content/sdcard/handict/phonetics/README.md)。基本点读离线可用，小智语义识别与对话仍需要联网。
@@ -81,8 +82,20 @@ UI4：`timetable.json` 的 `days` 为周一开始的五个或七个数组，每�
 默认五个空数组，不虚构课程；支持周末、节次翻页、临时物品勾选和联网查询。
 完整格式、字体扩充方法、实际截图见 [课程表 UI4](ui/TIMETABLE_UI4.md)。
 
-`weather.json` 提供 city、summary、updated_at；全部默认空。显示缓存时保留“缓存”和更新时间标记，在线天气 API 尚未接入。
+天气页已接入和风天气实时天气 v1 API。示例内容包带
+`qweather.example.json`；填写项目专属 API Host、API KEY、城市和经纬度后，将它复制为
+`qweather.json`。成功请求会更新不含密钥的 `weather.json`，断网时继续显示带时间戳的缓存。
+完整步骤见 [和风天气配置](QWEATHER.md)。
 
 ## 硬件
 
 SD 使用 [M5Stack 官方 SPI 引脚](https://docs.m5stack.com/en/arduino/m5tab5/microsd)：CS42、SCK43、MOSI44、MISO39。Wi-Fi 所用的 P4/C6 SDIO 配置保持原值。缺卡/坏卡只降级，不中止主页启动。
+
+2026-09-13 实测一张 128 GB 卡能够进入 SD 协议初始化，电脑经 Tab5 USB-C 枚举为
+119.25 GB 可移动磁盘；其原始格式为 exFAT，所以 FATFS 启动挂载返回“没有可识别的 FAT 卷”。
+本固件内容卡应使用 FAT32。
+
+Legacy 字典变体已加入安全的 USB MSC 读卡器模式。点主页右上角 Wi-Fi 图标，进入
+“联网设置”，再点“USB 读卡器”。固件会停止内容读取、卸载应用侧文件系统，并把 USB-C
+从调试串口切给 microSD；此时 COM 口消失属于正常现象。复制或格式化完成后，先在电脑上
+安全弹出磁盘，再重启 Tab5。进入该模式后字典内容和语音唤醒会暂停，重启后恢复。

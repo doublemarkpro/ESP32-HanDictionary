@@ -67,7 +67,10 @@ std::string ContentStore::TargetCharacter(const std::string& query) {
 }
 
 bool ContentStore::Read(const std::string& relative, std::string& data, size_t limit) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     data.clear();
+    if (!available_)
+        return false;
     if (relative.empty() || relative.front() == '/' || relative.find("..") != std::string::npos ||
         relative.find_first_of("\\:\0", 0, 3) != std::string::npos)
         return false;
@@ -93,7 +96,9 @@ bool ContentStore::Read(const std::string& relative, std::string& data, size_t l
 }
 
 bool ContentStore::Initialize() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     std::string data;
+    available_ = true;
     ready_ = false;
     if (!Read("manifest.json", data, 4096))
         return false;
@@ -110,6 +115,13 @@ bool ContentStore::Initialize() {
     ready_ = true;
     notice_ = "SD 内容包已加载";
     return true;
+}
+
+void ContentStore::Detach(const std::string& notice) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    available_ = false;
+    ready_ = false;
+    notice_ = notice;
 }
 
 std::string ContentStore::StrokePath(const std::string& character, int frame) {
@@ -133,6 +145,7 @@ bool ContentStore::IsStrokePng(const std::string& data) {
 }
 
 bool ContentStore::ReadStroke(const std::string& path, std::string& data) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!ready_ || path.compare(0, 19, "dictionary/strokes/") != 0 ||
         !Read(path, data, 128 * 1024) || !IsStrokePng(data)) {
         data.clear();
@@ -177,6 +190,7 @@ bool ContentStore::ParseEntry(const std::string& json, const std::string& charac
 }
 
 bool ContentStore::Lookup(const std::string& query, Entry& entry) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     const auto character = TargetCharacter(query);
     if (character.empty())
         return false;

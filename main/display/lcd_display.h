@@ -73,11 +73,17 @@ public:
 };
 
 // MIPI LCD display
+struct MipiLcdDisplayConfig {
+    // Zero retains the default 50-line buffer used by existing boards.
+    uint32_t buffer_pixels = 0;
+    bool buffer_in_psram = false;
+};
+
 class MipiLcdDisplay : public LcdDisplay {
 public:
     MipiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel, int width,
                    int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y,
-                   bool swap_xy);
+                   bool swap_xy, const MipiLcdDisplayConfig& config = {});
 };
 
 #endif  // LCD_DISPLAY_H
