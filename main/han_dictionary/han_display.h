@@ -55,6 +55,8 @@ private:
     void Alarm();
     void Weather();
     void Network();
+    void SetScreenOff(bool off);
+    void UpdateSettingLabels();
     void UpdateTimer();
     void UpdateStroke();
     void SaveTimer();
@@ -86,6 +88,9 @@ private:
     int64_t talk_pressed_ms_ = 0;
     lv_obj_t* message_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
+    lv_obj_t* brightness_value_ = nullptr;
+    lv_obj_t* volume_value_ = nullptr;
+    lv_obj_t* screen_wake_overlay_ = nullptr;
     lv_obj_t* timer_value_ = nullptr;
     lv_obj_t* totals_[3]{};
     lv_obj_t* stroke_value_ = nullptr;
@@ -114,6 +119,7 @@ private:
     std::function<std::string()> usb_storage_action_;
     std::atomic<bool> usb_storage_requested_{false};
     std::atomic<bool> usb_storage_active_{false};
+    std::atomic<bool> screen_off_{false};
     han::Entry entry_ = han::ContentStore::Demo();
     han::StudyTimer study_;
     Page page_ = Page::Home;
@@ -134,4 +140,6 @@ private:
     int64_t timetable_date_key_ = -1;
     std::array<bool, 8> supplies_checked_{};
     std::string weather_text_;
+    int brightness_setting_ = 75;
+    int volume_setting_ = 70;
 };

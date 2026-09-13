@@ -7,6 +7,7 @@
 #include <wifi_manager.h>
 #include "application.h"
 #include "assets/lang_config.h"
+#include "audio/audio_codec.h"
 #include "board.h"
 #include "display/lvgl_display/lvgl_theme.h"
 #include "settings.h"
@@ -290,6 +291,7 @@ void HanDisplay::Render(Page page) {
     page_ = page;
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
+    brightness_value_ = volume_value_ = nullptr;
     alarm_hour_ = alarm_minute_ = nullptr;
     for (auto& label : totals_)
         label = nullptr;
@@ -301,7 +303,7 @@ void HanDisplay::Render(Page page) {
     lv_image_cache_drop(&sd_stroke_);
     stroke_png_.clear();
     const char* titles[] = {"小小助手", "查字典", "英语音标", "课程表",
-                            "作业计时", "闹钟",   "天气",     "联网设置"};
+                            "作业计时", "闹钟",   "天气",     "设置"};
     lv_label_set_text(title_, titles[static_cast<int>(page)]);
     if (page == Page::Home) {
         lv_obj_add_flag(back_, LV_OBJ_FLAG_HIDDEN);
@@ -807,12 +809,73 @@ void HanDisplay::Network() {
         network_info_ = nullptr;
         return;
     }
-    Label(card, "请家长帮助联网", 28, 22, 1120, &han_font_40);
-    network_info_ = Label(card, "正在读取网络状态…", 28, 100, 1130);
-    Button(card, "打开手机配网", 28, 298, 430, 80, kBlue, 10);
-    Button(card, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 485, 298, 360, 80,
+    Label(card, "网络与存储", 28, 22, 550, &han_font_40);
+    network_info_ = Label(card, "正在读取网络状态…", 28, 84, 550);
+    Button(card, "手机配网", 28, 258, 270, 70, kBlue, 10);
+    Button(card, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 316, 258, 270, 70,
            kGreen, 11);
-    Label(card, "USB 模式会暂停内容读取；电脑安全弹出后重启设备", 28, 415, 1160);
+    Label(card, "USB 模式下请先在电脑安全弹出，再重启设备", 28, 367, 555);
+
+    Box(card, 614, 22, 2, 420, 0xe8e3dc);
+    Label(card, "显示与声音", 650, 22, 530, &han_font_40);
+    Label(card, "屏幕亮度", 650, 105, 180);
+    Button(card, "-", 836, 91, 70, 62, kBlue, 910);
+    brightness_value_ = Label(card, "", 920, 106, 145);
+    lv_obj_set_style_text_align(brightness_value_, LV_TEXT_ALIGN_CENTER, 0);
+    Button(card, "+", 1078, 91, 70, 62, kBlue, 911);
+    Label(card, "播放音量", 650, 196, 180);
+    Button(card, "-", 836, 182, 70, 62, kGreen, 912);
+    volume_value_ = Label(card, "", 920, 197, 145);
+    lv_obj_set_style_text_align(volume_value_, LV_TEXT_ALIGN_CENTER, 0);
+    Button(card, "+", 1078, 182, 70, 62, kGreen, 913);
+    Button(card, "立即关屏", 650, 288, 498, 72, kPurple, 914);
+    Label(card, "关屏后触摸屏幕任意位置即可唤醒", 650, 395, 550);
+    UpdateSettingLabels();
+}
+
+void HanDisplay::UpdateSettingLabels() {
+    char value[16];
+    if (brightness_value_) {
+        snprintf(value, sizeof(value), "%d%%", brightness_setting_);
+        SetTextIfChanged(brightness_value_, value);
+    }
+    if (volume_value_) {
+        snprintf(value, sizeof(value), "%d%%", volume_setting_);
+        SetTextIfChanged(volume_value_, value);
+    }
+}
+
+void HanDisplay::SetScreenOff(bool off) {
+    if (screen_off_.load() == off)
+        return;
+    DisplayLockGuard guard(this);
+    if (!setup_ui_called_ || root_ == nullptr)
+        return;
+    ReleaseTalk();
+
+    if (off) {
+        screen_wake_overlay_ = Box(root_, 0, 0, 1280, 720, 0x000000);
+        lv_obj_set_style_radius(screen_wake_overlay_, 0, 0);
+        lv_obj_set_style_bg_opa(screen_wake_overlay_, LV_OPA_TRANSP, 0);
+        lv_obj_add_flag(screen_wake_overlay_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_user_data(screen_wake_overlay_, this);
+        lv_obj_add_event_cb(screen_wake_overlay_, OnClick, LV_EVENT_CLICKED,
+                            reinterpret_cast<void*>(static_cast<intptr_t>(915)));
+        screen_off_ = true;
+#ifndef HAN_UI_HOST_SIM
+        Board::GetInstance().GetBacklight()->SetBrightness(0);
+#endif
+        return;
+    }
+
+    screen_off_ = false;
+    if (screen_wake_overlay_ != nullptr) {
+        lv_obj_delete(screen_wake_overlay_);
+        screen_wake_overlay_ = nullptr;
+    }
+#ifndef HAN_UI_HOST_SIM
+    Board::GetInstance().GetBacklight()->SetBrightness(brightness_setting_);
+#endif
 }
 
 void HanDisplay::OnClick(lv_event_t* e) {
@@ -821,6 +884,10 @@ void HanDisplay::OnClick(lv_event_t* e) {
 }
 
 void HanDisplay::Action(int a) {
+    if (screen_off_) {
+        Application::GetInstance().Schedule([this] { SetScreenOff(false); });
+        return;
+    }
     if (usb_storage_active_)
         return;
     if (a == 500) {
@@ -909,6 +976,30 @@ void HanDisplay::Action(int a) {
     if (a == 900) {
         Toast("正在刷新天气…");
         Queue(4, "");
+        return;
+    }
+    if (a >= 910 && a <= 913) {
+        if (a == 910 || a == 911)
+            brightness_setting_ =
+                std::clamp(brightness_setting_ + (a == 910 ? -10 : 10), 10, 100);
+        else
+            volume_setting_ = std::clamp(volume_setting_ + (a == 912 ? -10 : 10), 10, 100);
+        UpdateSettingLabels();
+#ifndef HAN_UI_HOST_SIM
+        const int brightness = brightness_setting_;
+        const int volume = volume_setting_;
+        Application::GetInstance().Schedule([a, brightness, volume] {
+            auto& board = Board::GetInstance();
+            if (a == 910 || a == 911)
+                board.GetBacklight()->SetBrightness(brightness, true);
+            else
+                board.GetAudioCodec()->SetOutputVolume(volume);
+        });
+#endif
+        return;
+    }
+    if (a == 914) {
+        Application::GetInstance().Schedule([this] { SetScreenOff(true); });
         return;
     }
     if (a == 20 || a == 22) {
@@ -1139,6 +1230,11 @@ void HanDisplay::LoadPreferences() {
     Settings a("han_alarm");
     alarm_minutes_ = std::clamp(static_cast<int>(a.GetInt("minutes", 405)), 0, 1439);
     alarm_enabled_ = a.GetBool("enabled", false);
+    Settings display("display");
+    brightness_setting_ =
+        std::clamp(static_cast<int>(display.GetInt("brightness", 75)), 10, 100);
+    Settings audio("audio");
+    volume_setting_ = std::clamp(static_cast<int>(audio.GetInt("output_volume", 70)), 10, 100);
 }
 
 void HanDisplay::SaveTimer() {
