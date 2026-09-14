@@ -19,7 +19,8 @@ SD:/handict/
     pinyin.idx
     strokes.idx
     strokes.dat
-    font-28-1.bin
+    font-28-2.bin
+    SourceHanSansSC-Normal.otf
   phonetics/
   ui/graphics/
   licenses/

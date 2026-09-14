@@ -39,6 +39,14 @@ enum class PowerSaveLevel {
     PERFORMANCE,  // No power saving (maximum power consumption / full performance)
 };
 
+struct BatteryInfo {
+    int level = -1;
+    int voltage_mv = -1;
+    int current_ma = 0;  // Positive while charging, negative while discharging.
+    bool charging = false;
+    bool discharging = false;
+};
+
 // Network event callback type (event, data)
 // data contains additional info like SSID for Connecting/Connected events
 using NetworkEventCallback = std::function<void(NetworkEvent event, const std::string& data)>;
@@ -78,6 +86,7 @@ public:
     virtual void SetNetworkEventCallback(NetworkEventCallback callback) { (void)callback; }
     virtual const char* GetNetworkStateIcon() = 0;
     virtual bool GetBatteryLevel(int &level, bool& charging, bool& discharging);
+    virtual bool GetBatteryInfo(BatteryInfo& info);
     virtual std::string GetSystemInfoJson();
     virtual void SetPowerSaveLevel(PowerSaveLevel level) = 0;
     virtual std::string GetBoardJson() = 0;

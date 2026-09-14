@@ -324,8 +324,9 @@ def build_dictionary_font(output, font):
         raise ValueError("Generating the SD font requires Node.js")
     subprocess.run([
         node, str(font_converter()), "--no-compress", "--no-prefilter", "--no-kerning",
-        "--font", str(font), "--format", "cbin", "--bpp", "1", "--size", "28",
-        "-r", "0x20-0x2ff,0x4e00-0x9fff", "-o", str(output),
+        "--font", str(font), "--format", "cbin", "--bpp", "2", "--size", "28",
+        "-r", "0x20-0x2ff,0x2000-0x206f,0x3000-0x303f,0x4e00-0x9fff,0xff00-0xffef",
+        "-o", str(output),
     ], check=True)
     size = output.stat().st_size
     if not 128 * 1024 <= size <= 4 * 1024 * 1024:
@@ -361,8 +362,14 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
     (dictionary / "pinyin.idx").write_bytes(pinyin_index)
     font_size = 0
     font_crc = 0
+    scalable_font_size = 0
+    scalable_font_crc = 0
     if font:
-        font_size, font_crc = build_dictionary_font(dictionary / "font-28-1.bin", font)
+        font_size, font_crc = build_dictionary_font(dictionary / "font-28-2.bin", font)
+        scalable_font = dictionary / "SourceHanSansSC-Normal.otf"
+        shutil.copyfile(font, scalable_font)
+        scalable_font_size = scalable_font.stat().st_size
+        scalable_font_crc = zlib.crc32(scalable_font.read_bytes())
     manifest_path = output / "handict/manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["indexed_dictionary"] = {
@@ -391,11 +398,17 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
         }
     if font_size:
         manifest["indexed_dictionary"]["font"] = {
-            "path": "dictionary/font-28-1.bin",
+            "path": "dictionary/font-28-2.bin",
             "size": 28,
-            "bpp": 1,
+            "bpp": 2,
             "bytes": font_size,
             "crc32": font_crc,
+        }
+        manifest["indexed_dictionary"]["scalable_font"] = {
+            "path": "dictionary/SourceHanSansSC-Normal.otf",
+            "format": "opentype",
+            "bytes": scalable_font_size,
+            "crc32": scalable_font_crc,
         }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
                              encoding="utf-8")
@@ -430,7 +443,7 @@ def main():
         parser.exit(1, f"Dictionary import error: {exc}\n")
     print(f"Converted and validated {count} entries")
     print(f"index.bin: {index_bytes} bytes; data.bin: {data_bytes} bytes")
-    print(f"font-28-1.bin: {font_bytes} bytes")
+    print(f"font-28-2.bin: {font_bytes} bytes")
     print(f"Skipped input rows: {skipped}; removed invalid UTF-8 markers: {replacements}")
     print(f"Copy {args.output.resolve() / 'handict'} to SD:/handict and restart the device.")
 

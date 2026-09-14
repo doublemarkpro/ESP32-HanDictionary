@@ -62,6 +62,8 @@ private:
     void Weather();
     void Network();
     void SetScreenOff(bool off);
+    void ShowBatteryPopup();
+    void CloseBatteryPopup();
     void UpdateSettingLabels();
     void UpdateTimer();
     void UpdateStroke();
@@ -84,9 +86,14 @@ private:
                     const lv_font_t* font = nullptr);
     const lv_font_t* DynamicTextFont() const;
     const lv_font_t* DictionaryTextFont() const;
+    const lv_font_t* DictionaryLargeFont() const;
+    const lv_font_t* DictionaryHeroFont() const;
     void ApplyDynamicTextFont(lv_obj_t* label);
     void ApplyDictionaryTextFont(lv_obj_t* label);
+    void ApplyDictionaryLargeFont(lv_obj_t* label);
     void InstallDictionaryFont(std::string data);
+    void InstallScalableDictionaryFonts(const std::string& path);
+    void ReleaseDictionaryFonts();
     lv_obj_t* Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h, uint32_t color,
                      int action);
 
@@ -103,7 +110,9 @@ private:
     lv_obj_t* top_divider_right_ = nullptr;
     lv_obj_t* wifi_button_ = nullptr;
     lv_obj_t* wifi_image_ = nullptr;
+    lv_obj_t* battery_button_ = nullptr;
     lv_obj_t* battery_image_ = nullptr;
+    lv_obj_t* battery_popup_ = nullptr;
     lv_obj_t* page_icon_ = nullptr;
     lv_obj_t* assistant_card_ = nullptr;
     lv_obj_t* assistant_badge_ = nullptr;
@@ -194,10 +203,16 @@ private:
 #ifndef HAN_UI_HOST_SIM
     std::string dictionary_font_data_;
     lv_font_t* dictionary_font_ = nullptr;
-    lv_font_t dictionary_ui_font_{};
-    bool dictionary_ui_font_ready_ = false;
+    lv_font_t* dictionary_large_font_ = nullptr;
+    lv_font_t* dictionary_hero_font_ = nullptr;
+    bool dictionary_font_is_ttf_ = false;
 #endif
     int brightness_setting_ = 75;
     int volume_setting_ = 70;
+    int battery_level_ = -1;
+    int battery_voltage_mv_ = -1;
+    int battery_current_ma_ = 0;
+    bool battery_charging_ = false;
+    bool battery_discharging_ = false;
     bool initial_banner_pending_ = true;
 };

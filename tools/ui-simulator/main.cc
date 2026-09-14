@@ -179,6 +179,11 @@ int main(int argc, char** argv) {
         ui.UpdateStatusBar();
         Check(FindImage(lv_screen_active(), &han_status_wifi_3), "connected Wi-Fi icon");
         Check(FindImage(lv_screen_active(), &han_status_battery_full), "known battery icon");
+        ClickImage(&han_status_battery_full);
+        Check(FindLabel(lv_screen_active(), "电池详情"), "battery details popup opens");
+        Check(FindLabel(lv_screen_active(), "7.600 V"), "battery voltage is shown");
+        Check(FindLabel(lv_screen_active(), "-180 mA"), "battery current is shown");
+        Click("×");
         Shot(folder, "home-online-fixture");
         WifiManager::GetInstance().rssi = -80;
         Board::GetInstance().battery = 10;

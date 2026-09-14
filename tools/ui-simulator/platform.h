@@ -125,6 +125,13 @@ struct Application {
     DeviceState GetDeviceState() { return state; }
 };
 struct Board {
+    struct BatteryInfo {
+        int level = -1;
+        int voltage_mv = -1;
+        int current_ma = 0;
+        bool charging = false;
+        bool discharging = false;
+    };
     bool battery_known = false, charging = false;
     int battery = 0;
     static Board& GetInstance() {
@@ -135,6 +142,14 @@ struct Board {
         level = battery;
         charge = charging;
         discharge = !charging;
+        return battery_known;
+    }
+    bool GetBatteryInfo(BatteryInfo& info) {
+        info.level = battery;
+        info.voltage_mv = 7600;
+        info.current_ma = charging ? 420 : -180;
+        info.charging = charging;
+        info.discharging = !charging;
         return battery_known;
     }
 };

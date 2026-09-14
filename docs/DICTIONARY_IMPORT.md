@@ -34,7 +34,8 @@ SD:/handict/
   dictionary/pinyin.idx
   dictionary/strokes.idx
   dictionary/strokes.dat
-  dictionary/font-28-1.bin
+  dictionary/font-28-2.bin
+  dictionary/SourceHanSansSC-Normal.otf
   dictionary/entries/89C4.json
   ...
 ```
@@ -47,7 +48,10 @@ SD:/handict/
 `index.bin` 使用 `handict-index-v1`：32 字节小端头部后是 U+4E00—U+9FFF 的固定槽位，
 每槽包含 `data.bin` 中记录的偏移和长度。查一个字只需读取一个 8 字节槽位和一条不超过
 4096 字节的 JSON 记录；固件不扫描 TSV，也不常驻约 168 KB 的索引。约 2.2 MB 的
-`font-28-1.bin` 在后台从 SD 载入 PSRAM，覆盖基本汉字及释义字符，避免生僻字显示为方框。
+`SourceHanSansSC-Normal.otf` 由 LVGL 按控件实际需要生成 28、40 和 64 px 的抗锯齿字形：
+释义使用 28 px，拼音候选和详情标题使用 40 px，主字使用 64 px。这样既覆盖生僻字，也避免
+把小字号点阵等比放大造成锯齿。`font-28-2.bin` 作为旧内容包和字体初始化失败时的兼容后备；
+旧版 `font-28-1.bin` 仍可读取。
 
 `pinyin.idx` 使用 `handict-pinyin-v1`，转换时将带声调拼音归一化为小写拉丁字母，并把同音字
 候选压缩为连续 UTF-8 数据。设备输入 `han` 后只二分读取一个拼音目录项和最多 20 个候选字，

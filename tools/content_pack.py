@@ -282,18 +282,36 @@ def validate_pinyin_index(folder):
 
 def validate_index_font(folder, manifest):
     indexed = manifest.get("indexed_dictionary")
-    if not isinstance(indexed, dict) or "font" not in indexed:
+    if not isinstance(indexed, dict):
         return
-    font = indexed["font"]
-    if not isinstance(font, dict) or font.get("path") != "dictionary/font-28-1.bin":
-        raise ValueError("Indexed dictionary font metadata is invalid")
-    if font.get("size") != 28 or font.get("bpp") != 1:
-        raise ValueError("Indexed dictionary font profile is unsupported")
-    path = Path(folder) / font["path"]
-    if not path.is_file() or not 128 * 1024 <= path.stat().st_size <= 4 * 1024 * 1024:
-        raise ValueError("Indexed dictionary font size is invalid")
-    if font.get("bytes") != path.stat().st_size or font.get("crc32") != zlib.crc32(path.read_bytes()):
-        raise ValueError("Indexed dictionary font checksum mismatch")
+    if "font" in indexed:
+        font = indexed["font"]
+        profiles = {
+            "dictionary/font-28-1.bin": 1,
+            "dictionary/font-28-2.bin": 2,
+        }
+        if not isinstance(font, dict) or font.get("path") not in profiles:
+            raise ValueError("Indexed dictionary font metadata is invalid")
+        if font.get("size") != 28 or font.get("bpp") != profiles[font["path"]]:
+            raise ValueError("Indexed dictionary font profile is unsupported")
+        path = Path(folder) / font["path"]
+        if not path.is_file() or not 128 * 1024 <= path.stat().st_size <= 4 * 1024 * 1024:
+            raise ValueError("Indexed dictionary font size is invalid")
+        if (font.get("bytes") != path.stat().st_size or
+                font.get("crc32") != zlib.crc32(path.read_bytes())):
+            raise ValueError("Indexed dictionary font checksum mismatch")
+    if "scalable_font" in indexed:
+        font = indexed["scalable_font"]
+        if (not isinstance(font, dict) or
+                font.get("path") != "dictionary/SourceHanSansSC-Normal.otf" or
+                font.get("format") != "opentype"):
+            raise ValueError("Indexed dictionary scalable font metadata is invalid")
+        path = Path(folder) / font["path"]
+        if not path.is_file() or not 1024 * 1024 <= path.stat().st_size <= 32 * 1024 * 1024:
+            raise ValueError("Indexed dictionary scalable font size is invalid")
+        if (font.get("bytes") != path.stat().st_size or
+                font.get("crc32") != zlib.crc32(path.read_bytes())):
+            raise ValueError("Indexed dictionary scalable font checksum mismatch")
 
 
 def validate_timetable(record):

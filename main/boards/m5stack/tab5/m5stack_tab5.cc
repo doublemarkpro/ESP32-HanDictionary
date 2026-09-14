@@ -191,6 +191,31 @@ private:
     i2c_master_dev_handle_t device_ = nullptr;
 };
 
+int Tab5BatteryLevelFromVoltage(uint16_t pack_mv) {
+    // The Tab5 battery is a 2-cell Li-ion pack. Voltage is not a coulomb counter, so use a
+    // conservative discharge curve instead of presenting the pack voltage as a linear gauge.
+    struct Point {
+        int cell_mv;
+        int level;
+    };
+    static constexpr Point curve[] = {
+        {3000, 0}, {3400, 5},  {3600, 15}, {3700, 30}, {3800, 50},
+        {3900, 70}, {4000, 85}, {4100, 97}, {4150, 100},
+    };
+    const int cell_mv = pack_mv / 2;
+    if (cell_mv <= curve[0].cell_mv)
+        return curve[0].level;
+    for (size_t index = 1; index < std::size(curve); ++index) {
+        if (cell_mv <= curve[index].cell_mv) {
+            const auto& low = curve[index - 1];
+            const auto& high = curve[index];
+            return low.level + (cell_mv - low.cell_mv) * (high.level - low.level) /
+                                   (high.cell_mv - low.cell_mv);
+        }
+    }
+    return 100;
+}
+
 class M5StackTab5Board : public WifiBoard {
 private:
     i2c_master_bus_handle_t i2c_bus_;
@@ -706,8 +731,15 @@ public:
         InitializeButtons();
         SetChargeQcEn(true);
         SetChargeEn(true);
+#if CONFIG_HAN_DICTIONARY
+        // The dictionary product does not use the outward-facing 5 V rails. Leaving both boost
+        // converters enabled wastes battery even while the screen is off.
+        SetUsb5vEn(false);
+        SetExt5vEn(false);
+#else
         SetUsb5vEn(true);
         SetExt5vEn(true);
+#endif
         GetBacklight()->RestoreBrightness();
 #if CONFIG_HAN_DICTIONARY
         DictionaryService::GetInstance().RegisterMcpTools();
@@ -732,24 +764,33 @@ public:
         return &backlight;
     }
 
-    bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
+    bool GetBatteryInfo(BatteryInfo& info) override {
+        info = {};
         uint16_t voltage_mv = 0;
-        int current_ma = 0;
-        if (!power_monitor_ready_ || !power_monitor_.Read(voltage_mv, current_ma))
+        if (!power_monitor_ready_ || !power_monitor_.Read(voltage_mv, info.current_ma))
             return false;
 
-        // Match M5Unified's voltage-to-level formula for the Tab5 2S battery pack.
-        const int cell_mv = voltage_mv / 2;
-        level = std::clamp((cell_mv - 3300) * 100 / (4150 - 3350), 0, 100);
+        info.voltage_mv = voltage_mv;
+        info.level = Tab5BatteryLevelFromVoltage(voltage_mv);
 
         uint8_t input = 0;
         if (pi4ioe2_->ReadInput(input)) {
-            charging = (input & (1U << 6)) != 0;  // P6 = CHG_STAT, matches M5Unified.
-            discharging = !charging && current_ma < -10;
+            info.charging = (input & (1U << 6)) != 0;  // P6 = CHG_STAT, matches M5Unified.
+            info.discharging = !info.charging && info.current_ma < -10;
         } else {
-            charging = current_ma > 10;
-            discharging = current_ma < -10;
+            info.charging = info.current_ma > 10;
+            info.discharging = info.current_ma < -10;
         }
+        return true;
+    }
+
+    bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
+        BatteryInfo info;
+        if (!GetBatteryInfo(info))
+            return false;
+        level = info.level;
+        charging = info.charging;
+        discharging = info.discharging;
         return true;
     }
 
