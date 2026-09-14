@@ -140,9 +140,6 @@ private:
     lv_draw_buf_t* glyph_title_draw_buf_ = nullptr;
     han::StrokeGlyph stroke_glyph_;
     std::string expected_stroke_character_;
-    std::array<lv_obj_t*, 64> stroke_chips_{};
-    std::array<lv_obj_t*, 64> stroke_chip_images_{};
-    std::array<lv_draw_buf_t*, 64> stroke_chip_draw_bufs_{};
     lv_obj_t* search_ = nullptr;
     lv_obj_t* search_overlay_ = nullptr;
     lv_obj_t* search_input_ = nullptr;

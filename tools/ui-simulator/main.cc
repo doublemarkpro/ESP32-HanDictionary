@@ -238,46 +238,47 @@ int main(int argc, char** argv) {
                 const auto demo = han::ContentStore::Demo();
                 auto definition_text = FindLabel(lv_screen_active(), demo.definition.c_str());
                 auto word_text = FindLabel(lv_screen_active(), demo.words.front().c_str());
-                auto stroke_text = FindLabel(lv_screen_active(), demo.strokes.front().c_str());
-                Check(definition_text && word_text && stroke_text,
-                      "dictionary body labels are present");
+                Check(definition_text && word_text, "dictionary definition and words are present");
                 const auto dictionary_body_font =
                     lv_obj_get_style_text_font(definition_text, LV_PART_MAIN);
-                Check(lv_obj_get_style_text_font(word_text, LV_PART_MAIN) == dictionary_body_font &&
-                          lv_obj_get_style_text_font(stroke_text, LV_PART_MAIN) ==
-                              dictionary_body_font,
-                      "definitions, words and stroke names share one font");
+                Check(lv_obj_get_style_text_font(word_text, LV_PART_MAIN) == dictionary_body_font,
+                      "definitions and words share one font");
+                lv_obj_update_layout(lv_screen_active());
+                lv_area_t definition_area{};
+                lv_area_t first_word_area{};
+                lv_obj_get_coords(definition_text, &definition_area);
+                lv_obj_get_coords(lv_obj_get_parent(word_text), &first_word_area);
+                Check(first_word_area.y1 - definition_area.y2 >= 0 &&
+                          first_word_area.y1 - definition_area.y2 <= 10,
+                      "word chips closely follow the rendered definition");
+                Check(!FindLabel(lv_screen_active(), "笔顺 · 共8画") &&
+                          !FindLabel(lv_screen_active(), demo.strokes.front().c_str()),
+                      "right-side stroke details are removed");
                 Check(FindLabel(lv_screen_active(), "0/8"),
                       "stroke preview starts before the first stroke");
-                auto first_stroke_chip = lv_obj_get_parent(stroke_text);
-                Check(lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
-                                  lv_color_hex(0xf7fafb)),
-                      "initial stroke card is not selected");
                 Click("下一步");
                 Check(FindLabel(lv_screen_active(), "1/8"), "first next selects stroke one");
-                Check(lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
-                                  lv_color_hex(0xffd8d4)),
-                      "active stroke card is selected");
                 Click("上一步");
-                Check(FindLabel(lv_screen_active(), "0/8") &&
-                          lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
-                                      lv_color_hex(0xf7fafb)),
+                Check(FindLabel(lv_screen_active(), "0/8"),
                       "previous returns to untouched preview");
                 Click("播放笔顺");
                 for (int tick = 0; tick < 9; ++tick) {
                     lv_tick_inc(800);
                     lv_timer_handler();
                 }
-                Check(FindLabel(lv_screen_active(), "8/8") &&
-                          lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
-                                      lv_color_hex(0xf7fafb)),
-                      "finished playback clears the active stroke selection");
+                Check(FindLabel(lv_screen_active(), "8/8"), "playback reaches its final state");
                 auto pinyin_icon = FindImage(lv_screen_active(), &han_icon_pinyin_search);
                 auto definition_icon = FindImage(lv_screen_active(), &han_icon_definition_detail);
-                Check(pinyin_icon && lv_obj_get_width(lv_obj_get_parent(pinyin_icon)) >= 84,
-                      "pinyin search uses a large illustrated touch target");
-                Check(definition_icon && lv_obj_get_width(lv_obj_get_parent(definition_icon)) >= 84,
-                      "definition details uses a large illustrated touch target");
+                Check(pinyin_icon && definition_icon, "dictionary action icons are present");
+                auto pinyin_button = lv_obj_get_parent(pinyin_icon);
+                auto definition_button = lv_obj_get_parent(definition_icon);
+                Check(lv_obj_get_width(pinyin_button) >= 136 &&
+                          lv_obj_get_width(definition_button) >= 136 &&
+                          lv_obj_get_x(pinyin_button) - (lv_obj_get_x(definition_button) +
+                                                         lv_obj_get_width(definition_button)) >=
+                              20 &&
+                          FindLabel(definition_button, "释义") && FindLabel(pinyin_button, "拼音"),
+                      "dictionary actions are large, labeled and separated");
                 ClickImage(&han_icon_definition_detail);
                 auto definition_title = FindLabel(lv_screen_active(), "规 的完整释义");
                 Check(definition_title, "full definition opens above dictionary");
@@ -359,44 +360,26 @@ int main(int argc, char** argv) {
                       "search results can move to the next page");
                 Shot(folder, "dictionary-search");
                 Click("关闭");
-                auto long_entry = entry;
+                auto long_entry = demo;
                 long_entry.stroke_count = 13;
                 long_entry.strokes.resize(13, "横");
                 long_entry.strokes[12] = "横撇弯钩";
+                long_entry.definition = demo.definition + "\n" + demo.definition + "\n" +
+                                        demo.definition + "\n" + demo.definition;
+                long_entry.words = {"词一", "词二", "词三", "词四", "词五",   "词六",
+                                    "词七", "词八", "词九", "词十", "词十一", "词十二"};
                 ui.ShowEntry(long_entry);
                 auto empty_canvas = FindCanvas(lv_screen_active(), 400, 400);
                 Check(empty_canvas && lv_obj_has_flag(empty_canvas, LV_OBJ_FLAG_HIDDEN),
                       "new character canvas stays hidden until its glyph renders");
-                Check(FindLabel(lv_screen_active(), "笔顺 · 共13画"),
-                      "stroke total stays on one line");
-                auto stroke_summary = FindLabel(lv_screen_active(), "笔顺 · 共13画");
-                lv_obj_update_layout(stroke_summary);
-                Check(lv_obj_get_width(stroke_summary) >= 250 &&
-                          lv_obj_get_height(stroke_summary) >=
-                              lv_obj_get_style_text_font(stroke_summary, LV_PART_MAIN)->line_height,
-                      "stroke summary fits the actual dictionary font metrics");
-                Check(FindLabel(lv_screen_active(), "横撇弯钩"),
-                      "long stroke names after the eighth remain available");
-                auto long_stroke_label = FindLabel(lv_screen_active(), "横撇弯钩");
-                auto stroke_panel = lv_obj_get_parent(lv_obj_get_parent(long_stroke_label));
-                lv_obj_update_layout(stroke_panel);
-                Check(lv_obj_get_width(lv_obj_get_parent(long_stroke_label)) >= 164 &&
-                          lv_obj_get_width(long_stroke_label) >= 160 &&
-                          lv_obj_get_height(long_stroke_label) >=
-                              lv_obj_get_style_text_font(long_stroke_label, LV_PART_MAIN)
-                                  ->line_height,
-                      "long stroke names fit horizontally and vertically");
-                Check(lv_obj_has_flag(stroke_panel, LV_OBJ_FLAG_CLICKABLE) &&
-                          lv_obj_has_flag(stroke_panel, LV_OBJ_FLAG_SCROLLABLE) &&
-                          lv_obj_get_scroll_bottom(stroke_panel) > 0,
-                      "extra stroke rows are vertically scrollable");
-                Check(!FindLabel(lv_screen_active(), "当前：横"),
-                      "redundant current-stroke caption is absent");
-                Shot(folder, "dictionary-thirteen-strokes");
-                lv_obj_scroll_to_y(stroke_panel, lv_obj_get_scroll_bottom(stroke_panel),
-                                   LV_ANIM_OFF);
-                Check(lv_obj_get_scroll_y(stroke_panel) > 0, "stroke list can reach its final row");
-                Shot(folder, "dictionary-thirteen-strokes-scrolled");
+                auto expanded_definition =
+                    FindLabel(lv_screen_active(), long_entry.definition.c_str());
+                Check(expanded_definition && lv_obj_get_height(expanded_definition) > 91 &&
+                          FindLabel(lv_screen_active(), "词十") &&
+                          !FindLabel(lv_screen_active(), "笔顺 · 共13画") &&
+                          !FindLabel(lv_screen_active(), "横撇弯钩"),
+                      "freed stroke area displays more definition and word content");
+                Shot(folder, "dictionary-expanded-content");
                 Check(ui.ApplyMissingStrokeGlyph(long_entry.character),
                       "missing vector data is handled for the current character");
                 Check(empty_canvas && lv_obj_has_flag(empty_canvas, LV_OBJ_FLAG_HIDDEN),
@@ -548,7 +531,8 @@ int main(int argc, char** argv) {
             ui.ShowEntry(entry);
             Check(generated.ReadStrokeGlyph("嗝", glyph), "read 13-stroke vector glyph");
             Check(ui.ApplyStrokeGlyph("嗝", std::move(glyph)), "apply 13-stroke vector glyph");
-            Check(FindLabel(lv_screen_active(), "笔顺 · 共13画"), "13-stroke summary");
+            Check(!FindLabel(lv_screen_active(), "笔顺 · 共13画"),
+                  "indexed entries omit right-side stroke details");
             Shot(folder, "dictionary-ge");
             Check(generated.Lookup("规矩的矩", entry), "second dictionary entry");
             ui.ShowEntry(entry);

@@ -734,8 +734,6 @@ void HanDisplay::Render(Page page) {
     pinyin_page_label_ = nullptr;
     definition_overlay_ = nullptr;
     pinyin_tone_buttons_.fill(nullptr);
-    stroke_chips_.fill(nullptr);
-    stroke_chip_images_.fill(nullptr);
     timetable_voice_label_ = timetable_reply_card_ = timetable_message_ = nullptr;
     brightness_value_ = volume_value_ = brightness_bar_ = volume_bar_ = nullptr;
     alarm_hour_ = alarm_minute_ = nullptr;
@@ -749,11 +747,6 @@ void HanDisplay::Render(Page page) {
     if (glyph_title_draw_buf_) {
         lv_draw_buf_destroy(glyph_title_draw_buf_);
         glyph_title_draw_buf_ = nullptr;
-    }
-    for (auto& draw_buf : stroke_chip_draw_bufs_) {
-        if (draw_buf)
-            lv_draw_buf_destroy(draw_buf);
-        draw_buf = nullptr;
     }
     // Late worker results are ignored after the expected character is cleared.
     stroke_placeholder_ = nullptr;
@@ -1007,18 +1000,24 @@ void HanDisplay::Dictionary() {
     lv_obj_align_to(pinyin, glyph_title_image_, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
 
     const lv_image_dsc_t* action_icons[] = {&han_icon_definition_detail, &han_icon_pinyin_search};
+    const char* action_labels[] = {"释义", "拼音"};
     const uint32_t action_colors[] = {kOrange, kBlue};
+    const uint32_t action_borders[] = {0xf6c9a8, 0xadd8f5};
     const int action_codes[] = {25, 23};
     for (int index = 0; index < 2; ++index) {
-        auto button = Button(details, "", 548 + index * 94, 6, 84, 76, action_colors[index],
-                             action_codes[index]);
+        auto button = Button(details, action_labels[index], 422 + index * 164, 6, 136, 78,
+                             action_colors[index], action_codes[index]);
         lv_obj_set_style_radius(button, 23, 0);
         lv_obj_set_style_border_width(button, 2, 0);
-        lv_obj_set_style_border_color(button, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_border_color(button, lv_color_hex(action_borders[index]), 0);
         lv_obj_set_style_transform_scale_x(button, 235, LV_STATE_PRESSED);
         lv_obj_set_style_transform_scale_y(button, 235, LV_STATE_PRESSED);
-        lv_obj_add_flag(lv_obj_get_child(button, 0), LV_OBJ_FLAG_HIDDEN);
-        auto icon = Image(button, action_icons[index], 8, 5);
+        auto action_text = lv_obj_get_child(button, 0);
+        ApplyDictionaryTextFont(action_text);
+        lv_obj_set_size(action_text, 58, DictionaryTextFont()->line_height + 2);
+        lv_obj_set_style_text_align(action_text, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(action_text, LV_ALIGN_RIGHT_MID, -6, 0);
+        auto icon = Image(button, action_icons[index], 7, 5);
         lv_image_set_scale(icon, 176);
         lv_image_set_pivot(icon, 0, 0);
     }
@@ -1040,84 +1039,42 @@ void HanDisplay::Dictionary() {
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
         info_x += info_widths[i] + 12;
     }
+    const int dictionary_line_height = DictionaryTextFont()->line_height;
     auto meaning = Label(details, entry_.definition.c_str(), 26, 151, 690);
     ApplyDictionaryTextFont(meaning);
-    lv_label_set_long_mode(meaning, LV_LABEL_LONG_DOT);
-    lv_obj_set_height(meaning, 91);
-    auto words_title = Box(details, 24, 254, 72, 42, kGreen);
-    lv_obj_set_style_radius(words_title, 21, 0);
-    auto words_title_text = Label(words_title, "组词", 4, 0, 64);
+    lv_label_set_long_mode(meaning, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(meaning, LV_SIZE_CONTENT);
+    lv_obj_update_layout(meaning);
+    const int natural_meaning_height = lv_obj_get_height(meaning);
+    const int meaning_height = std::clamp(natural_meaning_height, dictionary_line_height, 242);
+    lv_obj_set_height(meaning, meaning_height);
+    if (natural_meaning_height > meaning_height)
+        lv_label_set_long_mode(meaning, LV_LABEL_LONG_DOT);
+
+    const int words_y = 151 + meaning_height + 6;
+    const int word_chip_height = std::max(46, dictionary_line_height + 8);
+    const int word_row_step = word_chip_height + 8;
+    auto words_title = Box(details, 24, words_y, 84, word_chip_height, kGreen);
+    lv_obj_set_style_radius(words_title, word_chip_height / 2, 0);
+    auto words_title_text = Label(words_title, "组词", 4, 0, 76);
     ApplyDictionaryTextFont(words_title_text);
     lv_obj_set_style_text_align(words_title_text, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(words_title_text, LV_ALIGN_CENTER, 0, 0);
-    for (int i = 0; i < std::min<int>(5, entry_.words.size()); ++i) {
-        auto chip = Box(details, 106 + i * 121, 254, 110, 42, 0xeaf8ee);
-        lv_obj_set_style_radius(chip, 21, 0);
-        auto text = Label(chip, entry_.words[i].c_str(), 4, 0, 102);
+    const int available_word_rows =
+        std::clamp((549 - words_y - word_chip_height) / word_row_step + 1, 1, 3);
+    const int visible_words = std::min<int>(entry_.words.size(), available_word_rows * 5);
+    for (int i = 0; i < visible_words; ++i) {
+        const int row = i / 5;
+        const int column = i % 5;
+        const int chip_x = row == 0 ? 120 + column * 118 : 24 + column * 137;
+        const int chip_width = row == 0 ? 108 : 125;
+        auto chip = Box(details, chip_x, words_y + row * word_row_step, chip_width,
+                        word_chip_height, 0xeaf8ee);
+        lv_obj_set_style_radius(chip, word_chip_height / 2, 0);
+        auto text = Label(chip, entry_.words[i].c_str(), 4, 0, chip_width - 8);
         ApplyDictionaryTextFont(text);
         lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
-    }
-    Box(details, 24, 312, 694, 2, 0xeee8df);
-    const int dictionary_line_height = DictionaryTextFont()->line_height;
-    const int order_y = 322;
-    const int order_height = std::max(46, dictionary_line_height + 10);
-    const int order_width = 276;
-    auto order = Box(details, 24, order_y, order_width, order_height, kBlue);
-    lv_obj_set_style_radius(order, order_height / 2, 0);
-    const std::string stroke_summary = "笔顺 · 共" + std::to_string(entry_.strokes.size()) + "画";
-    // Keep the label on the details card instead of inside the pill. Some SD fonts have glyph
-    // extents larger than their nominal size; the pill must never clip those extents.
-    auto order_text =
-        Label(details, stroke_summary.c_str(), 34,
-              order_y + (order_height - dictionary_line_height) / 2 - 1, order_width - 20);
-    ApplyDictionaryTextFont(order_text);
-    lv_obj_set_height(order_text, dictionary_line_height + 4);
-    lv_obj_set_style_text_align(order_text, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(order_text, LV_LABEL_LONG_CLIP);
-
-    const int stroke_panel_y = order_y + order_height + 7;
-    auto stroke_panel = Box(details, 20, stroke_panel_y, 702, 549 - stroke_panel_y, 0xfafcfd);
-    lv_obj_set_style_radius(stroke_panel, 16, 0);
-    // Box() deliberately disables input. A scrollable object also needs to be a hit-test target,
-    // otherwise a finger drag falls through to the dictionary card and never starts scrolling.
-    lv_obj_add_flag(stroke_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(stroke_panel, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_scroll_dir(stroke_panel, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(stroke_panel, LV_SCROLLBAR_MODE_AUTO);
-    lv_obj_set_style_width(stroke_panel, 9, LV_PART_SCROLLBAR);
-    lv_obj_set_style_radius(stroke_panel, 5, LV_PART_SCROLLBAR);
-    lv_obj_set_style_bg_color(stroke_panel, lv_color_hex(0x79b9e8), LV_PART_SCROLLBAR);
-    lv_obj_set_style_bg_opa(stroke_panel, LV_OPA_70, LV_PART_SCROLLBAR);
-    const int stroke_name_height = dictionary_line_height + 4;
-    const int stroke_chip_height = 50 + stroke_name_height;
-    const int stroke_row_step = stroke_chip_height + 8;
-    const int shown = std::min<int>(stroke_chips_.size(), entry_.strokes.size());
-    for (int i = 0; i < shown; ++i) {
-        // Four columns leave enough room for five-character names such as “横折折折钩”.
-        // Height follows the actual SD font metrics; additional rows remain scrollable.
-        auto chip = Box(stroke_panel, 4 + i % 4 * 170, 4 + i / 4 * stroke_row_step, 164,
-                        stroke_chip_height, 0xf7fafb);
-        lv_obj_set_style_radius(chip, 14, 0);
-        lv_obj_set_style_border_width(chip, 2, 0);
-        lv_obj_set_style_border_color(chip, lv_color_hex(0xdde8ec), 0);
-        auto canvas = lv_canvas_create(chip);
-        auto draw_buf = lv_draw_buf_create(48, 43, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
-        lv_obj_set_pos(canvas, 58, 1);
-        lv_obj_remove_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
-        if (draw_buf) {
-            lv_canvas_set_draw_buf(canvas, draw_buf);
-        }
-        lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
-        auto text = Label(chip, entry_.strokes[i].c_str(), 2, 47, 160);
-        ApplyDictionaryTextFont(text);
-        lv_obj_set_height(text, stroke_name_height);
-        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_set_style_text_letter_space(text, -1, 0);
-        lv_label_set_long_mode(text, LV_LABEL_LONG_CLIP);
-        stroke_chips_[i] = chip;
-        stroke_chip_images_[i] = canvas;
-        stroke_chip_draw_bufs_[i] = draw_buf;
     }
     UpdateStroke();
 }
@@ -1309,19 +1266,6 @@ void HanDisplay::UpdateStroke() {
     const int completed_strokes = stroke_ < 0 ? 0 : std::min(stroke_ + 1, stroke_count);
     auto value = std::to_string(completed_strokes) + "/" + std::to_string(stroke_count);
     lv_label_set_text(stroke_value_, value.c_str());
-    const bool has_active_stroke = stroke_ >= 0 && stroke_ < stroke_count;
-    for (int i = 0; i < static_cast<int>(stroke_chips_.size()); ++i) {
-        if (!stroke_chips_[i])
-            continue;
-        const bool selected = has_active_stroke && i == stroke_;
-        lv_obj_set_style_bg_color(stroke_chips_[i], lv_color_hex(selected ? 0xffd8d4 : 0xf7fafb),
-                                  0);
-        lv_obj_set_style_border_color(stroke_chips_[i],
-                                      lv_color_hex(selected ? 0xf16d63 : 0xdde8ec), 0);
-    }
-    if (has_active_stroke && stroke_ < static_cast<int>(stroke_chips_.size()) &&
-        stroke_chips_[stroke_])
-        lv_obj_scroll_to_view(stroke_chips_[stroke_], LV_ANIM_ON);
     if (stroke_glyph_.character == entry_.character) {
         RenderStroke();
         return;
@@ -1375,13 +1319,6 @@ void HanDisplay::RenderStroke() {
         lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
         if (glyph_title_placeholder_)
             lv_obj_add_flag(glyph_title_placeholder_, LV_OBJ_FLAG_HIDDEN);
-    }
-    for (int index = 0; index < static_cast<int>(stroke_chip_images_.size()); ++index) {
-        if (!stroke_chip_images_[index] || !stroke_chip_draw_bufs_[index] ||
-            index >= static_cast<int>(stroke_glyph_.strokes.size()))
-            continue;
-        if (DrawGlyph(stroke_chip_images_[index], stroke_glyph_, 48, 43, 2, stroke_, index, false))
-            lv_obj_remove_flag(stroke_chip_images_[index], LV_OBJ_FLAG_HIDDEN);
     }
 #else
     if (stroke_placeholder_)
