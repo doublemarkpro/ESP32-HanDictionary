@@ -39,15 +39,6 @@ lv_obj_t* FindLabel(lv_obj_t* obj, const char* text) {
             return v;
     return nullptr;
 }
-lv_obj_t* FindScaledLabel(lv_obj_t* obj, const char* text) {
-    if (lv_obj_check_type(obj, &lv_label_class) && std::string(lv_label_get_text(obj)) == text &&
-        lv_obj_get_style_transform_scale_x(obj, LV_PART_MAIN) > 256)
-        return obj;
-    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
-        if (auto v = FindScaledLabel(lv_obj_get_child(obj, i), text))
-            return v;
-    return nullptr;
-}
 lv_obj_t* FindImage(lv_obj_t* obj, const lv_image_dsc_t* source) {
     if (lv_obj_check_type(obj, &lv_image_class) && lv_image_get_src(obj) == source)
         return obj;
@@ -265,6 +256,21 @@ int main(int argc, char** argv) {
                 Click("四声");
                 Check(FindLabel(lv_screen_active(), "正在离线字库中查找…"),
                       "tone selection starts filtered lookup");
+                ui.SetPinyinResultsForTest(
+                    "han4",
+                    {"一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "人", "大", "中",
+                     "小", "天", "地", "上", "下", "左", "右", "前", "后", "学", "习", "字"});
+                Check(FindLabel(lv_screen_active(), "han4 · 共25字，点击查看"),
+                      "search reports the complete homophone count");
+                Check(FindLabel(lv_screen_active(), "1/3 · 左右滑动翻页"),
+                      "search results expose pagination");
+                auto first_candidate = FindLabel(lv_screen_active(), "一");
+                Check(first_candidate &&
+                          lv_obj_get_style_transform_scale_x(first_candidate, LV_PART_MAIN) > 256,
+                      "candidate characters use large anti-aliased text");
+                Click("›");
+                Check(FindLabel(lv_screen_active(), "2/3 · 左右滑动翻页"),
+                      "search results can move to the next page");
                 Shot(folder, "dictionary-search");
                 Click("关闭");
                 auto long_entry = entry;
@@ -283,12 +289,9 @@ int main(int argc, char** argv) {
                       "redundant current-stroke caption is absent");
                 Shot(folder, "dictionary-thirteen-strokes");
                 Check(ui.ApplyMissingStrokeGlyph(long_entry.character),
-                      "missing vector data falls back to the character");
-                auto fallback_character =
-                    FindScaledLabel(lv_screen_active(), long_entry.character.c_str());
-                Check(
-                    fallback_character && !lv_obj_has_flag(fallback_character, LV_OBJ_FLAG_HIDDEN),
-                    "fallback character is large and visible in the grid");
+                      "missing vector data is handled for the current character");
+                Check(empty_canvas && lv_obj_has_flag(empty_canvas, LV_OBJ_FLAG_HIDDEN),
+                      "missing vector data leaves the grid artwork empty");
                 Shot(folder, "dictionary-missing-strokes");
             }
             if (i == 1) {
@@ -406,6 +409,8 @@ int main(int argc, char** argv) {
                       std::find(pinyin_results.begin(), pinyin_results.end(), "规") !=
                           pinyin_results.end(),
                   "tone filtering works with legacy base-only pinyin index");
+            Check(generated.SearchPinyin("yi", pinyin_results, 1024) && pinyin_results.size() > 24,
+                  "full homophone search is not truncated to the first page");
             Check(generated.Lookup("汉", entry), "indexed dictionary lookup");
             Check(entry.source == "guoxuedashi-xinhua-community" && entry.stroke_count > 0,
                   "indexed dictionary metadata");

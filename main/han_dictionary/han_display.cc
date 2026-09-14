@@ -36,6 +36,7 @@ namespace {
 constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0xd9edfc;
 constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
 constexpr uint32_t kMuted = 0x61708f, kCardBorder = 0xf1e8d9;
+constexpr int kPinyinPageSize = 12;
 #if LV_USE_VECTOR_GRAPHIC
 struct GlyphBounds {
     float min_x = std::numeric_limits<float>::max();
@@ -422,9 +423,9 @@ void HanDisplay::InstallDictionaryFont(std::string data) {
         return;
     }
     dictionary_font_->fallback = DynamicTextFont();
-    // Prefer the antialiased regular-weight UI font for glyphs compiled into the firmware,
-    // while retaining the complete SD font as a fallback for uncommon dictionary characters.
-    dictionary_ui_font_ = han_font_28;
+    // Use the same antialiased Noto font as the rest of the product for the common charset.
+    // The complete SD font is only a last-resort fallback for uncommon dictionary glyphs.
+    dictionary_ui_font_ = *DynamicTextFont();
     dictionary_ui_font_.fallback = dictionary_font_;
     dictionary_ui_font_ready_ = true;
     ESP_LOGI("HanDisplay", "SD dictionary font loaded: %u bytes",
@@ -545,6 +546,7 @@ void HanDisplay::SetTheme(Theme* theme) {
 #ifndef HAN_UI_HOST_SIM
     if (dictionary_font_ != nullptr) {
         dictionary_font_->fallback = DynamicTextFont();
+        dictionary_ui_font_ = *DynamicTextFont();
         dictionary_ui_font_.fallback = dictionary_font_;
     }
 #endif
@@ -677,9 +679,9 @@ void HanDisplay::Render(Page page) {
     page_ = page;
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
-    stroke_fallback_character_ = nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
     search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
+    pinyin_page_label_ = nullptr;
     definition_overlay_ = nullptr;
     pinyin_tone_buttons_.fill(nullptr);
     stroke_chips_.fill(nullptr);
@@ -913,18 +915,6 @@ void HanDisplay::Dictionary() {
     lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
     stroke_placeholder_ = Label(grid, "正在读取笔顺…", 58, 178, 350);
     lv_obj_set_style_text_align(stroke_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
-    stroke_fallback_character_ = Label(grid, entry_.character.c_str(), 0, 0, 36);
-    ApplyDictionaryTextFont(stroke_fallback_character_);
-    lv_obj_set_style_text_align(stroke_fallback_character_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(stroke_fallback_character_, lv_color_hex(0x274878), 0);
-    lv_obj_align(stroke_fallback_character_, LV_ALIGN_CENTER, 0, -4);
-    lv_obj_set_style_transform_pivot_x(stroke_fallback_character_, 18, 0);
-    lv_obj_set_style_transform_pivot_y(stroke_fallback_character_, 14, 0);
-    // The complete SD font is intentionally compact (28 px). A moderate 6x transform keeps
-    // its contours readable; larger scaling looks blurred on the Tab5 panel.
-    lv_obj_set_style_transform_scale_x(stroke_fallback_character_, 1536, 0);
-    lv_obj_set_style_transform_scale_y(stroke_fallback_character_, 1536, 0);
-    lv_obj_add_flag(stroke_fallback_character_, LV_OBJ_FLAG_HIDDEN);
     auto progress = Box(body_, 341, 448, 124, 34, 0xffdfe3);
     lv_obj_set_style_radius(progress, 17, 0);
     stroke_value_ = Label(progress, "", 4, 0, 116, &han_font_stroke_name);
@@ -1058,6 +1048,8 @@ void HanDisplay::OpenPinyinSearch() {
     pinyin_query_.clear();
     pinyin_search_key_.clear();
     pinyin_results_.clear();
+    pinyin_status_text_.clear();
+    pinyin_page_ = 0;
     pinyin_tone_ = -1;
     pinyin_tone_buttons_.fill(nullptr);
     search_overlay_ = Card(body_, 0, 0, 1232, 566, 0xfffcf6);
@@ -1087,6 +1079,7 @@ void HanDisplay::OpenPinyinSearch() {
     }
 
     search_results_ = Card(search_overlay_, 24, 164, 520, 374, 0xffffff);
+    lv_obj_add_event_cb(search_results_, OnPinyinGesture, LV_EVENT_GESTURE, this);
     auto keyboard = Card(search_overlay_, 568, 164, 640, 374, 0xf3f8ff);
     const char* rows[] = {"qwertyuiop", "asdfghjkl", "zxcvbnm"};
     const int starts[] = {18, 48, 110};
@@ -1160,6 +1153,7 @@ void HanDisplay::StartPinyinSearch() {
     if (pinyin_tone_ >= 0)
         pinyin_search_key_.push_back(static_cast<char>('0' + pinyin_tone_));
     pinyin_results_.clear();
+    pinyin_page_ = 0;
     RenderPinyinResults("正在离线字库中查找…");
     Queue(7, pinyin_search_key_);
 }
@@ -1167,20 +1161,45 @@ void HanDisplay::StartPinyinSearch() {
 void HanDisplay::RenderPinyinResults(const char* status) {
     if (!search_results_)
         return;
+    if (status)
+        pinyin_status_text_ = status;
     lv_obj_clean(search_results_);
-    search_status_ = Label(search_results_, status, 20, 18, 480);
+    pinyin_page_label_ = nullptr;
+    search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 20, 12, 480);
     ApplyDictionaryTextFont(search_status_);
     lv_obj_set_style_text_color(search_status_, lv_color_hex(kMuted), 0);
     lv_label_set_long_mode(search_status_, LV_LABEL_LONG_DOT);
     lv_obj_set_height(search_status_, 40);
-    for (int index = 0; index < static_cast<int>(pinyin_results_.size()); ++index) {
-        auto button = Button(search_results_, pinyin_results_[index].c_str(), 20 + index % 5 * 96,
-                             78 + index / 5 * 68, 82, 56,
-                             index % 3 == 0   ? kGreen
-                             : index % 3 == 1 ? kBlue
-                                              : kOrange,
+    const int page_count = std::max(
+        1, (static_cast<int>(pinyin_results_.size()) + kPinyinPageSize - 1) / kPinyinPageSize);
+    pinyin_page_ = std::clamp(pinyin_page_, 0, page_count - 1);
+    const int first = pinyin_page_ * kPinyinPageSize;
+    const int last = std::min(first + kPinyinPageSize, static_cast<int>(pinyin_results_.size()));
+    for (int index = first; index < last; ++index) {
+        const int cell = index - first;
+        auto button = Button(search_results_, pinyin_results_[index].c_str(), 18 + cell % 4 * 122,
+                             58 + cell / 4 * 80, 108, 68,
+                             cell % 3 == 0   ? kGreen
+                             : cell % 3 == 1 ? kBlue
+                                             : kOrange,
                              1200 + index);
-        ApplyDictionaryTextFont(lv_obj_get_child(button, 0));
+        auto text = lv_obj_get_child(button, 0);
+        ApplyDictionaryTextFont(text);
+        lv_obj_set_style_transform_pivot_x(text, 46, 0);
+        lv_obj_set_style_transform_pivot_y(text, 15, 0);
+        lv_obj_set_style_transform_scale_x(text, 352, 0);
+        lv_obj_set_style_transform_scale_y(text, 352, 0);
+    }
+    if (page_count > 1) {
+        auto previous = Button(search_results_, "‹", 20, 310, 64, 46, kGreen, 1137);
+        auto next = Button(search_results_, "›", 436, 310, 64, 46, kBlue, 1138);
+        ApplyDictionaryTextFont(lv_obj_get_child(previous, 0));
+        ApplyDictionaryTextFont(lv_obj_get_child(next, 0));
+        const std::string page_text =
+            std::to_string(pinyin_page_ + 1) + "/" + std::to_string(page_count) + " · 左右滑动翻页";
+        pinyin_page_label_ = Label(search_results_, page_text.c_str(), 92, 318, 336);
+        ApplyDictionaryTextFont(pinyin_page_label_);
+        lv_obj_set_style_text_align(pinyin_page_label_, LV_TEXT_ALIGN_CENTER, 0);
     }
 }
 
@@ -1188,10 +1207,11 @@ void HanDisplay::ApplyPinyinResults(const std::string& query, std::vector<std::s
     if (page_ != Page::Dictionary || !search_overlay_ || query != pinyin_search_key_)
         return;
     pinyin_results_ = std::move(results);
+    pinyin_page_ = 0;
     const std::string status =
         pinyin_results_.empty()
             ? "没有找到 “" + query + "” 对应的汉字"
-            : query + " · " + std::to_string(pinyin_results_.size()) + "个候选字，点击查看";
+            : query + " · 共" + std::to_string(pinyin_results_.size()) + "字，点击查看";
     RenderPinyinResults(status.c_str());
 }
 
@@ -1200,7 +1220,7 @@ void HanDisplay::UpdateStroke() {
         return;
     if (entry_.strokes.empty()) {
         lv_label_set_text(stroke_value_, "无动画");
-        ShowStrokeFallback(entry_.character);
+        HideStrokeArtwork();
         return;
     }
     stroke_ = std::clamp(stroke_, 0, static_cast<int>(entry_.strokes.size()) - 1);
@@ -1223,21 +1243,15 @@ void HanDisplay::UpdateStroke() {
     if (expected_stroke_character_ != entry_.character) {
         expected_stroke_character_ = entry_.character;
         if (!Queue(3, entry_.character))
-            ShowStrokeFallback(entry_.character);
+            HideStrokeArtwork();
     }
 }
 
-void HanDisplay::ShowStrokeFallback(const std::string& character) {
-    if (character.empty() || character != entry_.character)
-        return;
+void HanDisplay::HideStrokeArtwork() {
     if (stroke_image_)
         lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
     if (stroke_placeholder_)
         lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
-    if (stroke_fallback_character_) {
-        lv_label_set_text(stroke_fallback_character_, character.c_str());
-        lv_obj_remove_flag(stroke_fallback_character_, LV_OBJ_FLAG_HIDDEN);
-    }
 }
 
 bool HanDisplay::ApplyMissingStrokeGlyph(const std::string& character) {
@@ -1245,7 +1259,7 @@ bool HanDisplay::ApplyMissingStrokeGlyph(const std::string& character) {
     if (page_ != Page::Dictionary || character.empty() || character != expected_stroke_character_ ||
         character != entry_.character)
         return false;
-    ShowStrokeFallback(character);
+    HideStrokeArtwork();
     return true;
 }
 
@@ -1266,12 +1280,10 @@ void HanDisplay::RenderStroke() {
 #if LV_USE_VECTOR_GRAPHIC
     if (DrawGlyph(stroke_image_, stroke_glyph_, 400, 400, 10, stroke_, -1, true)) {
         lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
-        if (stroke_fallback_character_)
-            lv_obj_add_flag(stroke_fallback_character_, LV_OBJ_FLAG_HIDDEN);
         if (stroke_placeholder_)
             lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
     } else
-        ShowStrokeFallback(entry_.character);
+        HideStrokeArtwork();
     if (glyph_title_image_ && glyph_title_draw_buf_ &&
         DrawGlyph(glyph_title_image_, stroke_glyph_, 82, 82, 5, stroke_, -1, false)) {
         lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
@@ -1832,6 +1844,18 @@ void HanDisplay::OnClick(lv_event_t* e) {
     self->Action(static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e))));
 }
 
+void HanDisplay::OnPinyinGesture(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    auto indev = lv_event_get_indev(event);
+    if (!self || !indev)
+        return;
+    const auto direction = lv_indev_get_gesture_dir(indev);
+    if (direction == LV_DIR_LEFT)
+        self->Action(1138);
+    else if (direction == LV_DIR_RIGHT)
+        self->Action(1137);
+}
+
 void HanDisplay::Action(int a) {
     if (screen_off_) {
         Application::GetInstance().Schedule([this] { SetScreenOff(false); });
@@ -1962,6 +1986,7 @@ void HanDisplay::Action(int a) {
             pinyin_query_.push_back(static_cast<char>('a' + a - 1100));
             pinyin_search_key_.clear();
             pinyin_results_.clear();
+            pinyin_page_ = 0;
             lv_label_set_text(search_input_, pinyin_query_.c_str());
             lv_obj_set_style_text_color(search_input_, lv_color_hex(kInk), 0);
             RenderPinyinResults("输入完成后点查找，或直接选择音调");
@@ -1973,6 +1998,7 @@ void HanDisplay::Action(int a) {
             pinyin_query_.pop_back();
         pinyin_search_key_.clear();
         pinyin_results_.clear();
+        pinyin_page_ = 0;
         lv_label_set_text(search_input_,
                           pinyin_query_.empty() ? "输入拼音，例如 han" : pinyin_query_.c_str());
         lv_obj_set_style_text_color(search_input_,
@@ -1984,6 +2010,7 @@ void HanDisplay::Action(int a) {
         pinyin_query_.clear();
         pinyin_search_key_.clear();
         pinyin_results_.clear();
+        pinyin_page_ = 0;
         lv_label_set_text(search_input_, "输入拼音，例如 han");
         lv_obj_set_style_text_color(search_input_, lv_color_hex(kMuted), 0);
         RenderPinyinResults("输入拼音，可按音调缩小候选范围");
@@ -2004,15 +2031,25 @@ void HanDisplay::Action(int a) {
         if (search_overlay_)
             lv_obj_delete(search_overlay_);
         search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
+        pinyin_page_label_ = nullptr;
         pinyin_tone_buttons_.fill(nullptr);
         pinyin_search_key_.clear();
+        pinyin_status_text_.clear();
         pinyin_results_.clear();
+        pinyin_page_ = 0;
         return;
     }
     if (a == 1136) {
         if (definition_overlay_)
             lv_obj_delete(definition_overlay_);
         definition_overlay_ = nullptr;
+        return;
+    }
+    if (a == 1137 || a == 1138) {
+        const int page_count = std::max(
+            1, (static_cast<int>(pinyin_results_.size()) + kPinyinPageSize - 1) / kPinyinPageSize);
+        pinyin_page_ = std::clamp(pinyin_page_ + (a == 1137 ? -1 : 1), 0, page_count - 1);
+        RenderPinyinResults(nullptr);
         return;
     }
     if (a >= 1200 && a < 1200 + static_cast<int>(pinyin_results_.size())) {
@@ -2407,7 +2444,7 @@ void HanDisplay::Worker(void* ptr) {
                 self->InstallDictionaryFont(std::move(data));
         } else if (job.type == 7) {
             std::vector<std::string> results;
-            store.SearchPinyin(job.value, results, 20);
+            store.SearchPinyin(job.value, results, 1024);
             DisplayLockGuard guard(self);
             self->ApplyPinyinResults(job.value, std::move(results));
         } else if (job.type == 5) {

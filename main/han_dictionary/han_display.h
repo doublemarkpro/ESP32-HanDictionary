@@ -35,6 +35,9 @@ public:
     bool ApplyTimetable(const std::string& json);
 #ifdef HAN_UI_HOST_SIM
     void SetWeatherTextForTest(std::string text);
+    void SetPinyinResultsForTest(const std::string& query, std::vector<std::string> results) {
+        ApplyPinyinResults(query, std::move(results));
+    }
 #endif
 
 private:
@@ -44,6 +47,7 @@ private:
         char value[128];
     };
     static void OnClick(lv_event_t* event);
+    static void OnPinyinGesture(lv_event_t* event);
     static void Tick(lv_timer_t* timer);
     static void OnRefresh(lv_event_t* event);
     static void Worker(void* self);
@@ -62,7 +66,7 @@ private:
     void UpdateTimer();
     void UpdateStroke();
     void RenderStroke();
-    void ShowStrokeFallback(const std::string& character);
+    void HideStrokeArtwork();
     void OpenPinyinSearch();
     void OpenDefinitionDetails();
     void StartPinyinSearch();
@@ -121,7 +125,6 @@ private:
     lv_obj_t* stroke_value_ = nullptr;
     lv_obj_t* stroke_image_ = nullptr;
     lv_obj_t* stroke_placeholder_ = nullptr;
-    lv_obj_t* stroke_fallback_character_ = nullptr;
     lv_obj_t* glyph_title_image_ = nullptr;
     lv_obj_t* glyph_title_placeholder_ = nullptr;
     lv_draw_buf_t* stroke_draw_buf_ = nullptr;
@@ -136,11 +139,14 @@ private:
     lv_obj_t* search_input_ = nullptr;
     lv_obj_t* search_results_ = nullptr;
     lv_obj_t* search_status_ = nullptr;
+    lv_obj_t* pinyin_page_label_ = nullptr;
     lv_obj_t* definition_overlay_ = nullptr;
     std::array<lv_obj_t*, 6> pinyin_tone_buttons_{};
     std::string pinyin_query_;
     std::string pinyin_search_key_;
+    std::string pinyin_status_text_;
     std::vector<std::string> pinyin_results_;
+    int pinyin_page_ = 0;
     int pinyin_tone_ = -1;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;

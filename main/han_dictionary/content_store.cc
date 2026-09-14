@@ -804,8 +804,7 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
         return false;
     }
     const uint32_t offset = ReadLe32(directory + 8);
-    const size_t count = std::min<size_t>(ReadLe16(directory + 12),
-                                          fallback_tone >= 0 ? 256 : std::min<size_t>(limit, 24));
+    const size_t count = std::min<size_t>(ReadLe16(directory + 12), limit);
     if (offset > pinyin_data_size_ || count * 3 > pinyin_data_size_ - offset ||
         fseek(file, static_cast<long>(kPinyinHeaderSize + pinyin_directory_size_ + offset),
               SEEK_SET) != 0) {
