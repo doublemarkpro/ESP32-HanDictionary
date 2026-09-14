@@ -366,19 +366,28 @@ int main(int argc, char** argv) {
                 long_entry.strokes[12] = "横撇弯钩";
                 long_entry.definition = demo.definition + "\n" + demo.definition + "\n" +
                                         demo.definition + "\n" + demo.definition;
-                long_entry.words = {"词一", "词二", "词三", "词四", "词五",   "词六",
-                                    "词七", "词八", "词九", "词十", "词十一", "词十二"};
+                long_entry.words = {"横撇弯钩", "词二", "词三", "词四", "词五",   "词六",
+                                    "词七",     "词八", "词九", "词十", "词十一", "词十二"};
                 ui.ShowEntry(long_entry);
                 auto empty_canvas = FindCanvas(lv_screen_active(), 400, 400);
                 Check(empty_canvas && lv_obj_has_flag(empty_canvas, LV_OBJ_FLAG_HIDDEN),
                       "new character canvas stays hidden until its glyph renders");
                 auto expanded_definition =
                     FindLabel(lv_screen_active(), long_entry.definition.c_str());
-                Check(expanded_definition && lv_obj_get_height(expanded_definition) > 91 &&
-                          FindLabel(lv_screen_active(), "词十") &&
-                          !FindLabel(lv_screen_active(), "笔顺 · 共13画") &&
-                          !FindLabel(lv_screen_active(), "横撇弯钩"),
-                      "freed stroke area displays more definition and word content");
+                auto wide_word = FindLabel(lv_screen_active(), "横撇弯钩");
+                lv_obj_update_layout(lv_screen_active());
+                lv_point_t wide_word_size{};
+                lv_text_get_size(&wide_word_size, "横撇弯钩", dictionary_body_font, 0, 0,
+                                 LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+                Check(expanded_definition && lv_obj_get_height(expanded_definition) > 91,
+                      "freed stroke area displays a taller definition");
+                Check(wide_word && lv_obj_get_width(wide_word) >= wide_word_size.x,
+                      "word pills use their measured rendered width");
+                Check(FindLabel(lv_screen_active(), "词八"),
+                      "flowing word pills use multiple available rows");
+                Check(!FindLabel(lv_screen_active(), "笔顺 · 共13画") &&
+                          !FindLabel(lv_screen_active(), "当前：横"),
+                      "right-side stroke details stay removed");
                 Shot(folder, "dictionary-expanded-content");
                 Check(ui.ApplyMissingStrokeGlyph(long_entry.character),
                       "missing vector data is handled for the current character");

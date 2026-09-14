@@ -1062,19 +1062,29 @@ void HanDisplay::Dictionary() {
     lv_obj_align(words_title_text, LV_ALIGN_CENTER, 0, 0);
     const int available_word_rows =
         std::clamp((549 - words_y - word_chip_height) / word_row_step + 1, 1, 3);
-    const int visible_words = std::min<int>(entry_.words.size(), available_word_rows * 5);
-    for (int i = 0; i < visible_words; ++i) {
-        const int row = i / 5;
-        const int column = i % 5;
-        const int chip_x = row == 0 ? 120 + column * 118 : 24 + column * 137;
-        const int chip_width = row == 0 ? 108 : 125;
-        auto chip = Box(details, chip_x, words_y + row * word_row_step, chip_width,
+    int word_row = 0;
+    int word_x = 120;
+    for (const auto& word : entry_.words) {
+        lv_point_t text_size{};
+        lv_text_get_size(&text_size, word.c_str(), DictionaryTextFont(), 0, 0, LV_COORD_MAX,
+                         LV_TEXT_FLAG_NONE);
+        // Allocate every pill from its real rendered width. Fixed columns clipped four-character
+        // words with the full SD font, while this flow layout simply wraps the next pill.
+        const int chip_width = std::clamp<int>(text_size.x + 28, 84, 690);
+        if (word_x + chip_width > 718) {
+            ++word_row;
+            word_x = 24;
+        }
+        if (word_row >= available_word_rows)
+            break;
+        auto chip = Box(details, word_x, words_y + word_row * word_row_step, chip_width,
                         word_chip_height, 0xeaf8ee);
         lv_obj_set_style_radius(chip, word_chip_height / 2, 0);
-        auto text = Label(chip, entry_.words[i].c_str(), 4, 0, chip_width - 8);
+        auto text = Label(chip, word.c_str(), 10, 0, chip_width - 20);
         ApplyDictionaryTextFont(text);
         lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
+        word_x += chip_width + 10;
     }
     UpdateStroke();
 }
