@@ -235,6 +235,18 @@ int main(int argc, char** argv) {
                       "redundant dictionary subtitle removed");
                 Check(!FindLabel(lv_screen_active(), "离线字库"),
                       "redundant dictionary status button removed");
+                const auto demo = han::ContentStore::Demo();
+                auto definition_text = FindLabel(lv_screen_active(), demo.definition.c_str());
+                auto word_text = FindLabel(lv_screen_active(), demo.words.front().c_str());
+                auto stroke_text = FindLabel(lv_screen_active(), demo.strokes.front().c_str());
+                Check(definition_text && word_text && stroke_text,
+                      "dictionary body labels are present");
+                const auto dictionary_body_font =
+                    lv_obj_get_style_text_font(definition_text, LV_PART_MAIN);
+                Check(lv_obj_get_style_text_font(word_text, LV_PART_MAIN) == dictionary_body_font &&
+                          lv_obj_get_style_text_font(stroke_text, LV_PART_MAIN) ==
+                              dictionary_body_font,
+                      "definitions, words and stroke names share one font");
                 Click("下一步");
                 Check(FindLabel(lv_screen_active(), "2/8"), "stroke advance");
                 Click("上一步");
@@ -245,8 +257,18 @@ int main(int argc, char** argv) {
                 Check(definition_icon && lv_obj_get_width(lv_obj_get_parent(definition_icon)) >= 84,
                       "definition details uses a large illustrated touch target");
                 ClickImage(&han_icon_definition_detail);
-                Check(FindLabel(lv_screen_active(), "规 的完整释义"),
-                      "full definition opens above dictionary");
+                auto definition_title = FindLabel(lv_screen_active(), "规 的完整释义");
+                Check(definition_title, "full definition opens above dictionary");
+                auto definition_overlay = lv_obj_get_parent(definition_title);
+                auto full_definition = FindLabel(definition_overlay, demo.definition.c_str());
+                Check(full_definition &&
+                          lv_obj_get_style_text_font(full_definition, LV_PART_MAIN) ==
+                              dictionary_body_font &&
+                          lv_obj_get_style_text_font(definition_title, LV_PART_MAIN) ==
+                              dictionary_body_font,
+                      "definition overlay keeps the dictionary body font");
+                Check(!FindLabel(definition_overlay, demo.pinyin.c_str()),
+                      "definition overlay omits redundant pinyin");
                 Shot(folder, "dictionary-definition");
                 Click("关闭");
                 ClickImage(&han_icon_pinyin_search);
@@ -254,6 +276,9 @@ int main(int argc, char** argv) {
                 Check(
                     FindLabel(lv_screen_active(), "轻声") && FindLabel(lv_screen_active(), "四声"),
                     "pinyin tone filters are visible");
+                Check(lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "拼音查字"),
+                                                 LV_PART_MAIN) == dictionary_body_font,
+                      "pinyin search controls use the dictionary body font");
                 Click("h");
                 Click("a");
                 Click("n");
@@ -263,16 +288,25 @@ int main(int argc, char** argv) {
                       "tone selection starts filtered lookup");
                 ui.SetPinyinResultsForTest(
                     "han4",
-                    {"一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "人", "大", "中",
+                    {"鉲", "鯻", "三", "四", "五", "六", "七", "八", "九", "十", "人", "大", "中",
                      "小", "天", "地", "上", "下", "左", "右", "前", "后", "学", "习", "字"});
                 Check(FindLabel(lv_screen_active(), "han4 · 共25字，点击查看"),
                       "search reports the complete homophone count");
                 Check(FindLabel(lv_screen_active(), "1/3 · 左右滑动翻页"),
                       "search results expose pagination");
-                auto first_candidate = FindLabel(lv_screen_active(), "一");
+                auto first_candidate = FindLabel(lv_screen_active(), "鉲");
                 Check(first_candidate &&
-                          lv_obj_get_style_transform_scale_x(first_candidate, LV_PART_MAIN) > 256,
-                      "candidate characters use large anti-aliased text");
+                          lv_obj_get_style_text_font(first_candidate, LV_PART_MAIN) ==
+                              dictionary_body_font &&
+                          lv_obj_get_style_transform_scale_x(first_candidate, LV_PART_MAIN) == 256,
+                      "candidate characters use the native dictionary body font");
+                lv_font_glyph_dsc_t rare{};
+                Check(lv_font_get_glyph_dsc(dictionary_body_font, &rare, 0x9272, 0) &&
+                          !rare.is_placeholder &&
+                          lv_font_get_glyph_dsc(dictionary_body_font, &rare, 0x9bfb, 0) &&
+                          !rare.is_placeholder,
+                      "rare pinyin candidates have real glyphs");
+                Shot(folder, "dictionary-search-rare");
                 Click("›");
                 Check(FindLabel(lv_screen_active(), "2/3 · 左右滑动翻页"),
                       "search results can move to the next page");
@@ -423,6 +457,20 @@ int main(int argc, char** argv) {
             han::StrokeGlyph glyph;
             Check(generated.ReadStrokeGlyph("汉", glyph), "read indexed vector strokes");
             Check(ui.ApplyStrokeGlyph("汉", std::move(glyph)), "apply indexed vector strokes");
+            auto heading_canvas = FindCanvas(lv_screen_active(), 96, 88);
+            Check(heading_canvas, "large dictionary heading canvas exists");
+#if LV_USE_VECTOR_GRAPHIC
+            Check(!lv_obj_has_flag(heading_canvas, LV_OBJ_FLAG_HIDDEN),
+                  "dictionary heading uses a large crisp vector glyph");
+#endif
+            auto heading_pinyin = FindLabel(lv_screen_active(), entry.pinyin.c_str());
+            lv_obj_update_layout(lv_screen_active());
+            lv_area_t heading_area{}, pinyin_area{};
+            lv_obj_get_coords(heading_canvas, &heading_area);
+            lv_obj_get_coords(heading_pinyin, &pinyin_area);
+            Check(std::abs((heading_area.y1 + heading_area.y2) -
+                           (pinyin_area.y1 + pinyin_area.y2)) <= 8,
+                  "large dictionary character and pinyin are vertically centered");
             Shot(folder, "dictionary-han-indexed");
             Check(generated.Lookup("嗝", entry) && entry.radical == "口" &&
                       entry.structure == "左右结构" && entry.stroke_count == 13,

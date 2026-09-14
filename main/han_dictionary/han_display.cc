@@ -962,7 +962,8 @@ void HanDisplay::Dictionary() {
     lv_obj_set_style_text_align(stroke_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
     auto progress = Box(body_, 341, 448, 124, 34, 0xffdfe3);
     lv_obj_set_style_radius(progress, 17, 0);
-    stroke_value_ = Label(progress, "", 4, 0, 116, &han_font_stroke_name);
+    stroke_value_ = Label(progress, "", 4, 0, 116);
+    ApplyDictionaryTextFont(stroke_value_);
     lv_obj_set_style_text_align(stroke_value_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(stroke_value_, LV_ALIGN_CENTER, 0, 0);
 
@@ -985,8 +986,8 @@ void HanDisplay::Dictionary() {
     auto details = Card(body_, 490, 0, 742, 566, 0xffffff);
     lv_obj_set_style_radius(details, 24, 0);
     glyph_title_image_ = lv_canvas_create(details);
-    glyph_title_draw_buf_ = lv_draw_buf_create(82, 82, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
-    lv_obj_set_pos(glyph_title_image_, 20, 5);
+    glyph_title_draw_buf_ = lv_draw_buf_create(96, 88, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+    lv_obj_set_pos(glyph_title_image_, 18, 1);
     lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_CLICKABLE);
     if (glyph_title_draw_buf_) {
         lv_canvas_set_draw_buf(glyph_title_image_, glyph_title_draw_buf_);
@@ -994,13 +995,13 @@ void HanDisplay::Dictionary() {
     } else {
         lv_obj_add_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    glyph_title_placeholder_ = Label(details, entry_.character.c_str(), 20, 5, 82,
-                                     DictionaryHeroFont());
-    lv_obj_set_height(glyph_title_placeholder_, 82);
+    glyph_title_placeholder_ =
+        Label(details, entry_.character.c_str(), 18, 17, 96, DictionaryHeroFont());
+    lv_obj_set_height(glyph_title_placeholder_, 56);
     lv_obj_set_style_text_align(glyph_title_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
-    auto pinyin = Label(details, entry_.pinyin.c_str(), 112, 25, 210, &han_font_40);
+    auto pinyin = Label(details, entry_.pinyin.c_str(), 128, 25, 210, &han_font_40);
     lv_obj_set_style_text_color(pinyin, lv_color_hex(0x182b50), 0);
-    lv_obj_align_to(pinyin, glyph_title_image_, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+    lv_obj_align_to(pinyin, glyph_title_image_, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
 
     const lv_image_dsc_t* action_icons[] = {&han_icon_definition_detail, &han_icon_pinyin_search};
     const uint32_t action_colors[] = {kOrange, kBlue};
@@ -1043,6 +1044,7 @@ void HanDisplay::Dictionary() {
     auto words_title = Box(details, 24, 254, 72, 42, kGreen);
     lv_obj_set_style_radius(words_title, 21, 0);
     auto words_title_text = Label(words_title, "组词", 4, 0, 64);
+    ApplyDictionaryTextFont(words_title_text);
     lv_obj_set_style_text_align(words_title_text, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(words_title_text, LV_ALIGN_CENTER, 0, 0);
     for (int i = 0; i < std::min<int>(5, entry_.words.size()); ++i) {
@@ -1058,6 +1060,7 @@ void HanDisplay::Dictionary() {
     lv_obj_set_style_radius(order, 21, 0);
     const std::string stroke_summary = "笔顺 · 共" + std::to_string(entry_.strokes.size()) + "画";
     auto order_text = Label(order, stroke_summary.c_str(), 6, 0, 178);
+    ApplyDictionaryTextFont(order_text);
     lv_obj_set_style_text_align(order_text, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(order_text, LV_ALIGN_CENTER, 0, 0);
 
@@ -1068,19 +1071,20 @@ void HanDisplay::Dictionary() {
     lv_obj_set_scrollbar_mode(stroke_panel, LV_SCROLLBAR_MODE_AUTO);
     const int shown = std::min<int>(stroke_chips_.size(), entry_.strokes.size());
     for (int i = 0; i < shown; ++i) {
-        auto chip = Box(stroke_panel, 4 + i % 7 * 99, 4 + i / 7 * 82, 94, 78, 0xf7fafb);
+        auto chip = Box(stroke_panel, 4 + i % 5 * 138, 4 + i / 5 * 82, 132, 78, 0xf7fafb);
         lv_obj_set_style_radius(chip, 14, 0);
         lv_obj_set_style_border_width(chip, 2, 0);
         lv_obj_set_style_border_color(chip, lv_color_hex(0xdde8ec), 0);
         auto canvas = lv_canvas_create(chip);
         auto draw_buf = lv_draw_buf_create(48, 43, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
-        lv_obj_set_pos(canvas, 23, 2);
+        lv_obj_set_pos(canvas, 42, 2);
         lv_obj_remove_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
         if (draw_buf) {
             lv_canvas_set_draw_buf(canvas, draw_buf);
         }
         lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
-        auto text = Label(chip, entry_.strokes[i].c_str(), 1, 47, 92, &han_font_stroke_name);
+        auto text = Label(chip, entry_.strokes[i].c_str(), 2, 44, 128);
+        ApplyDictionaryTextFont(text);
         lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_letter_space(text, -1, 0);
         lv_label_set_long_mode(text, LV_LABEL_LONG_CLIP);
@@ -1103,24 +1107,26 @@ void HanDisplay::OpenPinyinSearch() {
     lv_obj_set_style_border_width(search_overlay_, 3, 0);
     lv_obj_set_style_border_color(search_overlay_, lv_color_hex(0xd7eee0), 0);
     auto search_title = Label(search_overlay_, "拼音查字", 24, 18, 190, &han_font_40);
-    (void)search_title;
+    ApplyDictionaryTextFont(search_title);
     auto input_box = Box(search_overlay_, 220, 14, 450, 64, 0xf2f7fb);
     lv_obj_set_style_border_width(input_box, 2, 0);
     lv_obj_set_style_border_color(input_box, lv_color_hex(0xc9dfea), 0);
     search_input_ = Label(input_box, "输入拼音，例如 han", 20, 10, 410);
+    ApplyDictionaryTextFont(search_input_);
     lv_obj_set_style_text_color(search_input_, lv_color_hex(kMuted), 0);
     auto submit = Button(search_overlay_, "查找", 690, 14, 164, 64, kGreen, 1127);
     auto close = Button(search_overlay_, "关闭", 1034, 14, 174, 64, kPink, 1128);
-    (void)submit;
-    (void)close;
+    ApplyDictionaryTextFont(lv_obj_get_child(submit, 0));
+    ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
 
     auto tone_title = Label(search_overlay_, "音调", 28, 104, 82);
-    (void)tone_title;
+    ApplyDictionaryTextFont(tone_title);
     const char* tone_names[] = {"全部", "轻声", "一声", "二声", "三声", "四声"};
     for (int index = 0; index < 6; ++index) {
         pinyin_tone_buttons_[index] =
             Button(search_overlay_, tone_names[index], 118 + index * 147, 91, 132, 52,
                    index == 0 ? kGreen : 0xf1f4f6, 1130 + index);
+        ApplyDictionaryTextFont(lv_obj_get_child(pinyin_tone_buttons_[index], 0));
         lv_obj_set_style_radius(pinyin_tone_buttons_[index], 20, 0);
     }
 
@@ -1132,14 +1138,15 @@ void HanDisplay::OpenPinyinSearch() {
     for (int row = 0; row < 3; ++row) {
         for (int column = 0; rows[row][column]; ++column) {
             char label[2] = {rows[row][column], '\0'};
-            Button(keyboard, label, starts[row] + column * 60, 14 + row * 76, 52, 60, 0xffffff,
-                   1100 + rows[row][column] - 'a');
+            auto key = Button(keyboard, label, starts[row] + column * 60, 14 + row * 76, 52, 60,
+                              0xffffff, 1100 + rows[row][column] - 'a');
+            ApplyDictionaryTextFont(lv_obj_get_child(key, 0));
         }
     }
     auto backspace = Button(keyboard, "退格", 116, 246, 190, 62, kOrange, 1126);
     auto clear = Button(keyboard, "清空", 330, 246, 190, 62, kPurple, 1129);
-    (void)backspace;
-    (void)clear;
+    ApplyDictionaryTextFont(lv_obj_get_child(backspace, 0));
+    ApplyDictionaryTextFont(lv_obj_get_child(clear, 0));
     RenderPinyinResults(DictionaryService::GetInstance().store().pinyin_ready()
                             ? "输入拼音，可按音调缩小候选范围"
                             : "SD 卡缺少拼音索引，请更新内容包");
@@ -1157,11 +1164,10 @@ void HanDisplay::OpenDefinitionDetails() {
     lv_image_set_scale(icon, 170);
     lv_image_set_pivot(icon, 0, 0);
     const std::string title = entry_.character + " 的完整释义";
-    auto title_label = Label(definition_overlay_, title.c_str(), 102, 24, 560, &han_font_40);
-    ApplyDictionaryLargeFont(title_label);
-    auto pinyin = Label(definition_overlay_, entry_.pinyin.c_str(), 670, 30, 270, &han_font_40);
-    lv_obj_set_style_text_color(pinyin, lv_color_hex(kMuted), 0);
+    auto title_label = Label(definition_overlay_, title.c_str(), 102, 24, 820);
+    ApplyDictionaryTextFont(title_label);
     auto close = Button(definition_overlay_, "关闭", 1020, 18, 180, 62, kPink, 1136);
+    ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
     lv_obj_set_style_radius(close, 22, 0);
 
     auto content = Card(definition_overlay_, 24, 96, 1184, 442, 0xffffff);
@@ -1211,6 +1217,7 @@ void HanDisplay::RenderPinyinResults(const char* status) {
     lv_obj_clean(search_results_);
     pinyin_page_label_ = nullptr;
     search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 20, 12, 480);
+    ApplyDictionaryTextFont(search_status_);
     lv_obj_set_style_text_color(search_status_, lv_color_hex(kMuted), 0);
     lv_label_set_long_mode(search_status_, LV_LABEL_LONG_DOT);
     lv_obj_set_height(search_status_, 40);
@@ -1228,17 +1235,18 @@ void HanDisplay::RenderPinyinResults(const char* status) {
                                              : kOrange,
                              1200 + index);
         auto text = lv_obj_get_child(button, 0);
-        ApplyDictionaryLargeFont(text);
+        ApplyDictionaryTextFont(text);
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
     }
     if (page_count > 1) {
         auto previous = Button(search_results_, "‹", 20, 310, 64, 46, kGreen, 1137);
         auto next = Button(search_results_, "›", 436, 310, 64, 46, kBlue, 1138);
-        (void)previous;
-        (void)next;
+        ApplyDictionaryTextFont(lv_obj_get_child(previous, 0));
+        ApplyDictionaryTextFont(lv_obj_get_child(next, 0));
         const std::string page_text =
             std::to_string(pinyin_page_ + 1) + "/" + std::to_string(page_count) + " · 左右滑动翻页";
         pinyin_page_label_ = Label(search_results_, page_text.c_str(), 92, 318, 336);
+        ApplyDictionaryTextFont(pinyin_page_label_);
         lv_obj_set_style_text_align(pinyin_page_label_, LV_TEXT_ALIGN_CENTER, 0);
     }
 }
@@ -1324,8 +1332,12 @@ void HanDisplay::RenderStroke() {
             lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
     } else
         HideStrokeArtwork();
-    // Keep the compact dictionary heading in the same antialiased font as the definition. The
-    // stroke outline remains in the large practice grid, where its teaching detail is useful.
+    if (glyph_title_image_ && glyph_title_draw_buf_ &&
+        DrawGlyph(glyph_title_image_, stroke_glyph_, 96, 88, 1, -1, -1, false)) {
+        lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
+        if (glyph_title_placeholder_)
+            lv_obj_add_flag(glyph_title_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    }
     for (int index = 0; index < static_cast<int>(stroke_chip_images_.size()); ++index) {
         if (!stroke_chip_images_[index] || !stroke_chip_draw_bufs_[index] ||
             index >= static_cast<int>(stroke_glyph_.strokes.size()))
