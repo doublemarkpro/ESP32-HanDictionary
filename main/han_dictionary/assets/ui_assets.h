@@ -15,6 +15,8 @@ LV_IMAGE_DECLARE(han_icon_timer);
 LV_IMAGE_DECLARE(han_icon_alarm);
 LV_IMAGE_DECLARE(han_icon_weather);
 LV_IMAGE_DECLARE(han_icon_settings);
+LV_IMAGE_DECLARE(han_icon_pinyin_search);
+LV_IMAGE_DECLARE(han_icon_definition_detail);
 extern const lv_image_dsc_t han_gui_strokes[8];
 #ifdef __cplusplus
 }

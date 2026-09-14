@@ -62,6 +62,9 @@ private:
     void UpdateStroke();
     void RenderStroke();
     void OpenPinyinSearch();
+    void OpenDefinitionDetails();
+    void StartPinyinSearch();
+    void UpdatePinyinToneButtons();
     void RenderPinyinResults(const char* status);
     void ApplyPinyinResults(const std::string& query, std::vector<std::string> results);
     void ApplyWeatherArt(std::string id, std::string data);
@@ -130,8 +133,12 @@ private:
     lv_obj_t* search_input_ = nullptr;
     lv_obj_t* search_results_ = nullptr;
     lv_obj_t* search_status_ = nullptr;
+    lv_obj_t* definition_overlay_ = nullptr;
+    std::array<lv_obj_t*, 6> pinyin_tone_buttons_{};
     std::string pinyin_query_;
+    std::string pinyin_search_key_;
     std::vector<std::string> pinyin_results_;
+    int pinyin_tone_ = -1;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
     lv_timer_t* tick_ = nullptr;

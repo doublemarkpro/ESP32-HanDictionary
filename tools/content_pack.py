@@ -258,7 +258,8 @@ def validate_pinyin_index(folder):
             key = key_raw.rstrip(b"\0").decode("ascii")
         except UnicodeDecodeError as exc:
             raise ValueError("Pinyin index key is not ASCII") from exc
-        if normalize_pinyin(key) != key or key <= previous or reserved != 0:
+        base = key[:-1] if key[-1:] in "01234" else key
+        if normalize_pinyin(base) != base or len(key) > 8 or key <= previous or reserved != 0:
             raise ValueError("Pinyin index keys are invalid or unsorted")
         byte_count = candidates * 3
         if not 1 <= candidates <= 1024 or offset != expected_offset or byte_count > len(data) - offset:

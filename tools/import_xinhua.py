@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 import zipfile
 import zlib
 
@@ -239,10 +240,30 @@ def pinyin_syllables(value):
     return syllables
 
 
+def pinyin_keys(value):
+    keys = []
+    tone_marks = {"\u0304": 1, "\u0301": 2, "\u030c": 3, "\u0300": 4}
+    for raw in re.findall(r"[A-Za-züÜāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ:]+[1-5]?", value):
+        base = content_pack.normalize_pinyin(raw)
+        if not base:
+            continue
+        explicit = re.search(r"([1-5])$", raw)
+        tone = (0 if explicit.group(1) == "5" else int(explicit.group(1))) if explicit else 0
+        if not explicit:
+            for mark in unicodedata.normalize("NFD", raw):
+                if mark in tone_marks:
+                    tone = tone_marks[mark]
+                    break
+        for key in (base, f"{base}{tone}"):
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
 def encode_pinyin_index(entries):
     groups = {}
     for character, entry in entries.items():
-        for syllable in pinyin_syllables(entry["pinyin"]):
+        for syllable in pinyin_keys(entry["pinyin"]):
             groups.setdefault(syllable, set()).add(character)
     directory = bytearray()
     data = bytearray()

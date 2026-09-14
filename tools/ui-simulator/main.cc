@@ -47,6 +47,20 @@ lv_obj_t* FindImage(lv_obj_t* obj, const lv_image_dsc_t* source) {
             return image;
     return nullptr;
 }
+lv_obj_t* FindCanvas(lv_obj_t* obj, int width, int height) {
+    if (lv_obj_check_type(obj, &lv_canvas_class) && lv_obj_get_width(obj) == width &&
+        lv_obj_get_height(obj) == height)
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto canvas = FindCanvas(lv_obj_get_child(obj, i), width, height))
+            return canvas;
+    return nullptr;
+}
+void ClickImage(const lv_image_dsc_t* source) {
+    auto image = FindImage(lv_screen_active(), source);
+    Check(image != nullptr, "image button exists");
+    lv_obj_send_event(lv_obj_get_parent(image), LV_EVENT_CLICKED, nullptr);
+}
 bool HasCheck(lv_obj_t* obj) {
     if (lv_obj_check_type(obj, &lv_line_class))
         return true;
@@ -91,7 +105,8 @@ int main(int argc, char** argv) {
         Check(han::ContentStore::TargetCharacter("规矩的规怎么写") == "规", "target extraction");
         Check(han::ContentStore::TargetCharacter("规矩的矩怎么写") == "矩", "no false gui match");
         Check(han::ContentStore::TargetCharacter("随便说一段话").empty(), "ambiguous query");
-        Check(han::ContentStore::NormalizePinyin(" Han4 ") == "han", "pinyin normalization");
+        Check(han::ContentStore::NormalizePinyin(" Han4 ") == "han4", "pinyin tone normalization");
+        Check(han::ContentStore::NormalizePinyin(" ma5 ") == "ma0", "neutral tone normalization");
         han::Entry entry;
         Check(han::ContentStore().Lookup("规", entry), "embedded sample");
         han::ContentStore card(std::string(HAN_SOURCE_ROOT) + "/content/sdcard/handict");
@@ -218,12 +233,27 @@ int main(int argc, char** argv) {
                 Click("下一步");
                 Check(FindLabel(lv_screen_active(), "2/8"), "stroke advance");
                 Click("上一步");
-                Click("拼音查字");
+                Check(FindImage(lv_screen_active(), &han_icon_pinyin_search),
+                      "pinyin search uses illustrated icon");
+                Check(FindImage(lv_screen_active(), &han_icon_definition_detail),
+                      "definition details uses illustrated icon");
+                ClickImage(&han_icon_definition_detail);
+                Check(FindLabel(lv_screen_active(), "规 的完整释义"),
+                      "full definition opens above dictionary");
+                Shot(folder, "dictionary-definition");
+                Click("关闭");
+                ClickImage(&han_icon_pinyin_search);
                 Check(FindLabel(lv_screen_active(), "输入拼音，例如 han"), "pinyin search opens");
+                Check(
+                    FindLabel(lv_screen_active(), "轻声") && FindLabel(lv_screen_active(), "四声"),
+                    "pinyin tone filters are visible");
                 Click("h");
                 Click("a");
                 Click("n");
                 Check(FindLabel(lv_screen_active(), "han"), "pinyin keypad entry");
+                Click("四声");
+                Check(FindLabel(lv_screen_active(), "正在离线字库中查找…"),
+                      "tone selection starts filtered lookup");
                 Shot(folder, "dictionary-search");
                 Click("关闭");
                 auto long_entry = entry;
@@ -231,6 +261,9 @@ int main(int argc, char** argv) {
                 long_entry.strokes.resize(13, "横");
                 long_entry.strokes[12] = "横撇弯钩";
                 ui.ShowEntry(long_entry);
+                auto empty_canvas = FindCanvas(lv_screen_active(), 400, 400);
+                Check(empty_canvas && lv_obj_has_flag(empty_canvas, LV_OBJ_FLAG_HIDDEN),
+                      "new character canvas stays hidden until its glyph renders");
                 Check(FindLabel(lv_screen_active(), "笔顺 · 共13画"),
                       "stroke total stays on one line");
                 Check(FindLabel(lv_screen_active(), "横撇弯钩"),
@@ -346,10 +379,14 @@ int main(int argc, char** argv) {
             han::ContentStore generated(argv[2]);
             Check(generated.Initialize(), "generated card");
             std::vector<std::string> pinyin_results;
-            Check(generated.SearchPinyin("han", pinyin_results) &&
-                      std::find(pinyin_results.begin(), pinyin_results.end(), "汉") !=
+            Check(generated.SearchPinyin("gui", pinyin_results) &&
+                      std::find(pinyin_results.begin(), pinyin_results.end(), "规") !=
                           pinyin_results.end(),
                   "indexed pinyin candidate search");
+            Check(generated.SearchPinyin("gui1", pinyin_results) &&
+                      std::find(pinyin_results.begin(), pinyin_results.end(), "规") !=
+                          pinyin_results.end(),
+                  "tone filtering works with legacy base-only pinyin index");
             Check(generated.Lookup("汉", entry), "indexed dictionary lookup");
             Check(entry.source == "guoxuedashi-xinhua-community" && entry.stroke_count > 0,
                   "indexed dictionary metadata");

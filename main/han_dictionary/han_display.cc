@@ -662,6 +662,8 @@ void HanDisplay::Render(Page page) {
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
     search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
+    definition_overlay_ = nullptr;
+    pinyin_tone_buttons_.fill(nullptr);
     stroke_chips_.fill(nullptr);
     stroke_chip_images_.fill(nullptr);
     timetable_voice_label_ = timetable_reply_card_ = timetable_message_ = nullptr;
@@ -888,8 +890,9 @@ void HanDisplay::Dictionary() {
     lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_CLICKABLE);
     if (stroke_draw_buf_)
         lv_canvas_set_draw_buf(stroke_image_, stroke_draw_buf_);
-    else
-        lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+    if (stroke_draw_buf_)
+        lv_canvas_fill_bg(stroke_image_, lv_color_hex(0xffffff), LV_OPA_TRANSP);
+    lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
     stroke_placeholder_ = Label(grid, "正在读取笔顺…", 58, 178, 350);
     lv_obj_set_style_text_align(stroke_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
     auto progress = Box(body_, 341, 448, 124, 34, 0xffdfe3);
@@ -934,9 +937,22 @@ void HanDisplay::Dictionary() {
     lv_obj_set_style_text_color(pinyin, lv_color_hex(0x182b50), 0);
     lv_obj_align_to(pinyin, glyph_title_image_, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
 
-    auto pinyin_search = Button(details, "拼音查字", 500, 16, 218, 54, kBlue, 23);
-    lv_obj_set_style_radius(pinyin_search, 27, 0);
-    ApplyDictionaryTextFont(lv_obj_get_child(pinyin_search, 0));
+    const lv_image_dsc_t* action_icons[] = {&han_icon_definition_detail, &han_icon_pinyin_search};
+    const uint32_t action_colors[] = {kOrange, kBlue};
+    const int action_codes[] = {25, 23};
+    for (int index = 0; index < 2; ++index) {
+        auto button = Button(details, "", 586 + index * 70, 12, 62, 62, action_colors[index],
+                             action_codes[index]);
+        lv_obj_set_style_radius(button, 19, 0);
+        lv_obj_set_style_border_width(button, 2, 0);
+        lv_obj_set_style_border_color(button, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_transform_scale_x(button, 235, LV_STATE_PRESSED);
+        lv_obj_set_style_transform_scale_y(button, 235, LV_STATE_PRESSED);
+        lv_obj_add_flag(lv_obj_get_child(button, 0), LV_OBJ_FLAG_HIDDEN);
+        auto icon = Image(button, action_icons[index], 4, 4);
+        lv_image_set_scale(icon, 144);
+        lv_image_set_pivot(icon, 0, 0);
+    }
     const std::string radical =
         "部首 " + (entry_.radical.empty() ? std::string("—") : entry_.radical);
     const std::string count =
@@ -1010,8 +1026,11 @@ void HanDisplay::Dictionary() {
 
 void HanDisplay::OpenPinyinSearch() {
     pinyin_query_.clear();
+    pinyin_search_key_.clear();
     pinyin_results_.clear();
-    search_overlay_ = Card(body_, 0, 0, 1232, 480, 0xfffcf6);
+    pinyin_tone_ = -1;
+    pinyin_tone_buttons_.fill(nullptr);
+    search_overlay_ = Card(body_, 0, 0, 1232, 566, 0xfffcf6);
     lv_obj_set_style_border_width(search_overlay_, 3, 0);
     lv_obj_set_style_border_color(search_overlay_, lv_color_hex(0xd7eee0), 0);
     auto search_title = Label(search_overlay_, "拼音查字", 24, 18, 190, &han_font_40);
@@ -1026,24 +1045,93 @@ void HanDisplay::OpenPinyinSearch() {
     ApplyDictionaryTextFont(lv_obj_get_child(submit, 0));
     ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
 
-    search_results_ = Card(search_overlay_, 24, 96, 520, 356, 0xffffff);
-    auto keyboard = Card(search_overlay_, 568, 96, 640, 356, 0xf3f8ff);
+    auto tone_title = Label(search_overlay_, "音调", 28, 104, 82);
+    ApplyDictionaryTextFont(tone_title);
+    const char* tone_names[] = {"全部", "轻声", "一声", "二声", "三声", "四声"};
+    for (int index = 0; index < 6; ++index) {
+        pinyin_tone_buttons_[index] =
+            Button(search_overlay_, tone_names[index], 118 + index * 147, 91, 132, 52,
+                   index == 0 ? kGreen : 0xf1f4f6, 1130 + index);
+        lv_obj_set_style_radius(pinyin_tone_buttons_[index], 20, 0);
+        ApplyDictionaryTextFont(lv_obj_get_child(pinyin_tone_buttons_[index], 0));
+    }
+
+    search_results_ = Card(search_overlay_, 24, 164, 520, 374, 0xffffff);
+    auto keyboard = Card(search_overlay_, 568, 164, 640, 374, 0xf3f8ff);
     const char* rows[] = {"qwertyuiop", "asdfghjkl", "zxcvbnm"};
     const int starts[] = {18, 48, 110};
     for (int row = 0; row < 3; ++row) {
         for (int column = 0; rows[row][column]; ++column) {
             char label[2] = {rows[row][column], '\0'};
-            Button(keyboard, label, starts[row] + column * 60, 18 + row * 82, 52, 64, 0xffffff,
+            Button(keyboard, label, starts[row] + column * 60, 14 + row * 76, 52, 60, 0xffffff,
                    1100 + rows[row][column] - 'a');
         }
     }
-    auto backspace = Button(keyboard, "退格", 116, 270, 190, 62, kOrange, 1126);
-    auto clear = Button(keyboard, "清空", 330, 270, 190, 62, kPurple, 1129);
+    auto backspace = Button(keyboard, "退格", 116, 246, 190, 62, kOrange, 1126);
+    auto clear = Button(keyboard, "清空", 330, 246, 190, 62, kPurple, 1129);
     ApplyDictionaryTextFont(lv_obj_get_child(backspace, 0));
     ApplyDictionaryTextFont(lv_obj_get_child(clear, 0));
     RenderPinyinResults(DictionaryService::GetInstance().store().pinyin_ready()
-                            ? "输入不带声调的拼音，再从候选字中点选"
+                            ? "输入拼音，可按音调缩小候选范围"
                             : "SD 卡缺少拼音索引，请更新内容包");
+    UpdatePinyinToneButtons();
+}
+
+void HanDisplay::OpenDefinitionDetails() {
+    if (definition_overlay_)
+        return;
+    definition_overlay_ = Card(body_, 0, 0, 1232, 566, 0xfffaf3);
+    lv_obj_set_style_border_width(definition_overlay_, 3, 0);
+    lv_obj_set_style_border_color(definition_overlay_, lv_color_hex(0xf3d7bc), 0);
+
+    auto icon = Image(definition_overlay_, &han_icon_definition_detail, 24, 8);
+    lv_image_set_scale(icon, 170);
+    lv_image_set_pivot(icon, 0, 0);
+    const std::string title = entry_.character + " 的完整释义";
+    auto title_label = Label(definition_overlay_, title.c_str(), 102, 24, 560, &han_font_40);
+    ApplyDictionaryTextFont(title_label);
+    auto pinyin = Label(definition_overlay_, entry_.pinyin.c_str(), 670, 30, 270, &han_font_40);
+    lv_obj_set_style_text_color(pinyin, lv_color_hex(kMuted), 0);
+    auto close = Button(definition_overlay_, "关闭", 1020, 18, 180, 62, kPink, 1136);
+    lv_obj_set_style_radius(close, 22, 0);
+    ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
+
+    auto content = Card(definition_overlay_, 24, 96, 1184, 442, 0xffffff);
+    lv_obj_add_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(content, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+    auto meaning = Label(content, entry_.definition.c_str(), 26, 22, 1116);
+    ApplyDictionaryTextFont(meaning);
+    lv_label_set_long_mode(meaning, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(meaning, LV_SIZE_CONTENT);
+    lv_obj_set_style_text_line_space(meaning, 9, 0);
+}
+
+void HanDisplay::UpdatePinyinToneButtons() {
+    for (int index = 0; index < 6; ++index) {
+        if (!pinyin_tone_buttons_[index])
+            continue;
+        const bool selected = index == pinyin_tone_ + 1;
+        lv_obj_set_style_bg_color(pinyin_tone_buttons_[index],
+                                  lv_color_hex(selected ? kGreen : 0xf1f4f6), 0);
+        lv_obj_set_style_border_width(pinyin_tone_buttons_[index], selected ? 2 : 0, 0);
+        lv_obj_set_style_border_color(pinyin_tone_buttons_[index], lv_color_hex(0x8ad5a0), 0);
+    }
+}
+
+void HanDisplay::StartPinyinSearch() {
+    const auto normalized = han::ContentStore::NormalizePinyin(pinyin_query_);
+    if (normalized.empty()) {
+        Toast("请先输入拼音，例如 han");
+        return;
+    }
+    pinyin_query_ = normalized;
+    pinyin_search_key_ = normalized;
+    if (pinyin_tone_ >= 0)
+        pinyin_search_key_.push_back(static_cast<char>('0' + pinyin_tone_));
+    pinyin_results_.clear();
+    RenderPinyinResults("正在离线字库中查找…");
+    Queue(7, pinyin_search_key_);
 }
 
 void HanDisplay::RenderPinyinResults(const char* status) {
@@ -1065,7 +1153,7 @@ void HanDisplay::RenderPinyinResults(const char* status) {
 }
 
 void HanDisplay::ApplyPinyinResults(const std::string& query, std::vector<std::string> results) {
-    if (page_ != Page::Dictionary || !search_overlay_ || query != pinyin_query_)
+    if (page_ != Page::Dictionary || !search_overlay_ || query != pinyin_search_key_)
         return;
     pinyin_results_ = std::move(results);
     const std::string status =
@@ -1815,45 +1903,59 @@ void HanDisplay::Action(int a) {
     if (a >= 1100 && a < 1126) {
         if (pinyin_query_.size() < 7) {
             pinyin_query_.push_back(static_cast<char>('a' + a - 1100));
+            pinyin_search_key_.clear();
+            pinyin_results_.clear();
             lv_label_set_text(search_input_, pinyin_query_.c_str());
             lv_obj_set_style_text_color(search_input_, lv_color_hex(kInk), 0);
+            RenderPinyinResults("输入完成后点查找，或直接选择音调");
         }
         return;
     }
     if (a == 1126) {
         if (!pinyin_query_.empty())
             pinyin_query_.pop_back();
+        pinyin_search_key_.clear();
+        pinyin_results_.clear();
         lv_label_set_text(search_input_,
                           pinyin_query_.empty() ? "输入拼音，例如 han" : pinyin_query_.c_str());
         lv_obj_set_style_text_color(search_input_,
                                     lv_color_hex(pinyin_query_.empty() ? kMuted : kInk), 0);
+        RenderPinyinResults("输入完成后点查找，或直接选择音调");
         return;
     }
     if (a == 1129) {
         pinyin_query_.clear();
+        pinyin_search_key_.clear();
         pinyin_results_.clear();
         lv_label_set_text(search_input_, "输入拼音，例如 han");
         lv_obj_set_style_text_color(search_input_, lv_color_hex(kMuted), 0);
-        RenderPinyinResults("输入不带声调的拼音，再从候选字中点选");
+        RenderPinyinResults("输入拼音，可按音调缩小候选范围");
         return;
     }
     if (a == 1127) {
-        const auto normalized = han::ContentStore::NormalizePinyin(pinyin_query_);
-        if (normalized.empty()) {
-            Toast("请先输入拼音，例如 han");
-            return;
-        }
-        pinyin_query_ = normalized;
-        pinyin_results_.clear();
-        RenderPinyinResults("正在离线字库中查找…");
-        Queue(7, pinyin_query_);
+        StartPinyinSearch();
+        return;
+    }
+    if (a >= 1130 && a <= 1135) {
+        pinyin_tone_ = a - 1131;
+        UpdatePinyinToneButtons();
+        if (!pinyin_query_.empty())
+            StartPinyinSearch();
         return;
     }
     if (a == 1128) {
         if (search_overlay_)
             lv_obj_delete(search_overlay_);
         search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
+        pinyin_tone_buttons_.fill(nullptr);
+        pinyin_search_key_.clear();
         pinyin_results_.clear();
+        return;
+    }
+    if (a == 1136) {
+        if (definition_overlay_)
+            lv_obj_delete(definition_overlay_);
+        definition_overlay_ = nullptr;
         return;
     }
     if (a >= 1200 && a < 1200 + static_cast<int>(pinyin_results_.size())) {
@@ -1876,6 +1978,10 @@ void HanDisplay::Action(int a) {
     }
     if (a == 23) {
         OpenPinyinSearch();
+        return;
+    }
+    if (a == 25) {
+        OpenDefinitionDetails();
         return;
     }
     if (a == 24) {

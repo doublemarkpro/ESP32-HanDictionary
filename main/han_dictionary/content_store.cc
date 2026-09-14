@@ -144,6 +144,181 @@ uint32_t Codepoint(const std::string& s) {
     auto cp = ((p[0] & 15) << 12) | ((p[1] & 63) << 6) | (p[2] & 63);
     return cp >= 0x4e00 && cp <= 0x9fff ? cp : 0;
 }
+
+bool DecodeUtf8(const std::string& text, size_t& offset, uint32_t& codepoint) {
+    if (offset >= text.size())
+        return false;
+    const auto first = static_cast<uint8_t>(text[offset++]);
+    if (first < 0x80) {
+        codepoint = first;
+        return true;
+    }
+    const int tails = (first & 0xe0) == 0xc0 ? 1 : (first & 0xf0) == 0xe0 ? 2 : 0;
+    if (!tails || offset + tails > text.size())
+        return false;
+    codepoint = first & (tails == 1 ? 0x1f : 0x0f);
+    for (int index = 0; index < tails; ++index) {
+        const auto next = static_cast<uint8_t>(text[offset++]);
+        if ((next & 0xc0) != 0x80)
+            return false;
+        codepoint = (codepoint << 6) | (next & 0x3f);
+    }
+    return true;
+}
+
+bool PinyinMatchesTone(const std::string& value, const std::string& expected, int expected_tone) {
+    std::string syllable;
+    int tone = 0;
+    auto finish = [&] {
+        const bool match = syllable == expected && tone == expected_tone;
+        syllable.clear();
+        tone = 0;
+        return match;
+    };
+    size_t offset = 0;
+    while (offset < value.size()) {
+        uint32_t cp = 0;
+        if (!DecodeUtf8(value, offset, cp))
+            return false;
+        char letter = 0;
+        int marked_tone = 0;
+        if (cp >= 'A' && cp <= 'Z')
+            letter = static_cast<char>(cp - 'A' + 'a');
+        else if (cp >= 'a' && cp <= 'z')
+            letter = static_cast<char>(cp);
+        else {
+            switch (cp) {
+                case 0x0101:
+                    letter = 'a';
+                    marked_tone = 1;
+                    break;
+                case 0x00e1:
+                    letter = 'a';
+                    marked_tone = 2;
+                    break;
+                case 0x01ce:
+                    letter = 'a';
+                    marked_tone = 3;
+                    break;
+                case 0x00e0:
+                    letter = 'a';
+                    marked_tone = 4;
+                    break;
+                case 0x0113:
+                    letter = 'e';
+                    marked_tone = 1;
+                    break;
+                case 0x00e9:
+                    letter = 'e';
+                    marked_tone = 2;
+                    break;
+                case 0x011b:
+                    letter = 'e';
+                    marked_tone = 3;
+                    break;
+                case 0x00e8:
+                    letter = 'e';
+                    marked_tone = 4;
+                    break;
+                case 0x012b:
+                    letter = 'i';
+                    marked_tone = 1;
+                    break;
+                case 0x00ed:
+                    letter = 'i';
+                    marked_tone = 2;
+                    break;
+                case 0x01d0:
+                    letter = 'i';
+                    marked_tone = 3;
+                    break;
+                case 0x00ec:
+                    letter = 'i';
+                    marked_tone = 4;
+                    break;
+                case 0x014d:
+                    letter = 'o';
+                    marked_tone = 1;
+                    break;
+                case 0x00f3:
+                    letter = 'o';
+                    marked_tone = 2;
+                    break;
+                case 0x01d2:
+                    letter = 'o';
+                    marked_tone = 3;
+                    break;
+                case 0x00f2:
+                    letter = 'o';
+                    marked_tone = 4;
+                    break;
+                case 0x016b:
+                    letter = 'u';
+                    marked_tone = 1;
+                    break;
+                case 0x00fa:
+                    letter = 'u';
+                    marked_tone = 2;
+                    break;
+                case 0x01d4:
+                    letter = 'u';
+                    marked_tone = 3;
+                    break;
+                case 0x00f9:
+                    letter = 'u';
+                    marked_tone = 4;
+                    break;
+                case 0x00fc:
+                    letter = 'v';
+                    break;
+                case 0x01d6:
+                    letter = 'v';
+                    marked_tone = 1;
+                    break;
+                case 0x01d8:
+                    letter = 'v';
+                    marked_tone = 2;
+                    break;
+                case 0x01da:
+                    letter = 'v';
+                    marked_tone = 3;
+                    break;
+                case 0x01dc:
+                    letter = 'v';
+                    marked_tone = 4;
+                    break;
+                case 0x0144:
+                    letter = 'n';
+                    marked_tone = 2;
+                    break;
+                case 0x0148:
+                    letter = 'n';
+                    marked_tone = 3;
+                    break;
+                case 0x01f9:
+                    letter = 'n';
+                    marked_tone = 4;
+                    break;
+                case 0x1e3f:
+                    letter = 'm';
+                    marked_tone = 2;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (letter) {
+            syllable.push_back(letter);
+            if (marked_tone)
+                tone = marked_tone;
+        } else if (cp >= '1' && cp <= '5') {
+            tone = cp == '5' ? 0 : static_cast<int>(cp - '0');
+        } else if (finish()) {
+            return true;
+        }
+    }
+    return finish();
+}
 }  // namespace
 
 Entry ContentStore::Demo() {
@@ -177,6 +352,7 @@ std::string ContentStore::TargetCharacter(const std::string& query) {
 std::string ContentStore::NormalizePinyin(const std::string& query) {
     std::string value;
     value.reserve(query.size());
+    char tone = 0;
     for (size_t index = 0; index < query.size(); ++index) {
         const auto character = static_cast<unsigned char>(query[index]);
         if (std::isspace(character))
@@ -189,18 +365,23 @@ std::string ContentStore::NormalizePinyin(const std::string& query) {
             value.push_back(static_cast<char>(character - 'A' + 'a'));
         } else if (character >= 'a' && character <= 'z') {
             value.push_back(static_cast<char>(character));
-        } else if (character >= '1' && character <= '5') {
+        } else if (character >= '0' && character <= '5') {
             bool only_spaces_follow = true;
             for (size_t tail = index + 1; tail < query.size(); ++tail)
                 only_spaces_follow =
                     only_spaces_follow && std::isspace(static_cast<unsigned char>(query[tail]));
-            if (!only_spaces_follow)
+            if (!only_spaces_follow || tone)
                 return {};
+            tone = character == '5' ? '0' : static_cast<char>(character);
         } else {
             return {};
         }
     }
-    return value.empty() || value.size() > 7 ? std::string() : value;
+    if (value.empty() || value.size() > 7)
+        return {};
+    if (tone)
+        value.push_back(tone);
+    return value;
 }
 
 bool ContentStore::Read(const std::string& relative, std::string& data, size_t limit) const {
@@ -333,7 +514,7 @@ bool ContentStore::Initialize() {
             std::string key(reinterpret_cast<char*>(directory), key_size);
             const uint32_t offset = ReadLe32(directory + 8);
             const uint16_t candidates = ReadLe16(directory + 12);
-            valid = valid && key_size > 0 && key_size <= 7 && NormalizePinyin(key) == key &&
+            valid = valid && key_size > 0 && key_size <= 8 && NormalizePinyin(key) == key &&
                     key > previous && candidates > 0 && candidates <= 1024 &&
                     ReadLe16(directory + 14) == 0 && offset == expected_offset &&
                     offset <= data_size &&
@@ -583,40 +764,48 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
                                 size_t limit) const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     characters.clear();
-    const auto key = NormalizePinyin(query);
+    auto key = NormalizePinyin(query);
     if (!pinyin_index_ready_ || key.empty() || limit == 0)
         return false;
     FILE* file = fopen((root_ + "/dictionary/pinyin.idx").c_str(), "rb");
     if (!file)
         return false;
-    uint32_t low = 0, high = pinyin_records_;
     uint8_t directory[kPinyinDirectorySize]{};
-    bool found = false;
-    while (low < high) {
-        const uint32_t middle = low + (high - low) / 2;
-        if (fseek(file, static_cast<long>(kPinyinHeaderSize + middle * kPinyinDirectorySize),
-                  SEEK_SET) != 0 ||
-            fread(directory, 1, sizeof(directory), file) != sizeof(directory))
-            break;
-        size_t length = 0;
-        while (length < 8 && directory[length])
-            ++length;
-        const std::string candidate(reinterpret_cast<char*>(directory), length);
-        if (candidate < key)
-            low = middle + 1;
-        else if (candidate > key)
-            high = middle;
-        else {
-            found = true;
-            break;
+    auto find_key = [&](const std::string& target) {
+        uint32_t low = 0, high = pinyin_records_;
+        while (low < high) {
+            const uint32_t middle = low + (high - low) / 2;
+            if (fseek(file, static_cast<long>(kPinyinHeaderSize + middle * kPinyinDirectorySize),
+                      SEEK_SET) != 0 ||
+                fread(directory, 1, sizeof(directory), file) != sizeof(directory))
+                return false;
+            size_t length = 0;
+            while (length < 8 && directory[length])
+                ++length;
+            const std::string candidate(reinterpret_cast<char*>(directory), length);
+            if (candidate < target)
+                low = middle + 1;
+            else if (candidate > target)
+                high = middle;
+            else
+                return true;
         }
+        return false;
+    };
+    bool found = find_key(key);
+    int fallback_tone = -1;
+    if (!found && key.size() > 1 && key.back() >= '0' && key.back() <= '4') {
+        fallback_tone = key.back() - '0';
+        key.pop_back();
+        found = find_key(key);
     }
     if (!found) {
         fclose(file);
         return false;
     }
     const uint32_t offset = ReadLe32(directory + 8);
-    const size_t count = std::min<size_t>(ReadLe16(directory + 12), std::min<size_t>(limit, 24));
+    const size_t count = std::min<size_t>(ReadLe16(directory + 12),
+                                          fallback_tone >= 0 ? 256 : std::min<size_t>(limit, 24));
     if (offset > pinyin_data_size_ || count * 3 > pinyin_data_size_ - offset ||
         fseek(file, static_cast<long>(kPinyinHeaderSize + pinyin_directory_size_ + offset),
               SEEK_SET) != 0) {
@@ -628,14 +817,24 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
     fclose(file);
     if (!ok)
         return false;
-    characters.reserve(count);
+    characters.reserve(std::min(count, limit));
     for (size_t index = 0; index < count; ++index) {
         auto character = data.substr(index * 3, 3);
         if (!Codepoint(character)) {
             characters.clear();
             return false;
         }
+        if (fallback_tone >= 0) {
+            std::string entry_data;
+            Entry entry;
+            if (!ReadIndexed(Codepoint(character), entry_data) ||
+                !ParseEntry(entry_data, character, entry) ||
+                !PinyinMatchesTone(entry.pinyin, key, fallback_tone))
+                continue;
+        }
         characters.push_back(std::move(character));
+        if (characters.size() >= limit)
+            break;
     }
     return !characters.empty();
 }

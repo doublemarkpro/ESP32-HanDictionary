@@ -69,10 +69,10 @@ class DictionaryImportTests(unittest.TestCase):
                              module.content_pack.INDEX_SLOTS * module.content_pack.INDEX_SLOT.size)
             self.assertGreater(data_size, 0)
             self.assertEqual(module.content_pack.validate_index(output / "handict"), 3)
-            self.assertEqual(module.content_pack.validate_pinyin_index(output / "handict"), 3)
+            self.assertEqual(module.content_pack.validate_pinyin_index(output / "handict"), 6)
             manifest = json.loads((output / "handict/manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["indexed_dictionary"]["source_id"], module.SOURCE_ID)
-            self.assertEqual(manifest["indexed_dictionary"]["pinyin_index"]["syllables"], 3)
+            self.assertEqual(manifest["indexed_dictionary"]["pinyin_index"]["syllables"], 6)
 
             pinyin = (output / "handict/dictionary/pinyin.idx").read_bytes()
             header = module.content_pack.PINYIN_HEADER.unpack_from(pinyin)
@@ -86,8 +86,11 @@ class DictionaryImportTests(unittest.TestCase):
                 begin = module.content_pack.PINYIN_HEADER.size + directory_size + offset
                 candidates[key] = pinyin[begin:begin + candidate_count * 3].decode("utf-8")
             self.assertEqual(candidates["han"], "汉")
+            self.assertEqual(candidates["han4"], "汉")
             self.assertEqual(candidates["gui"], "规")
+            self.assertEqual(candidates["gui1"], "规")
             self.assertEqual(candidates["ju"], "矩")
+            self.assertEqual(candidates["ju3"], "矩")
 
             index = (output / "handict/dictionary/index.bin").read_bytes()
             data = (output / "handict/dictionary/data.bin").read_bytes()
@@ -102,6 +105,8 @@ class DictionaryImportTests(unittest.TestCase):
     def test_pinyin_normalization_accepts_tones_umlaut_and_numbers(self):
         self.assertEqual(module.pinyin_syllables("hàn guī lǜ lu:4"),
                          ["han", "gui", "lv"])
+        self.assertEqual(module.pinyin_keys("hàn guī lǜ ma lu:4"),
+                         ["han", "han4", "gui", "gui1", "lv", "lv4", "ma", "ma0"])
 
     def test_existing_output_and_corrupt_data_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
