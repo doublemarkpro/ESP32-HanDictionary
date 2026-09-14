@@ -4,6 +4,10 @@ cmake_minimum_required(VERSION 3.16)
 
 # Add this line to disable the specific warning
 add_compile_options(-Wno-missing-field-initializers)
+# LVGL 9.5's bundled ThorVG compares a plain char with zero while decoding base64.
+# GCC 15 reports that third-party check as type-limits; keep warnings enabled but
+# do not promote this one vendor warning to a build failure.
+add_compile_options(-Wno-error=type-limits)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.

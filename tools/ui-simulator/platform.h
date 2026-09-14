@@ -20,6 +20,7 @@ constexpr int pdTRUE = 1, pdPASS = 1, portMAX_DELAY = 0, ESP_OK = 0, ESP_FAIL = 
         if ((x) != 0)                                    \
             throw std::runtime_error("ESP stub failed"); \
     } while (0)
+#define ESP_LOGI(tag, format, ...) ((void)0)
 inline int64_t esp_timer_get_time() { return lv_tick_get() * 1000LL; }
 inline void localtime_r(const time_t* t, tm* result) { localtime_s(result, t); }
 inline void vTaskDelay(int) {}
@@ -43,6 +44,7 @@ struct Display {
     virtual ~Display() = default;
     virtual void SetupUI() { setup_ui_called_ = true; }
     virtual void SetTheme(Theme*) {}
+    virtual void SetStatus(const char*) {}
     virtual void SetEmotion(const char*) {}
     virtual void SetChatMessage(const char*, const char*) {}
     virtual void ClearChatMessages() {}
@@ -56,6 +58,10 @@ struct MipiLcdDisplay : Display {
     lv_obj_t* battery_label_ = nullptr;
     MipiLcdDisplay(void*, void*, int, int, int, int, bool, bool, bool) {
         display_ = lv_display_get_default();
+    }
+    void SetStatus(const char* text) override {
+        if (status_label_)
+            lv_label_set_text(status_label_, text ? text : "");
     }
     void ShowNotification(const char* text, int) {
         if (notification_label_) {

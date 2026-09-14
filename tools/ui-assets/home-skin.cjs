@@ -56,7 +56,7 @@ async function main() {
  fs.writeFileSync(path.join(out,'home_skin.c'),c);
  const font=path.join(root,'assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf');
  const tool=require.resolve('lv_font_conv/lv_font_conv.js');
- for(const [name,size,text] of [['han_font_home',48,'查字典英语音标课程表作业计时闹钟天气'],['han_font_brand',62,'小小助手联网设置查字典英语音标课程表作业计时闹钟天气'],['han_font_talk',36,'按住说话松开发送正在连接'],['han_font_clock',40,'0123456789:—']]) {
+ for(const [name,size,text] of [['han_font_home',48,'查字典英语音标课程表作业计时闹钟天气'],['han_font_brand',62,'小小助手联网设置查字典英语音标课程表作业计时闹钟天气'],['han_font_clock',40,'0123456789:—']]) {
   execFileSync(process.execPath,[tool,'--font',font,'--symbols',text,'--size',String(size),'--bpp','4','--format','lvgl','--no-kerning','--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')]);
   const output=path.join(out,name+'.c');
   fs.writeFileSync(output,fs.readFileSync(output,'utf8').trimEnd()+'\n');

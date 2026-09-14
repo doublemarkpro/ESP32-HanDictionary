@@ -1,4 +1,5 @@
 #include <cJSON.h>
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -90,27 +91,18 @@ int main(int argc, char** argv) {
         Check(han::ContentStore::TargetCharacter("规矩的规怎么写") == "规", "target extraction");
         Check(han::ContentStore::TargetCharacter("规矩的矩怎么写") == "矩", "no false gui match");
         Check(han::ContentStore::TargetCharacter("随便说一段话").empty(), "ambiguous query");
+        Check(han::ContentStore::NormalizePinyin(" Han4 ") == "han", "pinyin normalization");
         han::Entry entry;
         Check(han::ContentStore().Lookup("规", entry), "embedded sample");
-        Check(entry.page == 0, "unknown page");
         han::ContentStore card(std::string(HAN_SOURCE_ROOT) + "/content/sdcard/handict");
         Check(card.Initialize(), "SD manifest");
-        Check(card.Lookup("规", entry) && entry.page == 0, "SD entry preserves unknown page");
+        Check(card.Lookup("规", entry), "SD entry parsed");
         std::string json;
         Check(!card.Read("../manifest.json", json, 4096), "path traversal rejected");
         Check(card.Read("dictionary/entries/89C4.json", json, 16384), "bounded entry read");
         auto obj = cJSON_Parse(json.c_str());
-        auto ref = cJSON_GetObjectItem(obj, "reference");
-        cJSON_ReplaceItemInObject(ref, "page", cJSON_CreateNumber(123));
-        cJSON_ReplaceItemInObject(ref, "verified", cJSON_CreateBool(true));
         auto modified = cJSON_PrintUnformatted(obj);
-        Check(han::ContentStore::ParseEntry(modified, "规", entry) && entry.page == 123,
-              "verified page accepted (synthetic)");
-        cJSON_free(modified);
-        cJSON_ReplaceItemInObject(ref, "isbn", cJSON_CreateString("9780000000000"));
-        modified = cJSON_PrintUnformatted(obj);
-        Check(han::ContentStore::ParseEntry(modified, "规", entry) && entry.page == 0,
-              "wrong ISBN does not expose page");
+        Check(han::ContentStore::ParseEntry(modified, "规", entry), "entry JSON parsed");
         cJSON_free(modified);
         cJSON_Delete(obj);
         lv_init();
@@ -141,6 +133,9 @@ int main(int argc, char** argv) {
         Check(han::TimetableData::Parse(R"({"days":[[""],[],[],[],[]]})", schedule) &&
                   schedule.empty(),
               "blank lessons are empty");
+        Check(han::TimetableData::Parse("\xef\xbb\xbf" + empty_schedule, schedule) &&
+                  schedule.empty(),
+              "UTF-8 BOM timetable");
         for (const auto& invalid :
              {std::string("{}"), empty_schedule + "garbage",
               std::string(R"({"days":[null,[],[],[],[]]})"),
@@ -150,13 +145,19 @@ int main(int argc, char** argv) {
         Check(ui.ApplyTimetable(empty_schedule), "load genuine empty template");
         ui.UpdateStatusBar();
         Shot(folder, "home");
-        auto& app = Application::GetInstance();
-        auto talk = lv_obj_get_parent(FindLabel(lv_screen_active(), "按住说话"));
-        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
-        Check(app.starts == 0, "offline hold must not enter audio test or start listening");
-        auto offline_notice = FindLabel(lv_screen_active(), "请先联网，再按住说话");
-        Check(offline_notice != nullptr, "offline explanation");
-        lv_obj_add_flag(offline_notice, LV_OBJ_FLAG_HIDDEN);
+        Check(!FindLabel(lv_screen_active(), "按住说话"), "press-to-talk control removed");
+        ui.SetStatus("正在初始化");
+        ui.SetChatMessage("system", "xiaozhi/2.4.2 esp32p4");
+        Check(FindLabel(lv_screen_active(), "正在准备屏幕、声音和网络，请稍候…"),
+              "technical startup banner becomes child-friendly");
+        Shot(folder, "home-starting");
+        ui.SetStatus("正在回答");
+        ui.SetChatMessage("assistant", "当然可以，我们先从今天的第一个生字开始吧！");
+        Check(FindLabel(lv_screen_active(), "小智") &&
+                  FindLabel(lv_screen_active(), "当然可以，我们先从今天的第一个生字开始吧！"),
+              "assistant response has a dedicated role and message area");
+        Shot(folder, "home-assistant-reply");
+        ui.ClearChatMessages();
         WifiManager::GetInstance().connected = true;
         Board::GetInstance().battery_known = true;
         Board::GetInstance().battery = 86;
@@ -164,32 +165,6 @@ int main(int argc, char** argv) {
         Check(FindImage(lv_screen_active(), &han_status_wifi_3), "connected Wi-Fi icon");
         Check(FindImage(lv_screen_active(), &han_status_battery_full), "known battery icon");
         Shot(folder, "home-online-fixture");
-        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
-        Check(app.starts == 1 && FindLabel(lv_screen_active(), "松开发送"),
-              "hold starts manual session");
-        lv_obj_send_event(talk, LV_EVENT_RELEASED, nullptr);
-        Check(app.stops == 1 && FindLabel(lv_screen_active(), "按住说话"), "release stops session");
-        lv_obj_send_event(talk, LV_EVENT_RELEASED, nullptr);
-        Check(app.stops == 1, "duplicate release is harmless");
-        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
-        app.state = kDeviceStateConnecting;
-        lv_obj_send_event(talk, LV_EVENT_PRESS_LOST, nullptr);
-        Check(app.stops == 2 && app.state == kDeviceStateIdle,
-              "lost pointer cancels connecting session");
-        app.defer = true;
-        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
-        lv_obj_send_event(talk, LV_EVENT_RELEASED, nullptr);
-        app.Drain();
-        Check(app.starts == 2 && app.stops == 2, "quick release cancels queued start");
-        app.defer = false;
-        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
-        lv_tick_inc(61000);
-        lv_timer_handler();
-        Check(app.starts == 3 && app.stops == 3, "60-second hold safety release");
-        lv_obj_send_event(talk, LV_EVENT_PRESSED, nullptr);
-        Check(ui.OpenPage("dictionary"), "page navigation during hold");
-        Check(app.starts == 4 && app.stops == 4, "navigation releases microphone");
-        Check(ui.OpenPage("home"), "restore home");
         WifiManager::GetInstance().rssi = -80;
         Board::GetInstance().battery = 10;
         ui.UpdateStatusBar();
@@ -234,9 +209,35 @@ int main(int argc, char** argv) {
             Click(pages[i]);
             Shot(folder, files[i]);
             if (i == 0) {
+                Check(!FindLabel(lv_screen_active(), "语音查字"),
+                      "dictionary voice button removed");
+                Check(!FindLabel(lv_screen_active(), "离线汉字学习"),
+                      "redundant dictionary subtitle removed");
+                Check(!FindLabel(lv_screen_active(), "离线字库"),
+                      "redundant dictionary status button removed");
                 Click("下一步");
-                Check(FindLabel(lv_screen_active(), "2 / 8    横"), "stroke advance");
+                Check(FindLabel(lv_screen_active(), "2/8"), "stroke advance");
                 Click("上一步");
+                Click("拼音查字");
+                Check(FindLabel(lv_screen_active(), "输入拼音，例如 han"), "pinyin search opens");
+                Click("h");
+                Click("a");
+                Click("n");
+                Check(FindLabel(lv_screen_active(), "han"), "pinyin keypad entry");
+                Shot(folder, "dictionary-search");
+                Click("关闭");
+                auto long_entry = entry;
+                long_entry.stroke_count = 13;
+                long_entry.strokes.resize(13, "横");
+                long_entry.strokes[12] = "横撇弯钩";
+                ui.ShowEntry(long_entry);
+                Check(FindLabel(lv_screen_active(), "笔顺 · 共13画"),
+                      "stroke total stays on one line");
+                Check(FindLabel(lv_screen_active(), "横撇弯钩"),
+                      "long stroke names after the eighth remain available");
+                Check(!FindLabel(lv_screen_active(), "当前：横"),
+                      "redundant current-stroke caption is absent");
+                Shot(folder, "dictionary-thirteen-strokes");
             }
             if (i == 1) {
                 Click("下一页");
@@ -268,45 +269,46 @@ int main(int argc, char** argv) {
                 Click("暂停");
                 Check(FindLabel(lv_screen_active(), "00:01:05"), "timer survives back");
             }
+            if (i == 5) {
+                ui.SetWeatherTextForTest(
+                    "青岛（缓存）\n晴 26°C\n体感 27°C · 湿度 58%\n东南风 2级\n\n"
+                    "数据来源：和风天气\n更新时间：09-14 06:38");
+                Check(FindLabel(lv_screen_active(), "缓存天气"), "cached weather is explicit");
+                Shot(folder, "weather-data");
+            }
             if (i == 2) {
                 Check(FindLabel(lv_screen_active(), "还没有课程，请导入课表"),
                       "empty template does not invent lessons");
-                Click("问明天课程");
+                Click("问问明天上什么课");
                 Check(FindLabel(lv_screen_active(), "请先联网，再询问课程"),
                       "offline timetable voice is guarded");
                 std::ifstream fixture(std::string(HAN_SOURCE_ROOT) +
-                                      "/docs/examples/timetable.example.json");
+                                      "/content/sdcard/handict/timetable.json");
                 const std::string example((std::istreambuf_iterator<char>(fixture)), {});
                 Check(ui.ApplyTimetable(example), "explicit demo fixture accepted");
                 ui.ShowNotification("", 1);
                 lv_tick_inc(2);
                 lv_timer_handler();
                 Shot(folder, "timetable-example");
-                Check(FindLabel(lv_screen_active(), "科学"), "subject cells rendered");
-                Click("第6—8节");
-                Check(
-                    FindLabel(lv_screen_active(), "第8节") && FindLabel(lv_screen_active(), "班会"),
-                    "last three lessons reachable");
-                Shot(folder, "timetable-more-lessons");
-                Click("第1—5节");
-                Click("查看周末");
+                Check(FindLabel(lv_screen_active(), "信息") &&
+                          FindLabel(lv_screen_active(), "音乐") &&
+                          FindLabel(lv_screen_active(), "武术") &&
+                          FindLabel(lv_screen_active(), "劳动") &&
+                          FindLabel(lv_screen_active(), "竖笛") &&
+                          FindLabel(lv_screen_active(), "第7节"),
+                      "all seven lessons and custom subjects fit on one screen");
+                Click("本周");
+                Check(FindLabel(lv_screen_active(), "下周"), "next weekly template");
+                Click("下周");
                 Check(
                     FindLabel(lv_screen_active(), "周六") && FindLabel(lv_screen_active(), "周日"),
                     "weekend reachable");
                 Shot(folder, "timetable-weekend");
-                Click("周一至周五");
-                Click("本周 v");
-                Check(FindLabel(lv_screen_active(), "下周 v"), "next weekly template");
-                Click("下周 v");
+                Click("周末");
                 Click("美术本");
                 Check(HasCheck(lv_obj_get_parent(FindLabel(lv_screen_active(), "美术本"))),
                       "supplies can be checked");
                 Shot(folder, "timetable-checked");
-                Click("更多物品");
-                Check(FindLabel(lv_screen_active(), "水杯"), "all supplies reachable");
-                Click("更多物品");
-                Check(HasCheck(lv_obj_get_parent(FindLabel(lv_screen_active(), "美术本"))),
-                      "check survives pagination");
                 Check(!ui.ApplyTimetable("{}"), "invalid import returns failure");
                 Check(FindLabel(lv_screen_active(), "课表未加载或格式错误"),
                       "invalid import clears stale courses");
@@ -322,7 +324,7 @@ int main(int argc, char** argv) {
         Shot(folder, "network");
         Click("<");
         ui.ShowEntry(han::ContentStore::Demo());
-        Check(FindLabel(lv_screen_active(), "查字典"), "MCP result opens dictionary");
+        Check(FindLabel(lv_screen_active(), "小小字典"), "MCP result opens dictionary");
         for (const auto& sound : han::kSounds) {
             for (const unsigned char* p = reinterpret_cast<const unsigned char*>(sound.ipa); *p;) {
                 uint32_t cp = *p++;
@@ -340,26 +342,40 @@ int main(int argc, char** argv) {
                 Check(!glyph.is_placeholder, "large IPA is not a placeholder");
             }
         }
-        Check(han::ContentStore::StrokePath("矩", 0) == "dictionary/strokes/77E9/01.png",
-              "stroke path");
-        Check(han::ContentStore::StrokePath("../", 0).empty(), "unsafe stroke target");
-        Check(han::ContentStore::StrokePath("矩", 64).empty(), "stroke bound");
         if (argc == 3) {
             han::ContentStore generated(argv[2]);
             Check(generated.Initialize(), "generated card");
+            std::vector<std::string> pinyin_results;
+            Check(generated.SearchPinyin("han", pinyin_results) &&
+                      std::find(pinyin_results.begin(), pinyin_results.end(), "汉") !=
+                          pinyin_results.end(),
+                  "indexed pinyin candidate search");
+            Check(generated.Lookup("汉", entry), "indexed dictionary lookup");
+            Check(entry.source == "guoxuedashi-xinhua-community" && entry.stroke_count > 0,
+                  "indexed dictionary metadata");
+            ui.ShowEntry(entry);
+            han::StrokeGlyph glyph;
+            Check(generated.ReadStrokeGlyph("汉", glyph), "read indexed vector strokes");
+            Check(ui.ApplyStrokeGlyph("汉", std::move(glyph)), "apply indexed vector strokes");
+            Shot(folder, "dictionary-han-indexed");
+            Check(generated.Lookup("嗝", entry) && entry.radical == "口" &&
+                      entry.structure == "左右结构" && entry.stroke_count == 13,
+                  "cnchar metadata and full stroke list for 嗝");
+            ui.ShowEntry(entry);
+            Check(generated.ReadStrokeGlyph("嗝", glyph), "read 13-stroke vector glyph");
+            Check(ui.ApplyStrokeGlyph("嗝", std::move(glyph)), "apply 13-stroke vector glyph");
+            Check(FindLabel(lv_screen_active(), "笔顺 · 共13画"), "13-stroke summary");
+            Shot(folder, "dictionary-ge");
             Check(generated.Lookup("规矩的矩", entry), "second dictionary entry");
             ui.ShowEntry(entry);
-            const auto first = han::ContentStore::StrokePath("矩", 0);
-            Check(generated.ReadStroke(first, json), "read real matrix frame");
-            Check(ui.ApplyStrokeFrame(first, json), "apply current frame");
+            Check(generated.ReadStrokeGlyph("矩", glyph), "read real matrix vector paths");
+            Check(ui.ApplyStrokeGlyph("矩", std::move(glyph)), "apply current vector glyph");
             Shot(folder, "dictionary-ju");
             Click("下一步");
-            Check(!ui.ApplyStrokeFrame(first, json), "reject stale asynchronous frame");
-            const auto second = han::ContentStore::StrokePath("矩", 1);
-            Check(generated.ReadStroke(second, json) && ui.ApplyStrokeFrame(second, json),
-                  "apply next SD frame");
             Click("<");
-            Check(!ui.ApplyStrokeFrame(second, json), "discard frame after leaving dictionary");
+            Check(generated.ReadStrokeGlyph("矩", glyph) &&
+                      !ui.ApplyStrokeGlyph("矩", std::move(glyph)),
+                  "discard vector glyph after leaving dictionary");
         }
         std::cout << "PASS: actual LVGL pages rendered; navigation, IPA categories, strokes, timer "
                      "and lookup checks passed.\n";

@@ -23,13 +23,13 @@ SD:/handict/qweather.json
   "api_host": "abcxyz.qweatherapi.com",
   "api_key": "你的 API KEY",
   "city": "青岛",
-  "latitude": 36.0662,
-  "longitude": 120.3826
+  "latitude": 36.07,
+  "longitude": 120.38
 }
 ```
 
 `api_host` 只填写主机名，不含 `https://`、路径和斜杠。纬度范围为 -90 到 90，
-经度范围为 -180 到 180。固件不会把 API KEY 输出到串口日志，也不会把它写入仓库
+经度范围为 -180 到 180；实时天气 v1 坐标保留两位小数。固件不会把 API KEY 输出到串口日志，也不会把它写入仓库
 或天气缓存。
 
 进入天气页或点击“刷新天气”会请求实时数据。成功后显示天气、温度、体感温度、湿度、

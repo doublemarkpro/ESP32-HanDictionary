@@ -1,101 +1,81 @@
-# SD 卡与新华字典第 12 版
+# SD 内容卡
 
-已确认纸书：商务印书馆《新华字典》第 12 版单色本，ISBN **978-7-100-16807-6**，机器格式 `9787100168076`。
+16 GB 或 32 GB 的 FAT32 卡足够本项目使用。第一次复制后请安全弹出、重启设备；固件只在
+启动时挂载，不支持热插拔，也不会自动格式化卡。挂载失败时主页仍可启动，并降级到内置示例。
 
-## 放哪些资源
+## 目录
 
-| 资源 | 位置 | 本轮状态 |
-| --- | --- | --- |
-| 主界面、基础 UI 字体、IPA 字体、六个图标 | 内部固件 | 已包含，无卡可用 |
-| 规字示例与八个笔画显示帧 | 内部固件 | 已包含；释义是开发示例，不是新华字典原文 |
-| 正式字条、精确页码 | SD 卡 | 导入接口已完成，完整第12版数据未提供 |
-| 音标和例词发音 | SD 卡 | 播放接口已完成，教学录音待导入 |
-| 课程表、和风天气配置与缓存 | SD 卡 | 在线刷新、离线缓存和 JSON 模板已完成 |
-| 作业时长、每日提醒设置 | NVS | 暂停/完成时保存；计时中约每分钟检查点 |
-| 全量笔顺 | SD 内容包 | 已支持按需读取帧；当前资源有规、矩，非全量 |
-| 完整字库字体、录音历史 | 后续 SD 内容包 | 尚未接入 |
-| 新版插画/天气/操作图标/背景 | SD `ui/graphics/` | 90 项/252 PNG，约 2.91 MiB；全包未整体编入，主页使用独立精简版 |
+将完整的 `handict` 文件夹复制到 SD 卡根目录：
 
-UI3 更新：主页精选图片已另行优化并嵌入固件（约 167 KiB PNG 载荷），因此新主页
-无需 SD 卡即可显示；上表的完整图形包仍保留给其他页面后续使用。见 [UI3](ui/HOME_UI3.md)。
+```text
+SD:/handict/
+  manifest.json
+  timetable.json
+  qweather.json
+  weather.json
+  dictionary/
+    index.bin
+    data.bin
+    pinyin.idx
+    strokes.idx
+    strokes.dat
+    font-28-1.bin
+  phonetics/
+  ui/graphics/
+  licenses/
+```
 
-16 GB 或 32 GB 的 FAT32 卡可作为本项目内容卡；实际所需容量由最终字库和音频决定。当前示例包很小。第一次复制文件后关机插卡再启动；本轮只在启动挂载，不支持热插拔。不自动格式化卡，挂载失败时使用内置示例。
+字典不再保存或显示纸书页码、版次和 ISBN。释义来自社区数据并明确标注为离线学习资料，
+不是商务印书馆纸书内容的电子复刻。
 
-## 准备示例内容卡
+## 生成完整字典和笔顺
 
-在仓库根目录运行（Python 标准库，不需要下载字体工具）：
+先转换 Chinese-Mandarin-Dictionaries 的 TAB 压缩包，再加入 Hanzi Writer Data 的矢量笔顺：
+
+```powershell
+python tools/import_xinhua.py `
+  --input "D:\Downloads\新华字典 Xīnhuá Zìdiǎn.tab.zip" `
+  --output dist/sdcard-xinhua
+
+python tools/import_strokes.py `
+  --source "D:\Downloads\hanzi-writer-data-2.0.1.tgz" `
+  --pack dist/sdcard-xinhua/handict `
+  --order "D:\src\cnchar\src\cnchar\plugin\order\dict\stroke-order-jian.json" `
+  --order-license "D:\src\cnchar\LICENSE"
+
+python tools/content_pack.py validate dist/sdcard-xinhua/handict
+```
+
+设备按 Unicode 固定槽位读取一条释义或一个汉字的矢量路径，不扫描全库，也不把全库装进
+RAM。笔顺画面由 LVGL 实时生成，一字只有一份路径数据，不再保存第 1 笔到第 N 笔的累计 PNG。
+格式、数据来源和许可证边界见 [字典导入说明](DICTIONARY_IMPORT.md)。
+
+开发用小内容包仍可这样生成：
 
 ```powershell
 python tools/content_pack.py prepare --output dist/sdcard-starter
 python tools/content_pack.py validate dist/sdcard-starter/handict
 ```
 
-将生成的 **handict 文件夹**复制到 SD 卡根目录：
+## 课程表
 
-```text
-SD:/handict/
-  manifest.json
-  dictionary/entries/89C4.json
-  phonetics/en-GB/i-long/sound.ogg
-  phonetics/en-GB/i-long/sheep.ogg
-  phonetics/en-GB/i-long/tree.ogg
-  phonetics/en-GB/i-long/tea.ogg
-  timetable.json
-  weather.json
-  qweather.example.json
-```
+`timetable.json` 的 `days` 从周一开始，每天最多八节；当前页面可将七节课程完整显示在一屏。
+直接复制 [演示模板](../content/sdcard/handict/timetable.json) 到
+`SD:/handict/timetable.json`，按孩子实际课程修改并保存为 UTF-8。修改后重启设备重新载入。
 
-音频目录为需要自行补齐的路径说明；仓库不带这些发音文件。音频格式和转换方式见 [音频说明](../content/sdcard/handict/phonetics/README.md)。基本点读离线可用，小智语义识别与对话仍需要联网。
+课程表可独立使用，不要求同目录存在字典 `manifest.json`。可选的 `supplies` 用同样的七天数组
+记录当天用品；每项最多 32 UTF-8 字节，整个文件最多 8192 字节。完整说明见
+[课程表 UI4](ui/TIMETABLE_UI4.md)。
 
-上述 Python 命令现在会同时复制已经生成并提交的 44 张音标卡、音频路径清单和规/矩两字笔顺帧。需要重新生成时，运行 `node tools/ui-assets/prepare-resources.cjs --output dist/sdcard-ui2`（需先 `npm ci --prefix tools/ui-assets`）。帧位于 `dictionary/strokes/77E9/01.png` 等路径，必须为 300×300 RGBA8 PNG、每张不超过 128 KiB，张数与条目笔画数一致；生成器与校验器会检查。固件在工作线程读取当前帧，不把全套笔顺装入 RAM。
+## 和风天气
 
-现在还会复制 `ui/graphics/` 图形包及其 `manifest.json`。这些不是笔顺帧，尺寸规则不同；
-图形专用校验、重新导出和 LVGL 示例见 [图形素材说明](ui/GRAPHICS.md)。图形原图不复制到 SD。
+复制 `qweather.example.json` 为 `qweather.json`，填写项目专属 API Host、API KEY、城市和经纬度。
+成功请求会更新不含密钥的 `weather.json`，断网时显示带时间戳的缓存。完整步骤见
+[和风天气配置](QWEATHER.md)。
 
-## 页码不会被猜测
+## USB 读卡器模式
 
-商务印书馆有[官方第 12 版纸书与 App](https://www.cp.com.cn/xinhua12/)，本轮检索未找到可直接集成的公开完整离线数据包。当前固定目标 ISBN，但不据此声称已经取得整本内容。
-
-每条数据有 source，释义来源与纸书页码关联分开记录。页码只有同时满足版本、ISBN、正整数页码和 `verified: true` 才能在固件中显示。不知道的页码保持 `null`，UI 显示“页码待核对”，MCP 返回 null。其他版本的页码不使用。
-
-```json
-"reference": {
-  "edition": "新华字典第12版",
-  "isbn": "9787100168076",
-  "page": null,
-  "verified": false
-}
-```
-
-具备可使用的结构化字条后，按 `content/sdcard/handict/dictionary/entries/89C4.json` 格式整理成 JSON 数组，运行：
-
-```powershell
-python tools/content_pack.py prepare --entries local-dictionary.json --output dist/sdcard-imported
-```
-
-导入工具校验字条、笔画数、ISBN、页码及大小限制，不覆盖已有输出目录。JSON 文件按汉字 Unicode 编码命名，规为 `89C4.json`，矩为 `77E9.json`。本轮支持 BMP 基本汉字查询；完整任意字形字体、完整笔顺内容还需扩展。第二轮加入了 SD 帧读取与矩字开发示例，示例的未知页码仍为 null。
-
-## 课程与天气
-
-UI4：`timetable.json` 的 `days` 为周一开始的五个或七个数组，每天最多八节。
-可选 `supplies` 使用同样结构，记录当天需带的物品。每项最多 32 UTF-8 字节，文件最多 8192 字节。
-默认五个空数组，不虚构课程；支持周末、节次翻页、临时物品勾选和联网查询。
-完整格式、字体扩充方法、实际截图见 [课程表 UI4](ui/TIMETABLE_UI4.md)。
-
-天气页已接入和风天气实时天气 v1 API。示例内容包带
-`qweather.example.json`；填写项目专属 API Host、API KEY、城市和经纬度后，将它复制为
-`qweather.json`。成功请求会更新不含密钥的 `weather.json`，断网时继续显示带时间戳的缓存。
-完整步骤见 [和风天气配置](QWEATHER.md)。
-
-## 硬件
-
-SD 使用 [M5Stack 官方 SPI 引脚](https://docs.m5stack.com/en/arduino/m5tab5/microsd)：CS42、SCK43、MOSI44、MISO39。Wi-Fi 所用的 P4/C6 SDIO 配置保持原值。缺卡/坏卡只降级，不中止主页启动。
-
-2026-09-13 实测一张 128 GB 卡能够进入 SD 协议初始化，电脑经 Tab5 USB-C 枚举为
-119.25 GB 可移动磁盘；其原始格式为 exFAT，所以 FATFS 启动挂载返回“没有可识别的 FAT 卷”。
-本固件内容卡应使用 FAT32。
-
-Legacy 字典变体已加入安全的 USB MSC 读卡器模式。点主页右上角 Wi-Fi 图标，进入
-“联网设置”，再点“USB 读卡器”。固件会停止内容读取、卸载应用侧文件系统，并把 USB-C
-从调试串口切给 microSD；此时 COM 口消失属于正常现象。复制或格式化完成后，先在电脑上
-安全弹出磁盘，再重启 Tab5。进入该模式后字典内容和语音唤醒会暂停，重启后恢复。
+Legacy 字典变体支持 USB MSC。点主页右上角 Wi-Fi 图标进入“联网设置”，再点“USB 读卡器”。
+固件会停止内容读取、卸载文件系统，并把 USB-C 切给 microSD；此时 COM 口消失属于正常现象。
+复制完成后先在电脑安全弹出磁盘，再重启 Tab5。SD 使用 M5Stack 官方 SPI 引脚：CS42、SCK43、
+MOSI44、MISO39；Wi-Fi 所用 P4/C6 SDIO 配置不变。

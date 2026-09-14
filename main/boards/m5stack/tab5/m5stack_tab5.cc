@@ -34,15 +34,15 @@
 #include "dictionary_service.h"
 #include "driver/sdspi_host.h"
 #include "esp_vfs_fat.h"
+#include "hal/usb_wrap_ll.h"
 #include "han_display.h"
 #include "mcp_server.h"
 #include "sdmmc_cmd.h"
+#include "soc/usb_wrap_struct.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "tinyusb_msc.h"
 #include "tusb.h"
-#include "hal/usb_wrap_ll.h"
-#include "soc/usb_wrap_struct.h"
 using Tab5ProductDisplay = HanDisplay;
 // Render a page before copying it to the panel. A 50-line buffer repeats the
 // landscape scene traversal about 26 times and visibly paints it in strips.
@@ -840,6 +840,9 @@ public:
     }
 
     std::string StartUsbStorageMode() {
+#if !CONFIG_TINYUSB_MSC_ENABLED
+        return "当前固件未启用 USB 读卡器";
+#else
         if (usb_storage_)
             return {};
 
@@ -893,6 +896,7 @@ public:
         tud_connect();
         ESP_LOGI(TAG, "microSD is now exported as a USB mass-storage device");
         return {};
+#endif
     }
 #endif
     void SetChargeQcEn(bool en) {

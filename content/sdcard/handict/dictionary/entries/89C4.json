@@ -7,11 +7,5 @@
   "definition": "规则、章程或一定的标准；也表示劝告、谋划。",
   "words": ["规矩", "规则", "规定", "规划"],
   "stroke_order": ["横", "横", "撇", "点", "竖", "横折", "撇", "竖弯钩"],
-  "source": "embedded-demo",
-  "reference": {
-    "edition": "新华字典第12版",
-    "isbn": "9787100168076",
-    "page": null,
-    "verified": false
-  }
+  "source": "embedded-demo"
 }

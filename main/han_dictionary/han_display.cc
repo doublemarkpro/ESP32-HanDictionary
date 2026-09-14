@@ -4,6 +4,8 @@
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_timer.h>
+#include <cbin_font.h>
+#include <src/misc/cache/lv_cache.h>
 #include <wifi_manager.h>
 #include "application.h"
 #include "assets/lang_config.h"
@@ -16,8 +18,13 @@
 #include <src/misc/cache/instance/lv_image_cache.h>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <limits>
+#include <memory>
+#include <new>
+#include <vector>
 #include "assets/home_skin.h"
 #include "assets/timetable_assets.h"
 #include "assets/ui_assets.h"
@@ -28,6 +35,123 @@
 namespace {
 constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0xd9edfc;
 constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
+constexpr uint32_t kMuted = 0x61708f, kCardBorder = 0xf1e8d9;
+#if LV_USE_VECTOR_GRAPHIC
+struct GlyphBounds {
+    float min_x = std::numeric_limits<float>::max();
+    float min_y = std::numeric_limits<float>::max();
+    float max_x = std::numeric_limits<float>::lowest();
+    float max_y = std::numeric_limits<float>::lowest();
+
+    bool valid() const { return min_x < max_x && min_y < max_y; }
+};
+
+GlyphBounds MeasureGlyph(const han::StrokeGlyph& glyph) {
+    GlyphBounds bounds;
+    for (const auto& stroke : glyph.strokes) {
+        for (const auto& command : stroke.commands) {
+            for (int index = 0; index < command.point_count; ++index) {
+                bounds.min_x = std::min(bounds.min_x, static_cast<float>(command.points[index].x));
+                bounds.min_y = std::min(bounds.min_y, static_cast<float>(command.points[index].y));
+                bounds.max_x = std::max(bounds.max_x, static_cast<float>(command.points[index].x));
+                bounds.max_y = std::max(bounds.max_y, static_cast<float>(command.points[index].y));
+            }
+        }
+    }
+    return bounds;
+}
+
+bool DrawGlyph(lv_obj_t* canvas, const han::StrokeGlyph& glyph, int width, int height, int margin,
+               int current_stroke, int only_stroke, bool show_progress) {
+    if (!canvas || glyph.strokes.empty())
+        return false;
+    const auto bounds = MeasureGlyph(glyph);
+    if (!bounds.valid())
+        return false;
+
+    lv_canvas_fill_bg(canvas, lv_color_hex(0xffffff), LV_OPA_TRANSP);
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+    auto dsc = lv_draw_vector_dsc_create(&layer);
+    auto path = lv_vector_path_create(width < 100 ? LV_VECTOR_PATH_QUALITY_LOW
+                                                  : LV_VECTOR_PATH_QUALITY_MEDIUM);
+    if (!dsc || !path) {
+        if (path)
+            lv_vector_path_delete(path);
+        if (dsc)
+            lv_draw_vector_dsc_delete(dsc);
+        lv_canvas_finish_layer(canvas, &layer);
+        return false;
+    }
+
+    const float ink_width = bounds.max_x - bounds.min_x;
+    const float ink_height = bounds.max_y - bounds.min_y;
+    const float scale =
+        std::min((width - margin * 2.0f) / ink_width, (height - margin * 2.0f) / ink_height);
+    const float left = (width - ink_width * scale) * 0.5f;
+    const float top = (height - ink_height * scale) * 0.5f;
+    auto point = [&](const han::StrokePoint& value) {
+        return lv_fpoint_t{left + (value.x - bounds.min_x) * scale,
+                           top + (bounds.max_y - value.y) * scale};
+    };
+
+    const int first = only_stroke >= 0 ? only_stroke : static_cast<int>(glyph.strokes.size()) - 1;
+    const int last = only_stroke >= 0 ? only_stroke : 0;
+    for (int stroke_index = first; stroke_index >= last; --stroke_index) {
+        if (stroke_index < 0 || stroke_index >= static_cast<int>(glyph.strokes.size()))
+            continue;
+        lv_vector_path_clear(path);
+        for (const auto& command : glyph.strokes[stroke_index].commands) {
+            lv_fpoint_t points[3];
+            for (int index = 0; index < command.point_count; ++index)
+                points[index] = point(command.points[index]);
+            switch (command.op) {
+                case 0:
+                    lv_vector_path_move_to(path, &points[0]);
+                    break;
+                case 1:
+                    lv_vector_path_line_to(path, &points[0]);
+                    break;
+                case 2:
+                    lv_vector_path_quad_to(path, &points[0], &points[1]);
+                    break;
+                case 3:
+                    lv_vector_path_cubic_to(path, &points[0], &points[1], &points[2]);
+                    break;
+                case 4:
+                    lv_vector_path_close(path);
+                    break;
+                default:
+                    break;
+            }
+        }
+        uint32_t color = kInk;
+        if (only_stroke >= 0)
+            color = stroke_index == current_stroke ? 0xf0544b : kInk;
+        else if (show_progress)
+            color = stroke_index > current_stroke    ? 0xd8ccc5
+                    : stroke_index == current_stroke ? 0xf0544b
+                                                     : kInk;
+        lv_draw_vector_dsc_set_fill_color(dsc, lv_color_hex(color));
+        lv_draw_vector_dsc_set_fill_opa(dsc, LV_OPA_COVER);
+        lv_draw_vector_dsc_add_path(dsc, path);
+    }
+    lv_draw_vector(dsc);
+    lv_vector_path_delete(path);
+    lv_draw_vector_dsc_delete(dsc);
+    lv_canvas_finish_layer(canvas, &layer);
+    return true;
+}
+#endif
+struct PendingStrokeGlyph {
+    HanDisplay* display;
+    std::string character;
+    han::StrokeGlyph glyph;
+};
+void ApplyStrokeGlyphAsync(void* context) {
+    std::unique_ptr<PendingStrokeGlyph> pending(static_cast<PendingStrokeGlyph*>(context));
+    pending->display->ApplyStrokeGlyph(pending->character, std::move(pending->glyph));
+}
 void SetTextIfChanged(lv_obj_t* label, const char* text) {
     if (strcmp(lv_label_get_text(label), text) != 0)
         lv_label_set_text(label, text);
@@ -39,11 +163,25 @@ void SetImageIfChanged(lv_obj_t* image, const lv_image_dsc_t* source) {
 const char* kSubjects[] = {"语文", "数学", "英语"};
 const char* kWeekdays[] = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
 int SubjectKind(const std::string& name) {
-    const char* names[] = {"语文", "数学", "英语", "科学", "美术", "体育"};
-    for (int i = 0; i < 6; ++i)
+    const char* names[] = {"语文", "数学", "英语", "科学", "美术", "体育",
+                           "信息", "音乐", "武术", "劳动", "竖笛", "选修"};
+    for (int i = 0; i < 12; ++i)
         if (name == names[i])
             return i;
-    return 6;
+    if (name == "民乐团")
+        return 7;
+    return 11;
+}
+const lv_image_dsc_t* SupplyIcon(const std::string& name) {
+    if (name.find("美术") != std::string::npos)
+        return &han_subject_art;
+    if (name.find("跳绳") != std::string::npos || name.find("体育") != std::string::npos)
+        return &han_subject_sport;
+    if (name.find("水") != std::string::npos || name.find("杯") != std::string::npos)
+        return &han_subject_bottle;
+    if (name.find("书") != std::string::npos || name.find("本") != std::string::npos)
+        return &han_subject_book;
+    return &han_subject_backpack;
 }
 lv_obj_t* Image(lv_obj_t* parent, const lv_image_dsc_t* source, int x, int y) {
     auto image = lv_image_create(parent);
@@ -58,6 +196,127 @@ std::string Duration(int64_t ms) {
     char out[40];
     snprintf(out, sizeof(out), "%02lld:%02lld:%02lld", sec / 3600, sec / 60 % 60, sec % 60);
     return out;
+}
+
+struct WeatherView {
+    std::string city;
+    std::string current;
+    std::string feels;
+    std::string wind;
+    std::string updated;
+    bool cached = false;
+};
+
+WeatherView DecodeWeather(const std::string& text) {
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        const auto end = text.find('\n', start);
+        lines.push_back(text.substr(start, end == std::string::npos ? end : end - start));
+        if (end == std::string::npos)
+            break;
+        start = end + 1;
+    }
+    WeatherView view;
+    if (!lines.empty()) {
+        view.city = lines[0];
+        const std::string marker = "（缓存）";
+        const auto cached = view.city.find(marker);
+        if (cached != std::string::npos) {
+            view.city.erase(cached);
+            view.cached = true;
+        }
+    }
+    if (lines.size() > 1)
+        view.current = lines[1];
+    if (lines.size() > 2)
+        view.feels = lines[2];
+    if (lines.size() > 3)
+        view.wind = lines[3];
+    for (const auto& line : lines) {
+        constexpr const char* prefix = "更新时间：";
+        if (line.rfind(prefix, 0) == 0)
+            view.updated = line.substr(strlen(prefix));
+    }
+    return view;
+}
+
+int WeatherTemperature(const WeatherView& weather) {
+    const auto degree = weather.current.find("°C");
+    if (degree == std::string::npos)
+        return 1000;
+    auto begin = weather.current.rfind(' ', degree);
+    begin = begin == std::string::npos ? 0 : begin + 1;
+    char* end = nullptr;
+    const auto value = std::strtol(weather.current.c_str() + begin, &end, 10);
+    return end == weather.current.c_str() + begin ? 1000 : static_cast<int>(value);
+}
+
+std::string WeatherGraphicId(const std::string& text) {
+    if (text.find("雷") != std::string::npos)
+        return "weather-thunderstorm";
+    if (text.find("冰雹") != std::string::npos)
+        return "weather-hail";
+    if (text.find("雨夹雪") != std::string::npos || text.find("冻雨") != std::string::npos)
+        return "weather-sleet";
+    if (text.find("暴雨") != std::string::npos || text.find("大雨") != std::string::npos)
+        return "weather-heavy-rain";
+    if (text.find("阵雨") != std::string::npos)
+        return "weather-showers";
+    if (text.find("小雨") != std::string::npos)
+        return "weather-light-rain";
+    if (text.find("雨") != std::string::npos)
+        return "weather-rain";
+    if (text.find("雪") != std::string::npos)
+        return "weather-snow";
+    if (text.find("雾") != std::string::npos || text.find("霾") != std::string::npos)
+        return "weather-fog";
+    if (text.find("沙") != std::string::npos || text.find("尘") != std::string::npos)
+        return "weather-sand";
+    if (text.find("阴") != std::string::npos)
+        return "weather-overcast";
+    if (text.find("多云") != std::string::npos)
+        return "weather-partly-cloudy-day";
+    if (text.find("晴") != std::string::npos)
+        return "weather-clear-day";
+    if (text.find("风") != std::string::npos)
+        return "weather-wind";
+    const auto temperature = WeatherTemperature(DecodeWeather(text));
+    if (temperature >= 35)
+        return "weather-hot";
+    if (temperature <= 0)
+        return "weather-cold";
+    return "weather-unknown";
+}
+
+bool IsPng192(const std::string& data) {
+    if (data.size() < 24 || memcmp(data.data(), "\x89PNG\r\n\x1a\n", 8) != 0)
+        return false;
+    const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
+    const auto read_be32 = [](const uint8_t* value) {
+        return (static_cast<uint32_t>(value[0]) << 24) | (static_cast<uint32_t>(value[1]) << 16) |
+               (static_cast<uint32_t>(value[2]) << 8) | value[3];
+    };
+    return read_be32(bytes + 16) == 192 && read_be32(bytes + 20) == 192;
+}
+
+std::pair<const char*, const char*> WeatherAdvice(const WeatherView& weather) {
+    const auto& text = weather.current;
+    if (text.find("雨") != std::string::npos || text.find("雷") != std::string::npos)
+        return {"带好雨具", "把雨伞放进书包，路滑要慢慢走。"};
+    if (text.find("雪") != std::string::npos || text.find("冰") != std::string::npos)
+        return {"注意保暖", "戴好帽子和手套，小心结冰路面。"};
+    if (text.find("雾") != std::string::npos || text.find("霾") != std::string::npos ||
+        text.find("沙") != std::string::npos)
+        return {"保护口鼻", "出门戴好口罩，路上注意来往车辆。"};
+    const int temperature = WeatherTemperature(weather);
+    if (temperature <= 10)
+        return {"多穿一件", "早晚比较凉，带上外套更舒服。"};
+    if (temperature >= 30)
+        return {"记得喝水", "天气偏热，户外活动要及时休息。"};
+    if (text.find("晴") != std::string::npos)
+        return {"适合出门", "阳光不错，活动后别忘了补充水分。"};
+    return {"轻松准备", "出门前看看窗外，带好今天的学习用品。"};
 }
 }  // namespace
 
@@ -88,6 +347,17 @@ lv_obj_t* HanDisplay::Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t
     return obj;
 }
 
+lv_obj_t* HanDisplay::Card(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color) {
+    auto card = Box(parent, x, y, w, h, color);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(kCardBorder), 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(0xb8a889), 0);
+    lv_obj_set_style_shadow_width(card, 12, 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_10, 0);
+    lv_obj_set_style_shadow_ofs_y(card, 4, 0);
+    return card;
+}
+
 lv_obj_t* HanDisplay::Label(lv_obj_t* parent, const char* text, int x, int y, int w,
                             const lv_font_t* font) {
     auto obj = lv_label_create(parent);
@@ -109,9 +379,46 @@ const lv_font_t* HanDisplay::DynamicTextFont() const {
     return &han_font_28;
 }
 
+const lv_font_t* HanDisplay::DictionaryTextFont() const {
+#ifndef HAN_UI_HOST_SIM
+    if (dictionary_font_ != nullptr)
+        return dictionary_font_;
+#endif
+    return DynamicTextFont();
+}
+
 void HanDisplay::ApplyDynamicTextFont(lv_obj_t* label) {
     if (label != nullptr)
         lv_obj_set_style_text_font(label, DynamicTextFont(), 0);
+}
+
+void HanDisplay::ApplyDictionaryTextFont(lv_obj_t* label) {
+    if (label != nullptr)
+        lv_obj_set_style_text_font(label, DictionaryTextFont(), 0);
+}
+
+void HanDisplay::InstallDictionaryFont(std::string data) {
+#ifndef HAN_UI_HOST_SIM
+    DisplayLockGuard guard(this);
+    if (dictionary_font_ != nullptr) {
+        cbin_font_delete(dictionary_font_);
+        dictionary_font_ = nullptr;
+    }
+    dictionary_font_data_ = std::move(data);
+    dictionary_font_ = cbin_font_create(reinterpret_cast<uint8_t*>(dictionary_font_data_.data()));
+    if (dictionary_font_ == nullptr) {
+        dictionary_font_data_.clear();
+        ESP_LOGW("HanDisplay", "Ignoring invalid SD dictionary font");
+        return;
+    }
+    dictionary_font_->fallback = DynamicTextFont();
+    ESP_LOGI("HanDisplay", "SD dictionary font loaded: %u bytes",
+             static_cast<unsigned>(dictionary_font_data_.size()));
+    if (page_ == Page::Dictionary)
+        Render(Page::Dictionary);
+#else
+    (void)data;
+#endif
 }
 
 lv_obj_t* HanDisplay::Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h,
@@ -139,11 +446,11 @@ void HanDisplay::SetupUI() {
                         : ESP_ERR_NO_MEM);
     DisplayLockGuard guard(this);
     Display::SetupUI();
+#ifndef HAN_UI_HOST_SIM
     // Keep decoded PNGs across partial refresh strips and page changes. Without a cache,
     // repeatedly decoding the same artwork can starve audio processing on the device.
     // This is an eviction budget, allocated on demand (large allocations use Tab5 PSRAM).
     lv_image_cache_resize(8 * 1024 * 1024, true);
-#ifndef HAN_UI_HOST_SIM
     constexpr lv_event_code_t refresh_events[] = {
         LV_EVENT_REFR_START,   LV_EVENT_REFR_READY,       LV_EVENT_FLUSH_START,
         LV_EVENT_FLUSH_FINISH, LV_EVENT_FLUSH_WAIT_START, LV_EVENT_FLUSH_WAIT_FINISH};
@@ -152,54 +459,64 @@ void HanDisplay::SetupUI() {
 #endif
     root_ = Box(lv_display_get_screen_active(display_), 0, 0, 1280, 720, kBg);
     lv_obj_set_style_radius(root_, 0, 0);
-    Image(root_, &han_footer, 0, 574);
+    footer_ = Image(root_, &han_footer, 0, 574);
     mascot_ = Image(root_, &han_art_book, 36, 0);
     lv_image_set_scale(mascot_, 195);
     lv_image_set_pivot(mascot_, 0, 0);
     back_ = Button(root_, "<", 24, 14, 72, 72, kGreen, 6);
+    lv_obj_set_style_text_opa(lv_obj_get_child(back_, 0), LV_OPA_TRANSP, 0);
+    back_image_ = Image(back_, &han_timetable_back, 12, 12);
     title_ = Label(root_, "小小助手", 212, 26, 470, &han_font_brand);
     date_ = Label(root_, "日期待同步", 747, 45, 208);
     clock_ = Label(root_, "—:—", 970, 36, 132, &han_font_clock);
-    Box(root_, 952, 39, 1, 39, 0xd7d5d0);
-    Box(root_, 1101, 39, 1, 39, 0xd7d5d0);
-    auto wifi_button = Button(root_, "", 1115, 22, 72, 72, kBg, 7);
-    lv_obj_set_style_bg_opa(wifi_button, LV_OPA_TRANSP, 0);
-    wifi_image_ = Image(wifi_button, &han_status_wifi_off, 12, 12);
+    top_divider_left_ = Box(root_, 952, 39, 1, 39, 0xd7d5d0);
+    top_divider_right_ = Box(root_, 1101, 39, 1, 39, 0xd7d5d0);
+    wifi_button_ = Button(root_, "", 1115, 22, 72, 72, kBg, 7);
+    lv_obj_set_style_bg_opa(wifi_button_, LV_OPA_TRANSP, 0);
+    wifi_image_ = Image(wifi_button_, &han_status_wifi_off, 12, 12);
     battery_image_ = Image(root_, &han_status_battery_unknown, 1194, 34);
     body_ = Box(root_, 24, 104, 1232, 490, kBg);
     lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
-    talk_button_ = Box(root_, 466, 579, 350, 86, 0x49b7ff);
-    lv_obj_add_flag(talk_button_, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(talk_button_, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_set_style_radius(talk_button_, 43, 0);
-    lv_obj_set_style_bg_grad_color(talk_button_, lv_color_hex(0x087dff), 0);
-    lv_obj_set_style_bg_grad_dir(talk_button_, LV_GRAD_DIR_VER, 0);
-    lv_obj_set_style_border_color(talk_button_, lv_color_hex(0xbeeaff), 0);
-    lv_obj_set_style_border_width(talk_button_, 2, 0);
-    lv_obj_set_style_shadow_color(talk_button_, lv_color_hex(0x5cb6f5), 0);
-    lv_obj_set_style_shadow_width(talk_button_, 20, 0);
-    lv_obj_set_style_shadow_opa(talk_button_, LV_OPA_30, 0);
-    lv_obj_set_style_shadow_ofs_y(talk_button_, 6, 0);
-    Image(talk_button_, &han_status_mic, 54, 17);
-    talk_label_ = Label(talk_button_, "按住说话", 119, 19, 205, &han_font_talk);
-    lv_obj_set_style_text_color(talk_label_, lv_color_white(), 0);
-    lv_obj_add_event_cb(talk_button_, OnTalk, LV_EVENT_ALL, this);
-    status_label_ = Label(root_, "", 844, 596, 365);
-    notification_label_ = Label(root_, "", 844, 596, 365);
+
+    // Keep assistant activity and conversation in one calm, persistent card. Voice activation is
+    // wake-word based; a full-width press-to-talk control would compete with learning content.
+    assistant_card_ = Card(root_, 24, 606, 1232, 90, 0xffffff);
+    assistant_badge_ = Box(assistant_card_, 12, 10, 70, 70, 0xe8f4ff);
+    lv_obj_set_style_radius(assistant_badge_, 20, 0);
+    auto assistant_icon = Image(assistant_badge_, &han_icon_dictionary, 7, 7);
+    lv_image_set_scale(assistant_icon, 112);
+    lv_image_set_pivot(assistant_icon, 0, 0);
+    role_box_ = Box(assistant_card_, 98, 9, 118, 31, kPurple);
+    lv_obj_set_style_radius(role_box_, 16, 0);
+    role_label_ = Label(role_box_, "小智", 4, -1, 110);
+    lv_obj_set_style_text_align(role_label_, LV_TEXT_ALIGN_CENTER, 0);
+    message_ = Label(assistant_card_, "叫我“小智小智”，一起开始今天的学习吧", 98, 43, 870);
+    lv_obj_set_height(message_, 39);
+    lv_label_set_long_mode(message_, LV_LABEL_LONG_DOT);
+    status_box_ = Box(assistant_card_, 990, 14, 222, 62, 0xf1f6fb);
+    lv_obj_set_style_radius(status_box_, 20, 0);
+    status_label_ = Label(status_box_, "准备中", 8, 13, 206);
+    notification_label_ = Label(status_box_, "", 8, 13, 206);
     lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
     lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_DOT);
-    lv_obj_set_height(status_label_, 62);
-    lv_obj_set_height(notification_label_, 62);
+    lv_obj_set_height(status_label_, 38);
+    lv_obj_set_height(notification_label_, 38);
+    lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
-    message_ = Label(root_, "试试说：我想学英语音标", 240, 677, 800);
     ApplyDynamicTextFont(status_label_);
     ApplyDynamicTextFont(notification_label_);
     ApplyDynamicTextFont(message_);
-    lv_obj_set_style_text_align(message_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(message_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    page_icon_ = lv_image_create(root_);
+    lv_obj_set_pos(page_icon_, 112, 23);
+    lv_image_set_scale(page_icon_, 112);
+    lv_image_set_pivot(page_icon_, 0, 0);
+    lv_obj_add_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(page_icon_, LV_OBJ_FLAG_CLICKABLE);
     tick_ = lv_timer_create(Tick, 800, this);
     Render(Page::Home);
     Queue(2, "");  // Read optional timetable/weather content off the LVGL/main tasks.
+    Queue(6, "");  // Load the optional indexed-dictionary font on the worker task.
 }
 
 void HanDisplay::SetTheme(Theme* theme) {
@@ -210,20 +527,73 @@ void HanDisplay::SetTheme(Theme* theme) {
     ApplyDynamicTextFont(status_label_);
     ApplyDynamicTextFont(notification_label_);
     ApplyDynamicTextFont(message_);
+#ifndef HAN_UI_HOST_SIM
+    if (dictionary_font_ != nullptr)
+        dictionary_font_->fallback = DynamicTextFont();
+#endif
 }
 
 void HanDisplay::SetStatus(const char* status) {
+    const char* shown = status ? status : "";
 #ifndef HAN_UI_HOST_SIM
-    if (status != nullptr && strcmp(status, Lang::Strings::STANDBY) == 0)
-        status = "";
+    if (strcmp(shown, Lang::Strings::STANDBY) == 0)
+        shown = "等待唤醒";
+    LvglDisplay::SetStatus(shown);
+#else
+    if (!shown[0])
+        shown = "等待唤醒";
+    MipiLcdDisplay::SetStatus(shown);
 #endif
-    LvglDisplay::SetStatus(status ? status : "");
+    DisplayLockGuard guard(this);
+    if (status_box_)
+        lv_obj_set_style_bg_color(
+            status_box_,
+            lv_color_hex(strstr(shown, "听")                            ? 0xd9f4df
+                         : strstr(shown, "说") || strstr(shown, "回答") ? 0xffe8d6
+                                                                        : 0xf1f6fb),
+            0);
+    if (timetable_voice_label_) {
+        const char* prompt = strstr(shown, "听")                            ? "正在聆听…"
+                             : strstr(shown, "说") || strstr(shown, "回答") ? "小智正在回答…"
+                                                                            : "问问明天上什么课";
+        lv_label_set_text(timetable_voice_label_, prompt);
+    }
 }
 
-void HanDisplay::SetChatMessage(const char*, const char* text) {
+void HanDisplay::SetChatMessage(const char* role, const char* text) {
     DisplayLockGuard guard(this);
-    if (message_)
-        lv_label_set_text(message_, text ? text : "");
+    if (!message_ || !role_label_ || !assistant_card_)
+        return;
+    const char* shown = text ? text : "";
+    const char* who = "小智";
+    uint32_t color = 0xffffff;
+    if (!shown[0]) {
+        shown = "叫我“小智小智”，一起开始今天的学习吧";
+    } else if (role && strcmp(role, "user") == 0) {
+        who = "我说";
+        color = 0xf1fbf5;
+    } else if (role && strcmp(role, "system") == 0) {
+        who = "系统";
+        color = 0xfff8e9;
+        if (initial_banner_pending_) {
+            shown = "正在准备屏幕、声音和网络，请稍候…";
+            who = "准备中";
+            initial_banner_pending_ = false;
+        }
+    }
+    lv_label_set_text(role_label_, who);
+    lv_label_set_text(message_, shown);
+    lv_obj_set_style_bg_color(assistant_card_, lv_color_hex(color), 0);
+    if (timetable_reply_card_ && timetable_message_) {
+        if (!text || !text[0]) {
+            lv_obj_add_flag(timetable_reply_card_, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_label_set_text(timetable_message_, shown);
+            ApplyDynamicTextFont(timetable_message_);
+            lv_obj_remove_flag(timetable_reply_card_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(timetable_reply_card_);
+        }
+    }
 }
 void HanDisplay::ClearChatMessages() { SetChatMessage("", ""); }
 void HanDisplay::Toast(const char* text) { ShowNotification(text, 4500); }
@@ -287,58 +657,125 @@ void HanDisplay::Render(Page page) {
 #ifndef HAN_UI_HOST_SIM
     page_render_started_ms_ = NowMs();
 #endif
-    ReleaseTalk();
     page_ = page;
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
-    brightness_value_ = volume_value_ = nullptr;
+    glyph_title_image_ = glyph_title_placeholder_ = nullptr;
+    search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
+    stroke_chips_.fill(nullptr);
+    stroke_chip_images_.fill(nullptr);
+    timetable_voice_label_ = timetable_reply_card_ = timetable_message_ = nullptr;
+    brightness_value_ = volume_value_ = brightness_bar_ = volume_bar_ = nullptr;
     alarm_hour_ = alarm_minute_ = nullptr;
     for (auto& label : totals_)
         label = nullptr;
     lv_obj_clean(body_);
-    // Remove objects/cache references before replacing backing bytes. Late worker results are
-    // ignored.
+    if (stroke_draw_buf_) {
+        lv_draw_buf_destroy(stroke_draw_buf_);
+        stroke_draw_buf_ = nullptr;
+    }
+    if (glyph_title_draw_buf_) {
+        lv_draw_buf_destroy(glyph_title_draw_buf_);
+        glyph_title_draw_buf_ = nullptr;
+    }
+    for (auto& draw_buf : stroke_chip_draw_bufs_) {
+        if (draw_buf)
+            lv_draw_buf_destroy(draw_buf);
+        draw_buf = nullptr;
+    }
+    // Late worker results are ignored after the expected character is cleared.
     stroke_placeholder_ = nullptr;
-    expected_stroke_path_.clear();
-    lv_image_cache_drop(&sd_stroke_);
-    stroke_png_.clear();
-    const char* titles[] = {"小小助手", "查字典", "英语音标", "课程表",
-                            "作业计时", "闹钟",   "天气",     "设置"};
+    expected_stroke_character_.clear();
+    stroke_glyph_ = {};
+    const char* titles[] = {"小小助手", "小小字典", "英语音标", "课程表",
+                            "作业计时", "闹钟",     "天气",     "设置"};
+    const lv_image_dsc_t* page_icons[] = {
+        nullptr,         &han_icon_dictionary, &han_icon_phonetics, &han_icon_timetable,
+        &han_icon_timer, &han_icon_alarm,      &han_icon_weather,   &han_icon_settings};
     lv_label_set_text(title_, titles[static_cast<int>(page)]);
+
+    // Reset the shared chrome before applying a page-specific composition.
+    lv_obj_remove_flag(date_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(clock_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(top_divider_left_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(top_divider_right_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(wifi_button_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(battery_image_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(footer_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(back_, 24, 14);
+    lv_obj_set_size(back_, 72, 72);
+    lv_obj_set_style_radius(back_, 24, 0);
+    lv_obj_set_pos(back_image_, 12, 12);
+    lv_obj_set_pos(date_, 747, 45);
+    lv_obj_set_width(date_, 208);
+    lv_obj_set_style_text_font(date_, &han_font_28, 0);
+    lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_LEFT, 0);
+
     if (page == Page::Home) {
         lv_obj_add_flag(back_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_x(title_, 212);
         lv_obj_set_pos(body_, 38, 118);
         lv_obj_set_size(body_, 1204, 448);
+    } else if (page == Page::Timetable) {
+        lv_obj_remove_flag(back_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(clock_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(top_divider_left_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(top_divider_right_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(wifi_button_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(battery_image_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(back_, 27, 18);
+        lv_obj_set_size(back_, 86, 86);
+        lv_obj_set_style_radius(back_, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_pos(back_image_, 19, 19);
+        lv_obj_set_x(title_, 133);
+        lv_obj_set_y(title_, 25);
+        lv_obj_set_pos(date_, 548, 49);
+        lv_obj_set_width(date_, 225);
+        lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_pos(body_, 0, 0);
+        lv_obj_set_size(body_, 1280, 720);
     } else {
         lv_obj_remove_flag(back_, LV_OBJ_FLAG_HIDDEN);
+        lv_image_set_src(page_icon_, page_icons[static_cast<int>(page)]);
+        lv_obj_remove_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_x(title_, 115);
+        lv_obj_set_x(title_, 178);
         lv_obj_set_pos(body_, 24, 104);
         lv_obj_set_size(body_, 1232, 490);
+        if (page == Page::Dictionary) {
+            lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_size(body_, 1232, 592);
+        }
     }
-    if (page == Page::Timetable) {
-        lv_obj_add_flag(talk_button_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(message_, 32, 676);
-        lv_obj_set_pos(status_label_, 944, 665);
-        lv_obj_set_pos(notification_label_, 944, 665);
-        lv_obj_set_width(status_label_, 288);
-        lv_obj_set_width(notification_label_, 288);
-        lv_label_set_text(message_, "每周重复 · 课程及物品由家长填写");
-    } else {
-        lv_obj_remove_flag(talk_button_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(message_, 240, 677);
-        lv_obj_set_pos(status_label_, 844, 596);
-        lv_obj_set_pos(notification_label_, 844, 596);
-        lv_obj_set_width(status_label_, 365);
-        lv_obj_set_width(notification_label_, 365);
-        lv_label_set_text(message_, "试试说：我想学英语音标");
+
+    if (page != Page::Timetable) {
+        lv_obj_set_pos(assistant_card_, 24, page == Page::Home ? 584 : 606);
+        lv_obj_set_size(assistant_card_, 1232, page == Page::Home ? 112 : 90);
+        lv_obj_set_pos(assistant_badge_, 14, page == Page::Home ? 20 : 10);
+        lv_obj_set_size(assistant_badge_, 70, 70);
+        auto icon = lv_obj_get_child(assistant_badge_, 0);
+        lv_obj_set_pos(icon, 8, 8);
+        lv_image_set_scale(icon, 108);
+        lv_obj_set_pos(role_box_, 100, page == Page::Home ? 20 : 11);
+        lv_obj_set_size(role_box_, 116, 34);
+        lv_obj_set_pos(message_, 100, page == Page::Home ? 58 : 48);
+        lv_obj_set_size(message_, 850, page == Page::Home ? 42 : 34);
+        lv_label_set_long_mode(message_, LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(status_box_, 974, page == Page::Home ? 25 : 14);
+        lv_obj_set_size(status_box_, 240, 62);
+        lv_obj_set_pos(status_label_, 8, 14);
+        lv_obj_set_pos(notification_label_, 8, 14);
+        lv_obj_set_width(status_label_, 224);
+        lv_obj_set_width(notification_label_, 224);
     }
-    lv_obj_set_y(talk_button_, page == Page::Home ? 579 : 606);
-    lv_obj_set_height(talk_button_, page == Page::Home ? 86 : 66);
-    lv_obj_set_y(talk_label_, page == Page::Home ? 19 : 9);
-    lv_obj_set_y(lv_obj_get_child(talk_button_, 0), page == Page::Home ? 17 : 7);
     switch (page) {
         case Page::Home:
             Home();
@@ -364,6 +801,13 @@ void HanDisplay::Render(Page page) {
         case Page::Network:
             Network();
             break;
+    }
+    if (page == Page::Timetable) {
+        // body_ covers the full screen for this design, so keep the live root labels/buttons above
+        // its decorative layers.
+        lv_obj_move_foreground(back_);
+        lv_obj_move_foreground(title_);
+        lv_obj_move_foreground(date_);
     }
     if (page == Page::Home) {
         // Submit the book mascot and page body together on the full-screen buffer.
@@ -418,149 +862,301 @@ void HanDisplay::Home() {
     }
 }
 
-void HanDisplay::OnTalk(lv_event_t* event) {
-    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
-    const auto code = lv_event_get_code(event);
-    if (code == LV_EVENT_PRESSED) {
-        auto& app = Application::GetInstance();
-        const auto state = app.GetDeviceState();
-        if (self->talk_held_ || self->talk_release_pending_)
-            return;
-        if (self->local_audio_ || (state != kDeviceStateIdle && state != kDeviceStateSpeaking)) {
-            self->Toast("请稍候再说话");
-            return;
-        }
-        if (!WifiManager::GetInstance().IsConnected()) {
-            self->Toast("请先联网，再按住说话");
-            return;
-        }
-        self->talk_held_ = true;
-        self->talk_pressed_ms_ = NowMs();
-        lv_label_set_text(self->talk_label_, "松开发送");
-        app.Schedule([self] {
-            if (!self->talk_held_)
-                return;
-            const auto state = Application::GetInstance().GetDeviceState();
-            if (state != kDeviceStateIdle && state != kDeviceStateSpeaking)
-                return;
-            self->talk_started_ = true;
-            Application::GetInstance().StartListening();
-        });
-    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST ||
-               code == LV_EVENT_DELETE) {
-        self->ReleaseTalk();
-    }
-}
-
-void HanDisplay::ReleaseTalk() {
-    if (!talk_held_.exchange(false))
-        return;
-    if (talk_label_)
-        lv_label_set_text(talk_label_, "按住说话");
-    talk_release_pending_ = true;
-    Application::GetInstance().Schedule([this] {
-        auto& app = Application::GetInstance();
-        if (talk_started_.exchange(false)) {
-            // Cancel a not-yet-open manual session as well as stopping an active one.
-            // Use the public state machine, never edit core protocol fields.
-            if (app.GetDeviceState() == kDeviceStateConnecting)
-                app.SetDeviceState(kDeviceStateIdle);
-            app.StopListening();
-        }
-        talk_release_pending_ = false;
-    });
-}
-
 void HanDisplay::Dictionary() {
-    auto grid = Box(body_, 0, 0, 465, 375, 0xfff1e9);
-    for (int i = 1; i < 2; ++i) {
-        auto h = Box(grid, 14, 186, 436, 2, 0xefc8bd);
-        auto v = Box(grid, 232, 14, 2, 347, 0xefc8bd);
-        (void)h;
-        (void)v;
+    auto grid = Card(body_, 0, 0, 465, 440, 0xfffbf7);
+    lv_obj_set_style_border_width(grid, 3, 0);
+    lv_obj_set_style_border_color(grid, lv_color_hex(0xf6c2bd), 0);
+    lv_obj_set_style_radius(grid, 22, 0);
+    static const lv_point_precise_t guides[][2] = {
+        {{15, 220}, {450, 220}},
+        {{232, 15}, {232, 425}},
+        {{15, 15}, {450, 425}},
+        {{450, 15}, {15, 425}},
+    };
+    for (const auto& points : guides) {
+        auto line = lv_line_create(grid);
+        lv_line_set_points(line, points, 2);
+        lv_obj_set_style_line_width(line, 2, 0);
+        lv_obj_set_style_line_color(line, lv_color_hex(0xf5c9c3), 0);
+        lv_obj_set_style_line_dash_width(line, 10, 0);
+        lv_obj_set_style_line_dash_gap(line, 8, 0);
+        lv_obj_remove_flag(line, LV_OBJ_FLAG_CLICKABLE);
     }
-    if (entry_.character == "规") {
-        stroke_image_ = lv_image_create(grid);
-        lv_image_set_src(stroke_image_, &han_gui_strokes[0]);
-        lv_obj_set_pos(stroke_image_, 82, 14);
-    } else {
-        stroke_image_ = lv_image_create(grid);
-        lv_obj_set_pos(stroke_image_, 82, 14);
+    stroke_image_ = lv_canvas_create(grid);
+    stroke_draw_buf_ = lv_draw_buf_create(400, 400, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+    lv_obj_set_pos(stroke_image_, 32, 18);
+    lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_CLICKABLE);
+    if (stroke_draw_buf_)
+        lv_canvas_set_draw_buf(stroke_image_, stroke_draw_buf_);
+    else
         lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
-        stroke_placeholder_ = Label(grid, "笔顺资源待导入", 80, 138, 350);
+    stroke_placeholder_ = Label(grid, "正在读取笔顺…", 58, 178, 350);
+    lv_obj_set_style_text_align(stroke_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
+    auto progress = Box(body_, 341, 448, 124, 34, 0xffdfe3);
+    lv_obj_set_style_radius(progress, 17, 0);
+    stroke_value_ = Label(progress, "", 4, 0, 116, &han_font_stroke_name);
+    lv_obj_set_style_text_align(stroke_value_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(stroke_value_, LV_ALIGN_CENTER, 0, 0);
+
+    const uint32_t control_colors[] = {0x43b96f, 0xf56c55, 0x378eea};
+    const char* control_text[] = {"上一步", "播放笔顺", "下一步"};
+    const int control_x[] = {0, 151, 328};
+    const int control_w[] = {140, 166, 137};
+    for (int index = 0; index < 3; ++index) {
+        auto control = Button(body_, control_text[index], control_x[index], 490, control_w[index],
+                              76, control_colors[index], 20 + index);
+        lv_obj_set_style_radius(control, 22, 0);
+        lv_obj_set_style_shadow_color(control, lv_color_hex(control_colors[index]), 0);
+        lv_obj_set_style_shadow_width(control, 10, 0);
+        lv_obj_set_style_shadow_opa(control, LV_OPA_20, 0);
+        lv_obj_set_style_shadow_ofs_y(control, 4, 0);
+        auto text = lv_obj_get_child(control, 0);
+        ApplyDictionaryTextFont(text);
+        lv_obj_set_style_text_color(text, lv_color_white(), 0);
     }
-    stroke_value_ = Label(grid, "", 24, 323, 420);
+
+    auto details = Card(body_, 490, 0, 742, 566, 0xffffff);
+    lv_obj_set_style_radius(details, 24, 0);
+    glyph_title_image_ = lv_canvas_create(details);
+    glyph_title_draw_buf_ = lv_draw_buf_create(82, 82, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+    lv_obj_set_pos(glyph_title_image_, 20, 5);
+    lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_CLICKABLE);
+    if (glyph_title_draw_buf_) {
+        lv_canvas_set_draw_buf(glyph_title_image_, glyph_title_draw_buf_);
+        lv_obj_add_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    glyph_title_placeholder_ = Label(details, entry_.character.c_str(), 20, 25, 82);
+    ApplyDictionaryTextFont(glyph_title_placeholder_);
+    lv_obj_set_style_text_align(glyph_title_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
+    auto pinyin = Label(details, entry_.pinyin.c_str(), 112, 25, 210, &han_font_40);
+    lv_obj_set_style_text_color(pinyin, lv_color_hex(0x182b50), 0);
+    lv_obj_align_to(pinyin, glyph_title_image_, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+
+    auto pinyin_search = Button(details, "拼音查字", 500, 16, 218, 54, kBlue, 23);
+    lv_obj_set_style_radius(pinyin_search, 27, 0);
+    ApplyDictionaryTextFont(lv_obj_get_child(pinyin_search, 0));
+    const std::string radical =
+        "部首 " + (entry_.radical.empty() ? std::string("—") : entry_.radical);
+    const std::string count =
+        entry_.stroke_count > 0 ? std::to_string(entry_.stroke_count) + "画" : "笔画 —";
+    const std::string structure = entry_.structure.empty() ? "结构 —" : entry_.structure;
+    const char* info[] = {radical.c_str(), count.c_str(), structure.c_str()};
+    const uint32_t info_colors[] = {kGreen, kBlue, kOrange};
+    const int info_widths[] = {170, 130, 190};
+    int info_x = 24;
+    for (int i = 0; i < 3; ++i) {
+        auto chip = Box(details, info_x, 91, info_widths[i], 44, info_colors[i]);
+        lv_obj_set_style_radius(chip, 22, 0);
+        auto text = Label(chip, info[i], 6, 3, info_widths[i] - 12);
+        ApplyDictionaryTextFont(text);
+        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+        info_x += info_widths[i] + 12;
+    }
+    auto meaning = Label(details, entry_.definition.c_str(), 26, 151, 690);
+    ApplyDictionaryTextFont(meaning);
+    lv_label_set_long_mode(meaning, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(meaning, 91);
+    auto words_title = Box(details, 24, 254, 72, 42, kGreen);
+    lv_obj_set_style_radius(words_title, 21, 0);
+    auto words_title_text = Label(words_title, "组词", 4, 2, 64);
+    ApplyDictionaryTextFont(words_title_text);
+    lv_obj_set_style_text_align(words_title_text, LV_TEXT_ALIGN_CENTER, 0);
+    for (int i = 0; i < std::min<int>(5, entry_.words.size()); ++i) {
+        auto chip = Box(details, 106 + i * 121, 254, 110, 42, 0xeaf8ee);
+        lv_obj_set_style_radius(chip, 21, 0);
+        auto text = Label(chip, entry_.words[i].c_str(), 4, 2, 102);
+        ApplyDictionaryTextFont(text);
+        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+    }
+    Box(details, 24, 312, 694, 2, 0xeee8df);
+    auto order = Box(details, 24, 326, 190, 42, kBlue);
+    lv_obj_set_style_radius(order, 21, 0);
+    const std::string stroke_summary = "笔顺 · 共" + std::to_string(entry_.strokes.size()) + "画";
+    auto order_text = Label(order, stroke_summary.c_str(), 6, 2, 178);
+    ApplyDictionaryTextFont(order_text);
+    lv_obj_set_style_text_align(order_text, LV_TEXT_ALIGN_CENTER, 0);
+
+    auto stroke_panel = Box(details, 20, 375, 702, 174, 0xfafcfd);
+    lv_obj_set_style_radius(stroke_panel, 16, 0);
+    lv_obj_add_flag(stroke_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(stroke_panel, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(stroke_panel, LV_SCROLLBAR_MODE_AUTO);
+    const int shown = std::min<int>(stroke_chips_.size(), entry_.strokes.size());
+    for (int i = 0; i < shown; ++i) {
+        auto chip = Box(stroke_panel, 4 + i % 7 * 99, 4 + i / 7 * 82, 94, 78, 0xf7fafb);
+        lv_obj_set_style_radius(chip, 14, 0);
+        lv_obj_set_style_border_width(chip, 2, 0);
+        lv_obj_set_style_border_color(chip, lv_color_hex(0xdde8ec), 0);
+        auto canvas = lv_canvas_create(chip);
+        auto draw_buf = lv_draw_buf_create(48, 43, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+        lv_obj_set_pos(canvas, 23, 2);
+        lv_obj_remove_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
+        if (draw_buf) {
+            lv_canvas_set_draw_buf(canvas, draw_buf);
+        }
+        lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+        auto text = Label(chip, entry_.strokes[i].c_str(), 1, 47, 92, &han_font_stroke_name);
+        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_letter_space(text, -1, 0);
+        lv_label_set_long_mode(text, LV_LABEL_LONG_CLIP);
+        stroke_chips_[i] = chip;
+        stroke_chip_images_[i] = canvas;
+        stroke_chip_draw_bufs_[i] = draw_buf;
+    }
     UpdateStroke();
-    Button(body_, "上一步", 0, 391, 140, 70, kGreen, 20);
-    Button(body_, "播放笔顺", 151, 391, 166, 70, kOrange, 21);
-    Button(body_, "下一步", 328, 391, 137, 70, kBlue, 22);
-    auto details = Box(body_, 490, 0, 742, 375, 0xffffff);
-    std::string title = entry_.character + "   " + entry_.pinyin;
-    Label(details, title.c_str(), 24, 20, 690, &han_font_40);
-    std::string info = "部首 " + entry_.radical + "   " + std::to_string(entry_.stroke_count) +
-                       "画   " + entry_.structure;
-    Label(details, info.c_str(), 24, 83, 690);
-    Label(details, entry_.definition.c_str(), 24, 139, 690);
-    std::string words = "组词：";
-    for (const auto& word : entry_.words)
-        words += word + "  ";
-    Label(details, words.c_str(), 24, 238, 690);
-    const std::string page = entry_.page
-                                 ? "新华字典第12版 · 第" + std::to_string(entry_.page) + "页"
-                                 : "新华字典第12版 · 页码待核对";
-    Label(details, page.c_str(), 24, 288, 690);
-    Label(details,
-          (entry_.source == "embedded-demo" || entry_.source == "project-authored-demo")
-              ? "释义：开发示例"
-              : "释义：SD 内容包",
-          24, 329, 680);
-    Button(body_, "查“规”", 490, 391, 220, 70, kGreen, 23);
-    Button(body_, "语音查字", 730, 391, 245, 70, kBlue, 8);
-    Button(body_, "字库状态", 995, 391, 237, 70, kPurple, 24);
+}
+
+void HanDisplay::OpenPinyinSearch() {
+    pinyin_query_.clear();
+    pinyin_results_.clear();
+    search_overlay_ = Card(body_, 0, 0, 1232, 480, 0xfffcf6);
+    lv_obj_set_style_border_width(search_overlay_, 3, 0);
+    lv_obj_set_style_border_color(search_overlay_, lv_color_hex(0xd7eee0), 0);
+    auto search_title = Label(search_overlay_, "拼音查字", 24, 18, 190, &han_font_40);
+    ApplyDictionaryTextFont(search_title);
+    auto input_box = Box(search_overlay_, 220, 14, 450, 64, 0xf2f7fb);
+    lv_obj_set_style_border_width(input_box, 2, 0);
+    lv_obj_set_style_border_color(input_box, lv_color_hex(0xc9dfea), 0);
+    search_input_ = Label(input_box, "输入拼音，例如 han", 20, 10, 410);
+    lv_obj_set_style_text_color(search_input_, lv_color_hex(kMuted), 0);
+    auto submit = Button(search_overlay_, "查找", 690, 14, 164, 64, kGreen, 1127);
+    auto close = Button(search_overlay_, "关闭", 1034, 14, 174, 64, kPink, 1128);
+    ApplyDictionaryTextFont(lv_obj_get_child(submit, 0));
+    ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
+
+    search_results_ = Card(search_overlay_, 24, 96, 520, 356, 0xffffff);
+    auto keyboard = Card(search_overlay_, 568, 96, 640, 356, 0xf3f8ff);
+    const char* rows[] = {"qwertyuiop", "asdfghjkl", "zxcvbnm"};
+    const int starts[] = {18, 48, 110};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; rows[row][column]; ++column) {
+            char label[2] = {rows[row][column], '\0'};
+            Button(keyboard, label, starts[row] + column * 60, 18 + row * 82, 52, 64, 0xffffff,
+                   1100 + rows[row][column] - 'a');
+        }
+    }
+    auto backspace = Button(keyboard, "退格", 116, 270, 190, 62, kOrange, 1126);
+    auto clear = Button(keyboard, "清空", 330, 270, 190, 62, kPurple, 1129);
+    ApplyDictionaryTextFont(lv_obj_get_child(backspace, 0));
+    ApplyDictionaryTextFont(lv_obj_get_child(clear, 0));
+    RenderPinyinResults(DictionaryService::GetInstance().store().pinyin_ready()
+                            ? "输入不带声调的拼音，再从候选字中点选"
+                            : "SD 卡缺少拼音索引，请更新内容包");
+}
+
+void HanDisplay::RenderPinyinResults(const char* status) {
+    if (!search_results_)
+        return;
+    lv_obj_clean(search_results_);
+    search_status_ = Label(search_results_, status, 20, 18, 480);
+    ApplyDynamicTextFont(search_status_);
+    lv_obj_set_style_text_color(search_status_, lv_color_hex(kMuted), 0);
+    for (int index = 0; index < static_cast<int>(pinyin_results_.size()); ++index) {
+        auto button = Button(search_results_, pinyin_results_[index].c_str(), 20 + index % 5 * 96,
+                             70 + index / 5 * 68, 82, 56,
+                             index % 3 == 0   ? kGreen
+                             : index % 3 == 1 ? kBlue
+                                              : kOrange,
+                             1200 + index);
+        ApplyDictionaryTextFont(lv_obj_get_child(button, 0));
+    }
+}
+
+void HanDisplay::ApplyPinyinResults(const std::string& query, std::vector<std::string> results) {
+    if (page_ != Page::Dictionary || !search_overlay_ || query != pinyin_query_)
+        return;
+    pinyin_results_ = std::move(results);
+    const std::string status =
+        pinyin_results_.empty()
+            ? "没有找到 “" + query + "” 对应的汉字"
+            : "找到 " + std::to_string(pinyin_results_.size()) + " 个常用候选字，点一下查看笔顺";
+    RenderPinyinResults(status.c_str());
 }
 
 void HanDisplay::UpdateStroke() {
-    if (!stroke_value_ || entry_.strokes.empty())
+    if (!stroke_value_)
         return;
-    stroke_ = std::clamp(stroke_, 0, static_cast<int>(entry_.strokes.size()) - 1);
-    auto value = std::to_string(stroke_ + 1) + " / " + std::to_string(entry_.strokes.size()) +
-                 "    " + entry_.strokes[stroke_];
-    lv_label_set_text(stroke_value_, value.c_str());
-    if (stroke_image_ && entry_.character == "规" && stroke_ < 8)
-        lv_image_set_src(stroke_image_, &han_gui_strokes[stroke_]);
-    else if (stroke_image_) {
-        lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+    if (entry_.strokes.empty()) {
+        lv_label_set_text(stroke_value_, "暂无笔顺资料");
         if (stroke_placeholder_)
-            lv_obj_remove_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
-        expected_stroke_path_ = han::ContentStore::StrokePath(entry_.character, stroke_);
-        Queue(3, expected_stroke_path_);
+            lv_label_set_text(stroke_placeholder_, "暂无矢量笔顺资料");
+        return;
+    }
+    stroke_ = std::clamp(stroke_, 0, static_cast<int>(entry_.strokes.size()) - 1);
+    auto value = std::to_string(stroke_ + 1) + "/" + std::to_string(entry_.strokes.size());
+    lv_label_set_text(stroke_value_, value.c_str());
+    for (int i = 0; i < static_cast<int>(stroke_chips_.size()); ++i) {
+        if (!stroke_chips_[i])
+            continue;
+        lv_obj_set_style_bg_color(stroke_chips_[i],
+                                  lv_color_hex(i == stroke_ ? 0xffd8d4 : 0xf7fafb), 0);
+        lv_obj_set_style_border_color(stroke_chips_[i],
+                                      lv_color_hex(i == stroke_ ? 0xf16d63 : 0xdde8ec), 0);
+    }
+    if (stroke_ < static_cast<int>(stroke_chips_.size()) && stroke_chips_[stroke_])
+        lv_obj_scroll_to_view(stroke_chips_[stroke_], LV_ANIM_ON);
+    if (stroke_glyph_.character == entry_.character) {
+        RenderStroke();
+        return;
+    }
+    if (expected_stroke_character_ != entry_.character) {
+        expected_stroke_character_ = entry_.character;
+        Queue(3, entry_.character);
     }
 }
 
-bool HanDisplay::ApplyStrokeFrame(const std::string& path, std::string data) {
+bool HanDisplay::ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph glyph) {
     DisplayLockGuard guard(this);
-    if (page_ != Page::Dictionary || path.empty() || path != expected_stroke_path_ ||
-        !stroke_image_ || !han::ContentStore::IsStrokePng(data))
+    if (page_ != Page::Dictionary || character.empty() || character != expected_stroke_character_ ||
+        character != entry_.character || !stroke_image_ || !stroke_draw_buf_ ||
+        glyph.character != character || glyph.strokes.empty())
         return false;
-    lv_image_cache_drop(&sd_stroke_);
-    stroke_png_ = std::move(data);
-    sd_stroke_.header.magic = LV_IMAGE_HEADER_MAGIC;
-    sd_stroke_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
-    sd_stroke_.header.w = sd_stroke_.header.h = 300;
-    sd_stroke_.data_size = stroke_png_.size();
-    sd_stroke_.data = reinterpret_cast<const uint8_t*>(stroke_png_.data());
-    lv_image_set_src(stroke_image_, &sd_stroke_);
-    lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
-    if (stroke_placeholder_)
-        lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    stroke_glyph_ = std::move(glyph);
+    RenderStroke();
     return true;
+}
+
+void HanDisplay::RenderStroke() {
+    if (!stroke_image_ || !stroke_draw_buf_ || stroke_glyph_.strokes.empty())
+        return;
+#if LV_USE_VECTOR_GRAPHIC
+    if (DrawGlyph(stroke_image_, stroke_glyph_, 400, 400, 10, stroke_, -1, true)) {
+        lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+        if (stroke_placeholder_)
+            lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (glyph_title_image_ && glyph_title_draw_buf_ &&
+        DrawGlyph(glyph_title_image_, stroke_glyph_, 82, 82, 5, stroke_, -1, false)) {
+        lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
+        if (glyph_title_placeholder_)
+            lv_obj_add_flag(glyph_title_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    }
+    for (int index = 0; index < static_cast<int>(stroke_chip_images_.size()); ++index) {
+        if (!stroke_chip_images_[index] || !stroke_chip_draw_bufs_[index] ||
+            index >= static_cast<int>(stroke_glyph_.strokes.size()))
+            continue;
+        if (DrawGlyph(stroke_chip_images_[index], stroke_glyph_, 48, 43, 2, stroke_, index, false))
+            lv_obj_remove_flag(stroke_chip_images_[index], LV_OBJ_FLAG_HIDDEN);
+    }
+#else
+    if (stroke_placeholder_)
+        lv_label_set_text(stroke_placeholder_, "矢量笔顺已加载（设备端显示）");
+#endif
 }
 
 void HanDisplay::Phonetics() {
     const char* cats[] = {"单元音", "双元音", "辅音"};
-    for (int i = 0; i < 3; ++i)
-        Button(body_, cats[i], i * 418, 0, 396, 66, i == category_ ? 0xc3a5f4 : kBlue, 100 + i);
-    auto panel = Box(body_, 0, 86, 465, 397, kPurple);
+    for (int i = 0; i < 3; ++i) {
+        auto tab =
+            Button(body_, cats[i], i * 418, 0, 396, 66, i == category_ ? 0xc3a5f4 : kBlue, 100 + i);
+        if (i == category_) {
+            lv_obj_set_style_border_width(tab, 3, 0);
+            lv_obj_set_style_border_color(tab, lv_color_hex(0x8d6dd2), 0);
+        }
+    }
+    auto panel = Card(body_, 0, 86, 465, 397, 0xeee6ff);
     int shown = 0;
     for (int i = 0; i < static_cast<int>(std::size(han::kSounds)); ++i) {
         if (han::kSounds[i].category != category_)
@@ -578,105 +1174,143 @@ void HanDisplay::Phonetics() {
     Label(panel, page.c_str(), 190, 282, 130);
     Button(panel, "下一页", 310, 271, 137, 58, kBlue, 121);
     Label(panel, "英式音标 · 44 音学习卡", 18, 353, 430);
-    auto detail = Box(body_, 490, 86, 742, 397, 0xffffff);
+    auto detail = Card(body_, 490, 86, 742, 397, 0xffffff);
+    auto headphones = Image(detail, &han_icon_phonetics, 650, 14);
+    lv_image_set_scale(headphones, 104);
+    lv_image_set_pivot(headphones, 0, 0);
     auto& sound = han::kSounds[sound_];
     auto ipa = "/" + std::string(sound.ipa) + "/";
-    auto big = Label(detail, ipa.c_str(), 20, 12, 700, &han_font_large);
+    auto current = Box(detail, 24, 20, 170, 38, kPurple);
+    lv_obj_set_style_radius(current, 19, 0);
+    auto current_text = Label(current, "当前音标", 6, 1, 158);
+    lv_obj_set_style_text_align(current_text, LV_TEXT_ALIGN_CENTER, 0);
+    auto big = Label(detail, ipa.c_str(), 20, 45, 700, &han_font_large);
     lv_obj_set_style_text_align(big, LV_TEXT_ALIGN_CENTER, 0);
-    Button(detail, "听示范", 155, 134, 430, 64, kPurple, 110);
+    Button(detail, "听示范", 155, 158, 430, 62, kPurple, 110);
     for (int i = 0; i < 3; ++i)
-        Button(detail, sound.words[i], 20 + i * 237, 220, 220, 70, kGreen, 111 + i);
-    auto record = Button(detail, "录音跟读（后续）", 20, 314, 340, 62, kBlue, 114);
+        Button(detail, sound.words[i], 20 + i * 237, 238, 220, 68, kGreen, 111 + i);
+    auto record = Button(detail, "录音跟读（后续）", 20, 323, 340, 56, kBlue, 114);
     lv_obj_add_state(record, LV_STATE_DISABLED);
-    Label(detail, "音频需放入 SD 卡", 384, 331, 330);
+    auto audio_hint = Label(detail, "音频需放入 SD 卡", 384, 334, 330);
+    lv_obj_set_style_text_color(audio_hint, lv_color_hex(kMuted), 0);
 }
 
 void HanDisplay::Timetable() {
-    lv_obj_set_size(body_, 1232, 560);
-    auto table = Box(body_, 0, 0, 922, 524, 0xffffff);
+    // This page deliberately owns the full 1280x720 canvas. Its proportions follow the approved
+    // timetable concept rather than the denser shared application chrome.
+    Image(body_, &han_timetable_leaves, 0, 608);
+    Image(body_, &han_timetable_books, 1123, 608);
+    Image(body_, &han_timetable_mascot, 1007, 0);
+
+    auto date_card = Card(body_, 466, 34, 340, 69, 0xffffff);
+    lv_obj_set_style_radius(date_card, 35, 0);
+    Image(date_card, &han_timetable_calendar, 20, 10);
+    auto week = Button(body_, timetable_day_group_ ? "周末" : (timetable_week_ ? "下周" : "本周"),
+                       868, 40, 126, 57, kGreen, 502);
+    lv_obj_set_style_radius(week, 29, 0);
+    Image(week, &han_timetable_chevron_down, 88, 13);
+
+    auto table = Card(body_, 17, 126, 922, 525, 0xffffff);
     const int first_day = timetable_day_group_ ? 5 : 0;
     const int columns = timetable_day_group_ ? 2 : 5;
     const int col_width = timetable_day_group_ ? 390 : 156;
+    int lesson_count = 5;
+    for (int c = 0; c < columns; ++c)
+        lesson_count =
+            std::max(lesson_count, static_cast<int>(timetable_.days[first_day + c].size()));
+    lesson_count = std::clamp(lesson_count, 5, 8);
+    const int row_pitch = 432 / lesson_count;
+    const int cell_height = row_pitch - 7;
+    const auto lesson_range = "1—" + std::to_string(lesson_count) + "节";
     auto row_head = Box(table, 12, 12, 108, 54, 0xf4f5e8);
-    Label(row_head, timetable_row_ ? "6—8节" : "1—5节", 6, 10, 103);
+    lv_obj_set_style_radius(row_head, 18, 0);
+    auto range_label = Label(row_head, lesson_range.c_str(), 5, 10, 98, &han_font_28);
+    lv_obj_set_style_text_align(range_label, LV_TEXT_ALIGN_CENTER, 0);
     for (int c = 0; c < columns; ++c) {
         int day = first_day + c;
         const bool today = timetable_week_ == 0 && day == timetable_today_;
         const int x = 124 + c * col_width;
         if (today)
-            Box(table, x, 12, col_width - 4, 438, 0xe6f4ff);
+            Box(table, x, 12, col_width - 4, 500, 0xe6f4ff);
         auto head = Box(table, x, 12, col_width - 4, 54, today ? 0xc9e8ff : 0xf3f6ec);
-        auto label = Label(head, kWeekdays[day], 0, 8, col_width - 4, &han_font_schedule);
+        lv_obj_set_style_radius(head, 18, 0);
+        auto label = Label(head, kWeekdays[day], 0, 7, col_width - 4, &han_font_schedule);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-        for (int r = 0; r < 5; ++r) {
-            const int lesson = timetable_row_ + r;
-            if (lesson >= 8)
-                break;
+        for (int lesson = 0; lesson < lesson_count; ++lesson) {
             const auto& classes = timetable_.days[day];
             const std::string name =
                 lesson < static_cast<int>(classes.size()) ? classes[lesson] : "";
             const int kind = SubjectKind(name);
-            const uint32_t colors[] = {0xffded5, 0xcdeaff, 0xeadeff, 0xddf6d2,
-                                       0xffe2c3, 0xcdf2ed, 0xf5f5ef};
-            auto cell = Button(table, "", x + 4, 74 + r * 75, col_width - 12, 67, colors[kind],
-                               700 + day * 8 + lesson);
+            const uint32_t colors[] = {0xffded5, 0xcdeaff, 0xeadeff, 0xddf6d2, 0xffe2c3, 0xcdf2ed,
+                                       0xd4eef7, 0xffe2ef, 0xffefc9, 0xe4efcc, 0xffe2d1, 0xeee6fa};
+            auto cell = Button(table, "", x + 4, 73 + lesson * row_pitch, col_width - 12,
+                               cell_height, colors[kind], 700 + day * 8 + lesson);
             lv_obj_set_style_bg_grad_color(cell, lv_color_hex(0xfffbf4), 0);
             lv_obj_set_style_bg_grad_dir(cell, LV_GRAD_DIR_VER, 0);
             lv_obj_set_style_radius(cell, 18, 0);
-            const lv_image_dsc_t* icons[] = {&han_subject_book, &han_subject_calculator,
-                                             nullptr,           &han_subject_science,
-                                             &han_subject_art,  &han_subject_sport};
-            if (kind < 6 && icons[kind])
-                Image(cell, icons[kind], 9, 12);
+            const lv_image_dsc_t* icons[] = {
+                &han_subject_book,     &han_subject_calculator, nullptr,
+                &han_subject_science,  &han_subject_art,        &han_subject_sport,
+                &han_subject_computer, &han_subject_music,      &han_subject_martial,
+                &han_subject_labor,    &han_subject_flute,      &han_subject_star};
+            if (!name.empty() && icons[kind])
+                Image(cell, icons[kind], 8, (cell_height - 40) / 2);
             if (kind == 2) {
-                auto abc = Label(cell, "A\nBC", 8, 0, 42, &han_font_28);
+                auto abc = Label(cell, "A\nBC", 7, 0, 42, &han_font_schedule_small);
                 lv_obj_set_style_text_color(abc, lv_color_hex(0x9d65c4), 0);
                 lv_obj_set_style_text_letter_space(abc, -3, 0);
-                lv_obj_set_style_text_line_space(abc, -9, 0);
+                lv_obj_set_style_text_line_space(abc, -11, 0);
                 lv_obj_set_style_text_align(abc, LV_TEXT_ALIGN_CENTER, 0);
             }
-            auto text = Label(cell, name.empty() ? "—" : name.c_str(), kind < 6 ? 54 : 9, 16,
-                              col_width - (kind < 6 ? 68 : 28),
-                              kind < 6 ? &han_font_schedule : &han_font_28);
+            const bool long_name = name.size() > 6;
+            auto text = Label(cell, name.empty() ? "—" : name.c_str(), name.empty() ? 9 : 52,
+                              std::max(0, (cell_height - (long_name ? 32 : 38)) / 2),
+                              col_width - (name.empty() ? 28 : 64),
+                              long_name ? &han_font_28 : &han_font_schedule);
             lv_label_set_long_mode(text, LV_LABEL_LONG_DOT);
             lv_obj_set_height(text, 40);
         }
     }
-    for (int r = 0; r < 5 && timetable_row_ + r < 8; ++r) {
-        auto row = Box(table, 12, 74 + r * 75, 108, 67, 0xf9f4e5);
-        auto name = "第" + std::to_string(timetable_row_ + r + 1) + "节";
-        Label(row, name.c_str(), 9, 18, 98, &han_font_schedule);
+    for (int lesson = 0; lesson < lesson_count; ++lesson) {
+        auto row = Box(table, 12, 73 + lesson * row_pitch, 108, cell_height, 0xf9f4e5);
+        lv_obj_set_style_radius(row, 18, 0);
+        auto name = "第" + std::to_string(lesson + 1) + "节";
+        auto row_label =
+            Label(row, name.c_str(), 5, std::max(0, (cell_height - 34) / 2), 98, &han_font_28);
+        lv_obj_set_style_text_align(row_label, LV_TEXT_ALIGN_CENTER, 0);
     }
-    Button(table, timetable_row_ ? "第1—5节" : "第6—8节", 18, 463, 177, 48, kBlue, 501);
-    Button(table, timetable_day_group_ ? "周一至周五" : "查看周末", 207, 463, 198, 48, kGreen, 503);
-    Label(table,
-          timetable_.valid
-              ? (timetable_.empty() ? "还没有课程，请导入课表" : "点击课程可查看完整名称")
-              : "课表未加载或格式错误",
-          422, 473, 479);
-    Button(body_, timetable_week_ ? "下周 v" : "本周 v", 956, 0, 150, 54, kGreen, 502);
-    auto friend_image = Image(body_, &han_art_book, 1135, 0);
-    lv_image_set_pivot(friend_image, 0, 0);
-    lv_image_set_scale(friend_image, 104);
-    auto bag = Box(body_, 944, 71, 288, 287, 0xfff3ce);
-    Image(bag, &han_subject_backpack, 16, 17);
-    Label(bag, "明天要带", 67, 19, 207, &han_font_schedule);
+
+    // All configured lessons fit on one page. The top week selector cycles 本周 / 下周 / 周末.
+    if (!timetable_.valid || timetable_.empty()) {
+        auto empty = Box(table, 132, 174, 758, 118, 0xfffbf4);
+        auto hint =
+            Label(empty, timetable_.valid ? "还没有课程，请导入课表" : "课表未加载或格式错误", 20,
+                  39, 718);
+        lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    }
+
+    auto bag = Card(body_, 954, 143, 302, 310, 0xfff3ce);
+    Image(bag, &han_subject_backpack, 21, 19);
+    Label(bag, "明天要带", 76, 22, 207, &han_font_schedule);
+    auto supplies_body = Card(bag, 10, 84, 282, 216, 0xffffff);
+    lv_obj_set_style_shadow_opa(supplies_body, LV_OPA_TRANSP, 0);
     const int tomorrow = timetable_today_ < 0 ? -1 : (timetable_today_ + 1) % 7;
     if (tomorrow < 0) {
-        Label(bag, "请先同步日期", 22, 103, 244);
+        Label(supplies_body, "请先同步日期", 20, 86, 242);
     } else if (!timetable_.valid) {
-        Label(bag, "请先导入课程表", 22, 103, 244);
+        Label(supplies_body, "请先导入课程表", 20, 86, 242);
     } else {
         const auto& items = timetable_.supplies[tomorrow];
         if (items.empty())
-            Label(bag, "未填写需带物品", 22, 103, 244);
+            Label(supplies_body, "未填写需带物品", 20, 86, 242);
         for (int n = 0; n < 2 && supplies_page_ * 2 + n < static_cast<int>(items.size()); ++n) {
             const int i = supplies_page_ * 2 + n;
-            auto item = Button(bag, "", 12, 74 + n * 80, 264, 71, 0xffffff, 600 + i);
-            auto text = Label(item, items[i].c_str(), 14, 17, 193);
+            auto item = Button(supplies_body, "", 10, 14 + n * 86, 262, 75, 0xf7f7f3, 600 + i);
+            Image(item, SupplyIcon(items[i]), 14, 17);
+            auto text = Label(item, items[i].c_str(), 66, 23, 151, &han_font_schedule_small);
             lv_label_set_long_mode(text, LV_LABEL_LONG_DOT);
             lv_obj_set_height(text, 42);
-            auto box = Box(item, 219, 21, 29, 29, supplies_checked_[i] ? 0x55c892 : 0xffffff);
+            auto box = Box(item, 220, 23, 30, 30, supplies_checked_[i] ? 0x55c892 : 0xffffff);
             lv_obj_set_style_radius(box, 7, 0);
             lv_obj_set_style_border_width(box, 2, 0);
             lv_obj_set_style_border_color(box, lv_color_hex(0xb3bdb1), 0);
@@ -690,18 +1324,24 @@ void HanDisplay::Timetable() {
             }
         }
         if (items.size() > 2)
-            Button(bag, "更多物品", 14, 238, 168, 40, kOrange, 504);
-        if (items.size() <= 2)
-            Label(bag, "勾选仅本次", 20, 251, 248);
+            Button(supplies_body, "更多", 94, 183, 94, 28, kOrange, 504);
     }
-    auto voice = Button(body_, "", 944, 382, 288, 82, 0xc9efdb, 500);
-    auto mic_circle = Box(voice, 9, 9, 64, 64, 0x43b985);
+    auto voice = Button(body_, "", 966, 475, 290, 99, 0xc9efdb, 500);
+    lv_obj_set_style_radius(voice, 50, 0);
+    auto mic_circle = Box(voice, 12, 12, 74, 74, 0x43b985);
     lv_obj_set_style_radius(mic_circle, LV_RADIUS_CIRCLE, 0);
-    auto mic = Image(mic_circle, &han_status_mic, 16, 10);
+    auto mic = Image(mic_circle, &han_status_mic, 13, 13);
     lv_image_set_pivot(mic, 0, 0);
-    lv_image_set_scale(mic, 180);
-    Label(voice, "问明天课程", 83, 24, 201, &han_font_schedule);
-    Label(body_, "好好学习\n天天向上", 1019, 470, 208, &han_font_schedule);
+    lv_image_set_scale(mic, 190);
+    timetable_voice_label_ =
+        Label(voice, "问问明天上什么课", 89, 36, 193, &han_font_schedule_small);
+    auto motto = Label(body_, "好好学习\n天天向上", 998, 617, 148);
+    lv_obj_set_style_text_align(motto, LV_TEXT_ALIGN_CENTER, 0);
+    timetable_reply_card_ = Card(body_, 954, 590, 302, 112, 0xffffff);
+    timetable_message_ = Label(timetable_reply_card_, "", 18, 16, 266);
+    lv_obj_set_height(timetable_message_, 80);
+    lv_label_set_long_mode(timetable_message_, LV_LABEL_LONG_DOT);
+    lv_obj_add_flag(timetable_reply_card_, LV_OBJ_FLAG_HIDDEN);
 }
 
 bool HanDisplay::ApplyTimetable(const std::string& json) {
@@ -716,21 +1356,72 @@ bool HanDisplay::ApplyTimetable(const std::string& json) {
     return valid;
 }
 
+#ifdef HAN_UI_HOST_SIM
+void HanDisplay::SetWeatherTextForTest(std::string text) {
+    weather_text_ = std::move(text);
+    if (setup_ui_called_)
+        Render(Page::Weather);
+}
+#endif
+
+void HanDisplay::ApplyWeatherArt(std::string id, std::string data) {
+    if (!IsPng192(data)) {
+        id.clear();
+        data.clear();
+    }
+    if (!weather_art_data_.empty())
+        lv_image_cache_drop(&weather_art_dsc_);
+    weather_art_id_ = std::move(id);
+    weather_art_data_ = std::move(data);
+    weather_art_dsc_ = {};
+    if (!weather_art_data_.empty()) {
+        weather_art_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        weather_art_dsc_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
+        weather_art_dsc_.header.w = 192;
+        weather_art_dsc_.header.h = 192;
+        weather_art_dsc_.data_size = static_cast<uint32_t>(weather_art_data_.size());
+        weather_art_dsc_.data = reinterpret_cast<const uint8_t*>(weather_art_data_.data());
+    }
+}
+
 void HanDisplay::Timer() {
-    auto left = Box(body_, 0, 0, 710, 480, 0xffffff);
-    for (int i = 0; i < 3; ++i)
-        Button(left, kSubjects[i], 20 + i * 229, 20, 210, 66,
-               i == study_.subject() ? 0x9bceff : kBlue, 300 + i);
-    timer_value_ = Label(left, "00:00:00", 24, 138, 660, &han_font_large);
+    auto left = Card(body_, 0, 0, 724, 480, 0xffffff);
+    const uint32_t subject_colors[] = {0xffddd6, 0xd9edfc, 0xe9dffc};
+    for (int i = 0; i < 3; ++i) {
+        auto subject = Button(left, kSubjects[i], 20 + i * 229, 20, 210, 64,
+                              i == study_.subject() ? subject_colors[i] : 0xf5f3ee, 300 + i);
+        if (i == study_.subject()) {
+            lv_obj_set_style_border_width(subject, 3, 0);
+            lv_obj_set_style_border_color(subject, lv_color_hex(0x7aaee0), 0);
+        }
+    }
+    auto mode = Box(left, 248, 103, 228, 42, study_.running() ? 0xd9f4df : 0xffeedf);
+    lv_obj_set_style_radius(mode, 21, 0);
+    auto mode_text = Label(mode, study_.running() ? "正在专注" : "准备开始", 8, 3, 212);
+    lv_obj_set_style_text_align(mode_text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(mode_text, lv_color_hex(study_.running() ? 0x247a50 : 0xa85c2b), 0);
+    timer_value_ = Label(left, "00:00:00", 24, 154, 676, &han_font_large);
     lv_obj_set_style_text_align(timer_value_, LV_TEXT_ALIGN_CENTER, 0);
-    Button(left, study_.running() ? "暂停" : "开始 / 继续", 24, 300, 310, 82, kOrange, 310);
-    Button(left, "完成本科", 356, 300, 326, 82, kGreen, 311);
-    Label(left, "返回主页后仍继续计时", 150, 415, 540);
-    auto right = Box(body_, 734, 0, 498, 480, kGreen);
-    Label(right, "本次作业记录", 24, 24, 445, &han_font_40);
-    for (int i = 0; i < 3; ++i)
-        totals_[i] = Label(right, "", 24, 103 + i * 77, 450);
-    Button(right, "新一轮作业", 24, 373, 450, 72, 0xffffff, 312);
+    Label(left, kSubjects[study_.subject()], 294, 269, 140, &han_font_40);
+    Button(left, study_.running() ? "暂停" : "开始 / 继续", 24, 324, 324, 78, kOrange, 310);
+    Button(left, "完成本科", 372, 324, 328, 78, kGreen, 311);
+    auto hint = Label(left, "计时会在后台继续，专心完成一科再切换", 46, 427, 640);
+    lv_obj_set_style_text_color(hint, lv_color_hex(kMuted), 0);
+
+    auto right = Card(body_, 748, 0, 484, 480, 0xedf9ef);
+    auto timer_icon = Image(right, &han_icon_timer, 388, 13);
+    lv_image_set_scale(timer_icon, 112);
+    lv_image_set_pivot(timer_icon, 0, 0);
+    Label(right, "本次作业记录", 24, 22, 430, &han_font_40);
+    Label(right, "完成一科，就点亮一颗小星星", 24, 70, 430);
+    for (int i = 0; i < 3; ++i) {
+        auto row = Box(right, 20, 112 + i * 76, 444, 62, 0xffffff);
+        lv_obj_set_style_radius(row, 18, 0);
+        auto dot = Box(row, 14, 15, 32, 32, subject_colors[i]);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        totals_[i] = Label(row, "", 58, 13, 365);
+    }
+    Button(right, "新一轮作业", 20, 374, 444, 70, 0xffffff, 312);
     UpdateTimer();
 }
 
@@ -746,16 +1437,20 @@ void HanDisplay::UpdateTimer() {
 }
 
 void HanDisplay::Alarm() {
-    auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
-    Label(card, "每日提醒", 28, 22, 700, &han_font_40);
-    Label(card, "小时", 220, 105, 220);
-    Label(card, "分钟", 530, 105, 220);
-    alarm_hour_ = lv_roller_create(card);
+    auto picker = Card(body_, 0, 0, 760, 480, 0xffffff);
+    Label(picker, "设置提醒时间", 28, 22, 520, &han_font_40);
+    auto repeat = Box(picker, 574, 24, 150, 44, kPurple);
+    lv_obj_set_style_radius(repeat, 22, 0);
+    auto repeat_text = Label(repeat, "每天", 8, 4, 134);
+    lv_obj_set_style_text_align(repeat_text, LV_TEXT_ALIGN_CENTER, 0);
+    Label(picker, "小时", 116, 98, 190);
+    Label(picker, "分钟", 430, 98, 190);
+    alarm_hour_ = lv_roller_create(picker);
     lv_roller_set_options(alarm_hour_,
                           "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n13\n14\n15\n16\n17\n"
                           "18\n19\n20\n21\n22\n23",
                           LV_ROLLER_MODE_NORMAL);
-    alarm_minute_ = lv_roller_create(card);
+    alarm_minute_ = lv_roller_create(picker);
     std::string minutes;
     for (int i = 0; i < 60; ++i) {
         char s[5];
@@ -767,69 +1462,175 @@ void HanDisplay::Alarm() {
     lv_roller_set_options(alarm_minute_, minutes.c_str(), LV_ROLLER_MODE_NORMAL);
     lv_roller_set_selected(alarm_hour_, alarm_minutes_ / 60, LV_ANIM_OFF);
     lv_roller_set_selected(alarm_minute_, alarm_minutes_ % 60, LV_ANIM_OFF);
-    int x = 200;
+    int x = 90;
     for (auto roller : {alarm_hour_, alarm_minute_}) {
-        lv_obj_set_pos(roller, x, 156);
+        lv_obj_set_pos(roller, x, 145);
         lv_obj_set_width(roller, 240);
         lv_obj_set_style_text_font(roller, &han_font_40, 0);
+        lv_obj_set_style_radius(roller, 20, 0);
+        lv_obj_set_style_border_width(roller, 0, 0);
+        lv_obj_set_style_bg_color(roller, lv_color_hex(0xf6f3ee), 0);
+        lv_obj_set_style_bg_color(roller, lv_color_hex(0x8fc9fb), LV_PART_SELECTED);
+        lv_obj_set_style_text_color(roller, lv_color_hex(kInk), LV_PART_SELECTED);
         lv_roller_set_visible_row_count(roller, 3);
-        x += 310;
+        x += 314;
     }
-    Button(card, alarm_enabled_ ? "保存并保持开启" : "保存并开启", 820, 160, 370, 78, kGreen, 400);
-    Button(card, alarm_ringing_ ? "停止铃声" : "关闭提醒", 820, 263, 370, 78, kPink, 401);
-    Label(card, "需要设备开机且时间已同步；关机唤醒后续接入", 28, 414, 1170);
+    Label(picker, ":", 353, 227, 54, &han_font_40);
+    auto hint = Label(picker, "上下滑动数字，选择每天提醒的时间", 120, 416, 520);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(kMuted), 0);
+
+    auto summary = Card(body_, 784, 0, 448, 480, alarm_ringing_ ? 0xffe0e2 : 0xfff3d7);
+    auto alarm_icon = Image(summary, &han_icon_alarm, 344, 16);
+    lv_image_set_scale(alarm_icon, 120);
+    lv_image_set_pivot(alarm_icon, 0, 0);
+    auto status = Box(summary, 24, 24, 176, 44, alarm_enabled_ ? kGreen : 0xf1eee8);
+    lv_obj_set_style_radius(status, 22, 0);
+    auto status_text = Label(status,
+                             alarm_ringing_   ? "正在响铃"
+                             : alarm_enabled_ ? "提醒已开启"
+                                              : "提醒未开启",
+                             8, 4, 160);
+    lv_obj_set_style_text_align(status_text, LV_TEXT_ALIGN_CENTER, 0);
+    char time_text[16];
+    snprintf(time_text, sizeof(time_text), "%02d:%02d", alarm_minutes_ / 60, alarm_minutes_ % 60);
+    auto time = Label(summary, time_text, 24, 92, 400, &han_font_large);
+    lv_obj_set_style_text_align(time, LV_TEXT_ALIGN_CENTER, 0);
+    Label(summary, "每天到点提醒", 112, 214, 260, &han_font_40);
+    Button(summary, alarm_enabled_ ? "保存并保持开启" : "保存并开启", 24, 272, 400, 72, kGreen,
+           400);
+    Button(summary, alarm_ringing_ ? "停止铃声" : "关闭提醒", 24, 365, 400, 72, kPink, 401);
 }
 
 void HanDisplay::Weather() {
-    auto card = Box(body_, 0, 0, 1232, 480, kBlue);
-    auto img = lv_image_create(card);
-    lv_image_set_src(img, &han_icon_weather);
-    lv_obj_set_pos(img, 35, 28);
-    Label(card, "天气", 190, 57, 800, &han_font_40);
-    auto weather =
-        Label(card,
-              weather_text_.empty() ? "暂无天气数据\n\n请在 SD 卡配置和风天气，然后点右侧刷新。"
-                                    : weather_text_.c_str(),
-              35, 150, 930);
-    ApplyDynamicTextFont(weather);
-    auto refresh = Button(card, "刷新天气", 985, 170, 210, 76, kGreen, 900);
+    const auto weather = DecodeWeather(weather_text_);
+    auto hero = Card(body_, 0, 0, 492, 480, 0xd9edfc);
+    lv_obj_set_style_bg_grad_color(hero, lv_color_hex(0xf1f9ff), 0);
+    lv_obj_set_style_bg_grad_dir(hero, LV_GRAD_DIR_VER, 0);
+    if (!weather_art_data_.empty()) {
+        auto art = Image(hero, &weather_art_dsc_, 20, 20);
+        lv_obj_set_style_shadow_width(art, 18, 0);
+        lv_obj_set_style_shadow_opa(art, LV_OPA_20, 0);
+    } else {
+        auto icon_circle = Box(hero, 28, 28, 144, 144, 0xffffff);
+        lv_obj_set_style_radius(icon_circle, LV_RADIUS_CIRCLE, 0);
+        auto img = Image(icon_circle, &han_icon_weather, 8, 8);
+        lv_image_set_scale(img, 220);
+        lv_image_set_pivot(img, 0, 0);
+    }
+    if (weather_text_.empty()) {
+        Label(hero, "还没有天气", 196, 48, 260, &han_font_40);
+        auto intro =
+            Label(hero, "先把和风天气配置放进 SD 卡，\n再点右侧的刷新按钮。", 36, 212, 420);
+        ApplyDynamicTextFont(intro);
+        auto path = Label(hero, "SD:/handict/qweather.json", 36, 335, 420);
+        lv_obj_set_style_text_color(path, lv_color_hex(0x3976a8), 0);
+    } else {
+        auto city = Label(hero, weather.city.c_str(), 226, 35, 230, &han_font_40);
+        ApplyDynamicTextFont(city);
+        if (weather.cached) {
+            auto badge = Box(hero, 228, 86, 126, 38, 0xffe7bd);
+            lv_obj_set_style_radius(badge, 19, 0);
+            auto badge_text = Label(badge, "缓存天气", 6, 1, 114);
+            lv_obj_set_style_text_align(badge_text, LV_TEXT_ALIGN_CENTER, 0);
+        }
+        const auto separator = weather.current.rfind(' ');
+        const auto condition =
+            separator == std::string::npos ? weather.current : weather.current.substr(0, separator);
+        const auto temperature =
+            separator == std::string::npos ? std::string() : weather.current.substr(separator + 1);
+        auto condition_text = Label(hero, condition.c_str(), 226, 135, 230, &han_font_40);
+        ApplyDynamicTextFont(condition_text);
+        auto temperature_text = Label(hero, temperature.c_str(), 34, 219, 424, &han_font_large);
+        lv_obj_set_style_text_align(temperature_text, LV_TEXT_ALIGN_LEFT, 0);
+        auto feels_box = Box(hero, 28, 327, 436, 50, 0xffffff);
+        auto wind_box = Box(hero, 28, 386, 436, 50, 0xffffff);
+        auto feels = Label(feels_box, weather.feels.c_str(), 18, 5, 400);
+        auto wind = Label(wind_box, weather.wind.c_str(), 18, 5, 400);
+        ApplyDynamicTextFont(feels);
+        ApplyDynamicTextFont(wind);
+        if (!weather.updated.empty()) {
+            auto update = Label(hero, ("更新于 " + weather.updated).c_str(), 34, 443, 420);
+            lv_obj_set_style_text_color(update, lv_color_hex(kMuted), 0);
+        }
+    }
+
+    auto guide = Card(body_, 516, 0, 716, 480, 0xffffff);
+    Label(guide, "今天怎么准备？", 28, 24, 430, &han_font_40);
+    const auto advice = WeatherAdvice(weather);
+    auto advice_card = Box(guide, 28, 92, 660, 154, weather_text_.empty() ? 0xf4f1ec : kOrange);
+    Label(advice_card, weather_text_.empty() ? "完成天气配置" : advice.first, 24, 21, 610,
+          &han_font_40);
+    auto advice_text =
+        Label(advice_card, weather_text_.empty() ? "API KEY 只保存在你的 SD 卡中。" : advice.second,
+              24, 78, 610);
+    ApplyDynamicTextFont(advice_text);
+    auto source = Box(guide, 28, 275, 386, 70, 0xf4f7fb);
+    Label(source, "数据来源", 18, 8, 150);
+    Label(source, "和风天气", 172, 8, 195);
+    auto refresh = Button(guide, "刷新天气", 434, 275, 254, 70, kGreen, 900);
     ApplyDynamicTextFont(lv_obj_get_child(refresh, 0));
+    auto note = Label(guide,
+                      weather.cached ? "当前显示上次缓存，联网后可刷新。"
+                                     : "天气变化很快，出门前可以再刷新一次。",
+                      28, 382, 660);
+    ApplyDynamicTextFont(note);
+    lv_obj_set_style_text_color(note, lv_color_hex(kMuted), 0);
 }
 
 void HanDisplay::Network() {
-    auto card = Box(body_, 0, 0, 1232, 480, 0xffffff);
+    auto card = Card(body_, 0, 0, 1232, 480, 0xffffff);
     if (usb_storage_active_) {
         Label(card, "USB 读卡器已开启", 28, 22, 1120, &han_font_40);
-        auto message = Label(card,
-                             "电脑现在可以访问 microSD 卡。\n\n复制或格式化完成后，请先在电脑上安全弹出，"
-                             "再重启设备。",
-                             28, 118, 1130);
+        auto message =
+            Label(card,
+                  "电脑现在可以访问 microSD 卡。\n\n复制或格式化完成后，请先在电脑上安全弹出，"
+                  "再重启设备。",
+                  28, 118, 1130);
         ApplyDynamicTextFont(message);
         Label(card, "此模式下字典内容和语音唤醒暂停", 28, 415, 1160);
         network_info_ = nullptr;
         return;
     }
     Label(card, "网络与存储", 28, 22, 550, &han_font_40);
-    network_info_ = Label(card, "正在读取网络状态…", 28, 84, 550);
-    Button(card, "手机配网", 28, 258, 270, 70, kBlue, 10);
-    Button(card, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 316, 258, 270, 70,
-           kGreen, 11);
-    Label(card, "USB 模式下请先在电脑安全弹出，再重启设备", 28, 367, 555);
+    Image(card, &han_status_wifi_3, 516, 22);
+    auto connection = Box(card, 28, 82, 558, 150, 0xebf6ff);
+    network_info_ = Label(connection, "正在读取网络状态…", 22, 18, 514);
+    ApplyDynamicTextFont(network_info_);
+    Button(card, "手机配网", 28, 256, 270, 70, kBlue, 10);
+    Button(card, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 316, 256, 270, 70, kGreen,
+           11);
+    auto usb_hint = Label(card, "USB 模式用于给内容卡复制字典、音频和课表", 28, 365, 558);
+    ApplyDynamicTextFont(usb_hint);
+    lv_obj_set_style_text_color(usb_hint, lv_color_hex(kMuted), 0);
 
     Box(card, 614, 22, 2, 420, 0xe8e3dc);
     Label(card, "显示与声音", 650, 22, 530, &han_font_40);
-    Label(card, "屏幕亮度", 650, 105, 180);
-    Button(card, "-", 836, 91, 70, 62, kBlue, 910);
-    brightness_value_ = Label(card, "", 920, 106, 145);
+    auto settings_right = Image(card, &han_icon_settings, 1080, 15);
+    lv_image_set_scale(settings_right, 112);
+    lv_image_set_pivot(settings_right, 0, 0);
+    Label(card, "屏幕亮度", 650, 95, 180);
+    Button(card, "-", 836, 80, 70, 62, kBlue, 910);
+    brightness_value_ = Label(card, "", 920, 95, 145);
     lv_obj_set_style_text_align(brightness_value_, LV_TEXT_ALIGN_CENTER, 0);
-    Button(card, "+", 1078, 91, 70, 62, kBlue, 911);
-    Label(card, "播放音量", 650, 196, 180);
-    Button(card, "-", 836, 182, 70, 62, kGreen, 912);
-    volume_value_ = Label(card, "", 920, 197, 145);
+    Button(card, "+", 1078, 80, 70, 62, kBlue, 911);
+    auto brightness_track = Box(card, 836, 151, 312, 12, 0xe5e9ef);
+    lv_obj_set_style_radius(brightness_track, 6, 0);
+    brightness_bar_ = Box(brightness_track, 0, 0, 1, 12, 0x63aef1);
+    lv_obj_set_style_radius(brightness_bar_, 6, 0);
+    Label(card, "播放音量", 650, 210, 180);
+    Button(card, "-", 836, 195, 70, 62, kGreen, 912);
+    volume_value_ = Label(card, "", 920, 210, 145);
     lv_obj_set_style_text_align(volume_value_, LV_TEXT_ALIGN_CENTER, 0);
-    Button(card, "+", 1078, 182, 70, 62, kGreen, 913);
-    Button(card, "立即关屏", 650, 288, 498, 72, kPurple, 914);
-    Label(card, "关屏后触摸屏幕任意位置即可唤醒", 650, 395, 550);
+    Button(card, "+", 1078, 195, 70, 62, kGreen, 913);
+    auto volume_track = Box(card, 836, 266, 312, 12, 0xe5e9ef);
+    lv_obj_set_style_radius(volume_track, 6, 0);
+    volume_bar_ = Box(volume_track, 0, 0, 1, 12, 0x55c892);
+    lv_obj_set_style_radius(volume_bar_, 6, 0);
+    Button(card, "立即关屏", 650, 320, 498, 70, kPurple, 914);
+    auto wake_hint = Label(card, "关屏后，轻触屏幕任意位置即可唤醒", 650, 417, 550);
+    ApplyDynamicTextFont(wake_hint);
+    lv_obj_set_style_text_color(wake_hint, lv_color_hex(kMuted), 0);
     UpdateSettingLabels();
 }
 
@@ -839,10 +1640,14 @@ void HanDisplay::UpdateSettingLabels() {
         snprintf(value, sizeof(value), "%d%%", brightness_setting_);
         SetTextIfChanged(brightness_value_, value);
     }
+    if (brightness_bar_)
+        lv_obj_set_width(brightness_bar_, 312 * brightness_setting_ / 100);
     if (volume_value_) {
         snprintf(value, sizeof(value), "%d%%", volume_setting_);
         SetTextIfChanged(volume_value_, value);
     }
+    if (volume_bar_)
+        lv_obj_set_width(volume_bar_, 312 * volume_setting_ / 100);
 }
 
 void HanDisplay::SetScreenOff(bool off) {
@@ -851,7 +1656,6 @@ void HanDisplay::SetScreenOff(bool off) {
     DisplayLockGuard guard(this);
     if (!setup_ui_called_ || root_ == nullptr)
         return;
-    ReleaseTalk();
 
     if (off) {
         screen_wake_overlay_ = Box(root_, 0, 0, 1280, 720, 0x000000);
@@ -901,10 +1705,17 @@ void HanDisplay::Action(int a) {
         return;
     }
     if (a >= 501 && a <= 504) {
-        if (a == 501)
-            timetable_row_ = timetable_row_ ? 0 : 5;
-        if (a == 502)
-            timetable_week_ = 1 - timetable_week_;
+        if (a == 502) {
+            if (timetable_day_group_) {
+                timetable_day_group_ = 0;
+                timetable_week_ = 0;
+            } else if (timetable_week_) {
+                timetable_day_group_ = 1;
+                timetable_week_ = 0;
+            } else {
+                timetable_week_ = 1;
+            }
+        }
         if (a == 503)
             timetable_day_group_ = 1 - timetable_day_group_;
         if (a == 504 && timetable_today_ >= 0) {
@@ -980,8 +1791,7 @@ void HanDisplay::Action(int a) {
     }
     if (a >= 910 && a <= 913) {
         if (a == 910 || a == 911)
-            brightness_setting_ =
-                std::clamp(brightness_setting_ + (a == 910 ? -10 : 10), 10, 100);
+            brightness_setting_ = std::clamp(brightness_setting_ + (a == 910 ? -10 : 10), 10, 100);
         else
             volume_setting_ = std::clamp(volume_setting_ + (a == 912 ? -10 : 10), 10, 100);
         UpdateSettingLabels();
@@ -1002,6 +1812,56 @@ void HanDisplay::Action(int a) {
         Application::GetInstance().Schedule([this] { SetScreenOff(true); });
         return;
     }
+    if (a >= 1100 && a < 1126) {
+        if (pinyin_query_.size() < 7) {
+            pinyin_query_.push_back(static_cast<char>('a' + a - 1100));
+            lv_label_set_text(search_input_, pinyin_query_.c_str());
+            lv_obj_set_style_text_color(search_input_, lv_color_hex(kInk), 0);
+        }
+        return;
+    }
+    if (a == 1126) {
+        if (!pinyin_query_.empty())
+            pinyin_query_.pop_back();
+        lv_label_set_text(search_input_,
+                          pinyin_query_.empty() ? "输入拼音，例如 han" : pinyin_query_.c_str());
+        lv_obj_set_style_text_color(search_input_,
+                                    lv_color_hex(pinyin_query_.empty() ? kMuted : kInk), 0);
+        return;
+    }
+    if (a == 1129) {
+        pinyin_query_.clear();
+        pinyin_results_.clear();
+        lv_label_set_text(search_input_, "输入拼音，例如 han");
+        lv_obj_set_style_text_color(search_input_, lv_color_hex(kMuted), 0);
+        RenderPinyinResults("输入不带声调的拼音，再从候选字中点选");
+        return;
+    }
+    if (a == 1127) {
+        const auto normalized = han::ContentStore::NormalizePinyin(pinyin_query_);
+        if (normalized.empty()) {
+            Toast("请先输入拼音，例如 han");
+            return;
+        }
+        pinyin_query_ = normalized;
+        pinyin_results_.clear();
+        RenderPinyinResults("正在离线字库中查找…");
+        Queue(7, pinyin_query_);
+        return;
+    }
+    if (a == 1128) {
+        if (search_overlay_)
+            lv_obj_delete(search_overlay_);
+        search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
+        pinyin_results_.clear();
+        return;
+    }
+    if (a >= 1200 && a < 1200 + static_cast<int>(pinyin_results_.size())) {
+        const auto character = pinyin_results_[a - 1200];
+        Toast("正在读取汉字和笔顺…");
+        Queue(0, character);
+        return;
+    }
     if (a == 20 || a == 22) {
         stroke_playing_ = false;
         stroke_ += a == 20 ? -1 : 1;
@@ -1015,7 +1875,7 @@ void HanDisplay::Action(int a) {
         return;
     }
     if (a == 23) {
-        Queue(0, "规");
+        OpenPinyinSearch();
         return;
     }
     if (a == 24) {
@@ -1114,8 +1974,6 @@ void HanDisplay::Action(int a) {
 
 void HanDisplay::Tick(lv_timer_t* timer) {
     auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
-    if (self->talk_held_ && NowMs() - self->talk_pressed_ms_ >= 60000)
-        self->ReleaseTalk();
     self->UpdateTimer();
     if (self->study_.running() && NowMs() - self->last_checkpoint_ms_ >= 60000) {
         self->last_checkpoint_ms_ = NowMs();
@@ -1231,8 +2089,7 @@ void HanDisplay::LoadPreferences() {
     alarm_minutes_ = std::clamp(static_cast<int>(a.GetInt("minutes", 405)), 0, 1439);
     alarm_enabled_ = a.GetBool("enabled", false);
     Settings display("display");
-    brightness_setting_ =
-        std::clamp(static_cast<int>(display.GetInt("brightness", 75)), 10, 100);
+    brightness_setting_ = std::clamp(static_cast<int>(display.GetInt("brightness", 75)), 10, 100);
     Settings audio("audio");
     volume_setting_ = std::clamp(static_cast<int>(audio.GetInt("output_volume", 70)), 10, 100);
 }
@@ -1309,12 +2166,30 @@ void HanDisplay::Worker(void* ptr) {
             self->local_audio_ = false;
         } else if (job.type == 2) {
             std::string data;
-            if (store.ready() && store.Read("timetable.json", data, 8192)) {
-                self->ApplyTimetable(data);
+            if (store.Read("timetable.json", data, 8192)) {
+                const bool valid = self->ApplyTimetable(data);
+#ifndef HAN_UI_HOST_SIM
+                ESP_LOGI("HanDisplay", "Standalone timetable: %u bytes, %s",
+                         static_cast<unsigned>(data.size()), valid ? "loaded" : "invalid JSON");
+#endif
+            } else {
+#ifndef HAN_UI_HOST_SIM
+                ESP_LOGW("HanDisplay", "Standalone timetable not found or unreadable");
+#endif
             }
             auto weather = han::QWeatherService::LoadCache(store);
+            std::string art_id, art_data;
+            if (!weather.empty()) {
+                art_id = WeatherGraphicId(weather);
+                store.Read("ui/graphics/" + art_id + "/192.png", art_data, 256 * 1024);
+                if (art_data.empty() && art_id != "weather-unknown") {
+                    art_id = "weather-unknown";
+                    store.Read("ui/graphics/weather-unknown/192.png", art_data, 256 * 1024);
+                }
+            }
             DisplayLockGuard guard(self);
             self->weather_text_ = weather;
+            self->ApplyWeatherArt(std::move(art_id), std::move(art_data));
             if (self->page_ == Page::Timetable || self->page_ == Page::Weather)
                 self->Render(self->page_);
         } else if (job.type == 4) {
@@ -1324,15 +2199,47 @@ void HanDisplay::Worker(void* ptr) {
                     weather = han::QWeatherService::LoadCache(store);
                 self->Toast(error.c_str());
             }
+            std::string art_id, art_data;
+            if (!weather.empty()) {
+                art_id = WeatherGraphicId(weather);
+                store.Read("ui/graphics/" + art_id + "/192.png", art_data, 256 * 1024);
+                if (art_data.empty() && art_id != "weather-unknown") {
+                    art_id = "weather-unknown";
+                    store.Read("ui/graphics/weather-unknown/192.png", art_data, 256 * 1024);
+                }
+            }
             DisplayLockGuard guard(self);
             if (!weather.empty())
                 self->weather_text_ = weather;
+            self->ApplyWeatherArt(std::move(art_id), std::move(art_data));
             if (self->page_ == Page::Weather)
                 self->Render(self->page_);
         } else if (job.type == 3) {
+            han::StrokeGlyph glyph;
+            if (store.ReadStrokeGlyph(job.value, glyph)) {
+                auto pending =
+                    new (std::nothrow) PendingStrokeGlyph{self, job.value, std::move(glyph)};
+                if (!pending) {
+                    self->Toast("笔顺资料内存不足");
+                    continue;
+                }
+                // ThorVG needs considerably more stack than the SD worker owns. Queue all
+                // vector drawing on LVGL's enlarged render task and leave this task as I/O only.
+                DisplayLockGuard guard(self);
+                if (lv_async_call(ApplyStrokeGlyphAsync, pending) != LV_RESULT_OK) {
+                    delete pending;
+                    self->Toast("笔顺绘制排队失败");
+                }
+            }
+        } else if (job.type == 6) {
             std::string data;
-            if (store.ReadStroke(job.value, data))
-                self->ApplyStrokeFrame(job.value, std::move(data));
+            if (store.ReadDictionaryFont(data))
+                self->InstallDictionaryFont(std::move(data));
+        } else if (job.type == 7) {
+            std::vector<std::string> results;
+            store.SearchPinyin(job.value, results, 20);
+            DisplayLockGuard guard(self);
+            self->ApplyPinyinResults(job.value, std::move(results));
         } else if (job.type == 5) {
             auto& app = Application::GetInstance();
             app.GetAudioService().EnableWakeWordDetection(false);

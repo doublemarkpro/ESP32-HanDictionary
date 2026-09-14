@@ -135,6 +135,14 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
     ESP_LOGI(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority = 1;
+#if CONFIG_HAN_DICTIONARY
+    // ThorVG's software rasterizer uses a 16 KiB local render pool. Keep vector work on
+    // the LVGL task and give that task enough headroom for its surrounding draw stack.
+    port_cfg.task_stack = 32 * 1024;
+#if CONFIG_SPIRAM
+    port_cfg.task_stack_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+#endif
+#endif
 #if CONFIG_SOC_CPU_CORES_NUM > 1
     port_cfg.task_affinity = 1;
 #endif
@@ -248,6 +256,15 @@ MipiLcdDisplay::MipiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel
 
     ESP_LOGI(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+#if CONFIG_HAN_DICTIONARY
+    // ThorVG's software rasterizer uses a 16 KiB local render pool. The Tab5 uses
+    // this MIPI display path, so its LVGL task also needs enough stack for vector
+    // stroke rendering.
+    port_cfg.task_stack = 32 * 1024;
+#if CONFIG_SPIRAM
+    port_cfg.task_stack_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+#endif
+#endif
     lvgl_port_init(&port_cfg);
 
     ESP_LOGI(TAG, "Adding LCD display");

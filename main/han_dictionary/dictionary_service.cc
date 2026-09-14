@@ -18,7 +18,9 @@ void DictionaryService::RegisterMcpTools() {
     // Called during board construction after the card is mounted, before the app loop.
     // Keep tool callbacks free of SD I/O. Card changes take effect after restarting.
     std::string timetable_json;
-    if (store_.ready() && store_.Read("timetable.json", timetable_json, 8192))
+    // The timetable is useful on its own and must not depend on the optional dictionary
+    // manifest. Read() still rejects detached/unmounted cards and bounds the file size.
+    if (store_.Read("timetable.json", timetable_json, 8192))
         han::TimetableData::Parse(timetable_json, timetable_);
     McpServer::GetInstance().AddTool(
         "self.study.timetable",
@@ -86,8 +88,7 @@ void DictionaryService::RegisterMcpTools() {
     McpServer::GetInstance().AddTool(
         "self.dictionary.lookup",
         "查本机汉字数据并打开查字页。query优先传目标单字，也可传规矩的规。"
-        "释义来源以data_source为准，不把演示释义称为新华字典原文。"
-        "页码目标是新华字典第12版；dictionary_page为null时必须说待核对，不猜页码。",
+        "释义来源以data_source为准；这是离线汉字学习资料，不得称为纸质字典官方原文。",
         PropertyList({Property("query", kPropertyTypeString)}),
         [this](const PropertyList& properties) -> ReturnValue {
             const auto query = properties["query"].value<std::string>();
@@ -108,12 +109,6 @@ void DictionaryService::RegisterMcpTools() {
             cJSON_AddStringToObject(result, "definition", entry.definition.c_str());
             cJSON_AddNumberToObject(result, "stroke_count", entry.stroke_count);
             cJSON_AddStringToObject(result, "data_source", entry.source.c_str());
-            cJSON_AddStringToObject(result, "dictionary_edition", entry.edition.c_str());
-            cJSON_AddStringToObject(result, "dictionary_isbn", entry.isbn.c_str());
-            if (entry.page)
-                cJSON_AddNumberToObject(result, "dictionary_page", entry.page);
-            else
-                cJSON_AddNullToObject(result, "dictionary_page");
             auto words = cJSON_AddArrayToObject(result, "words");
             for (auto& word : entry.words)
                 cJSON_AddItemToArray(words, cJSON_CreateString(word.c_str()));

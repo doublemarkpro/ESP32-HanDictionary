@@ -5,7 +5,6 @@ extern "C" {
 #endif
 LV_FONT_DECLARE(han_font_home);
 LV_FONT_DECLARE(han_font_brand);
-LV_FONT_DECLARE(han_font_talk);
 LV_FONT_DECLARE(han_font_clock);
 LV_IMAGE_DECLARE(han_panel_dictionary);
 LV_IMAGE_DECLARE(han_panel_phonetics);

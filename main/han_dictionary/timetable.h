@@ -21,8 +21,15 @@ struct TimetableData {
         if (json.size() > 8192 || json.find('\0') != std::string::npos ||
             json.find("\\u0000") != std::string::npos)
             return false;
+        // Windows editors may save UTF-8 JSON with a BOM. Accept it so copying a standalone
+        // timetable through USB storage does not depend on the editor's encoding defaults.
+        const char* begin = json.c_str();
+        if (json.size() >= 3 && static_cast<unsigned char>(json[0]) == 0xef &&
+            static_cast<unsigned char>(json[1]) == 0xbb &&
+            static_cast<unsigned char>(json[2]) == 0xbf)
+            begin += 3;
         const char* end = nullptr;
-        auto root = cJSON_ParseWithOpts(json.c_str(), &end, true);
+        auto root = cJSON_ParseWithOpts(begin, &end, true);
         if (!root)
             return false;
         TimetableData data;

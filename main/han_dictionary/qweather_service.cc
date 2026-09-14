@@ -9,6 +9,7 @@
 #include <memory>
 
 #include <esp_log.h>
+#include <miniz.h>
 
 #include "board.h"
 #include "http.h"
@@ -49,6 +50,22 @@ bool NumberValue(cJSON* object, const char* key, double& out) {
     if (!cJSON_IsNumber(value) || !std::isfinite(value->valuedouble))
         return false;
     out = value->valuedouble;
+    return true;
+}
+
+bool FlexibleNumberValue(cJSON* object, const char* key, double& out) {
+    auto value = object ? cJSON_GetObjectItemCaseSensitive(object, key) : nullptr;
+    if (cJSON_IsNumber(value) && std::isfinite(value->valuedouble)) {
+        out = value->valuedouble;
+        return true;
+    }
+    if (!cJSON_IsString(value) || !value->valuestring || !value->valuestring[0])
+        return false;
+    char* end = nullptr;
+    const double parsed = strtod(value->valuestring, &end);
+    if (end == value->valuestring || *end != '\0' || !std::isfinite(parsed))
+        return false;
+    out = parsed;
     return true;
 }
 
@@ -144,27 +161,127 @@ bool ReadResponse(Http& http, std::string& body) {
     }
 }
 
+bool InflateGzip(const std::string& compressed, std::string& plain) {
+    const auto* data = reinterpret_cast<const uint8_t*>(compressed.data());
+    const size_t size = compressed.size();
+    if (size < 18 || data[0] != 0x1f || data[1] != 0x8b || data[2] != 8 || (data[3] & 0xe0))
+        return false;
+
+    size_t offset = 10;
+    const uint8_t flags = data[3];
+    if (flags & 0x04) {
+        if (offset + 2 > size - 8)
+            return false;
+        const size_t extra_length = data[offset] | (static_cast<size_t>(data[offset + 1]) << 8);
+        offset += 2;
+        if (extra_length > size - 8 - offset)
+            return false;
+        offset += extra_length;
+    }
+    auto skip_text = [&] {
+        while (offset < size - 8 && data[offset] != 0)
+            ++offset;
+        if (offset >= size - 8)
+            return false;
+        ++offset;
+        return true;
+    };
+    if ((flags & 0x08) && !skip_text())
+        return false;
+    if ((flags & 0x10) && !skip_text())
+        return false;
+    if (flags & 0x02) {
+        if (offset + 2 > size - 8)
+            return false;
+        offset += 2;
+    }
+    if (offset >= size - 8)
+        return false;
+
+    const size_t trailer = size - 8;
+    const size_t output_size =
+        static_cast<size_t>(data[size - 4]) | (static_cast<size_t>(data[size - 3]) << 8) |
+        (static_cast<size_t>(data[size - 2]) << 16) | (static_cast<size_t>(data[size - 1]) << 24);
+    if (output_size == 0 || output_size > kMaxResponseBytes)
+        return false;
+    auto decompressor = std::unique_ptr<tinfl_decompressor, decltype(&free)>(
+        static_cast<tinfl_decompressor*>(calloc(1, sizeof(tinfl_decompressor))), free);
+    if (!decompressor)
+        return false;
+    tinfl_init(decompressor.get());
+    plain.assign(output_size, '\0');
+    size_t input_bytes = trailer - offset;
+    size_t output_bytes = plain.size();
+    const auto status = tinfl_decompress(decompressor.get(), data + offset, &input_bytes,
+                                         reinterpret_cast<uint8_t*>(plain.data()),
+                                         reinterpret_cast<uint8_t*>(plain.data()), &output_bytes,
+                                         TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+    if (status != TINFL_STATUS_DONE || output_bytes != output_size) {
+        plain.clear();
+        return false;
+    }
+    return true;
+}
+
 bool ParseCurrent(const std::string& body, std::string& summary, std::string& error) {
     Json root(cJSON_ParseWithLength(body.data(), body.size()), cJSON_Delete);
-    auto condition = ObjectValue(root.get(), "condition");
-    auto temperature = ObjectValue(root.get(), "temperature");
-    auto feels_like = ObjectValue(root.get(), "feelsLike");
-    auto wind = ObjectValue(root.get(), "wind");
-    auto direction = ObjectValue(wind, "direction");
-    double temp = 0, feels = 0, humidity = 0, scale = 0;
-    const char* condition_text = StringValue(condition, "text");
-    const char* compass = StringValue(direction, "compass");
-    if (!root || !condition_text[0] || !compass[0] || !NumberValue(temperature, "value", temp) ||
-        !NumberValue(feels_like, "value", feels) ||
-        !NumberValue(root.get(), "humidity", humidity) || !NumberValue(wind, "scale", scale) ||
-        temp < -100 || temp > 100 || feels < -100 || feels > 100 || humidity < 0 || humidity > 1 ||
-        scale < 0 || scale > 17) {
+    if (!root) {
+        ESP_LOGW(kTag, "Could not parse current weather JSON (%u bytes)",
+                 static_cast<unsigned>(body.size()));
         error = "和风天气返回数据不完整";
         return false;
     }
+
+    // QWeather's current API uses numeric values in nested objects. Accept numeric strings and
+    // the retiring city-weather shape too, so an account still routed through the compatibility
+    // response does not turn otherwise useful weather into a hard failure.
+    auto legacy = ObjectValue(root.get(), "now");
+    auto condition = legacy ? legacy : ObjectValue(root.get(), "condition");
+    auto temperature = legacy ? legacy : ObjectValue(root.get(), "temperature");
+    auto feels_like = legacy ? legacy : ObjectValue(root.get(), "feelsLike");
+    auto wind = legacy ? legacy : ObjectValue(root.get(), "wind");
+    auto direction = legacy ? nullptr : ObjectValue(wind, "direction");
+    double temp = 0, feels = 0, humidity = 0, scale = 0;
+    const char* condition_text = StringValue(condition, "text");
+    const bool has_temp = FlexibleNumberValue(temperature, legacy ? "temp" : "value", temp);
+    const bool has_feels = FlexibleNumberValue(feels_like, legacy ? "feelsLike" : "value", feels);
+    const bool has_humidity =
+        FlexibleNumberValue(legacy ? legacy : root.get(), "humidity", humidity);
+    const bool has_scale = FlexibleNumberValue(wind, legacy ? "windScale" : "scale", scale);
+    const char* compass =
+        legacy ? StringValue(legacy, "windDir") : StringValue(direction, "compass");
+    if (!condition_text[0] || !has_temp || temp < -100 || temp > 100) {
+        ESP_LOGW(kTag,
+                 "Current weather missing required fields: condition=%d temperature=%d "
+                 "legacy=%d bytes=%u",
+                 condition_text[0] != '\0', has_temp, legacy != nullptr,
+                 static_cast<unsigned>(body.size()));
+        error = "和风天气返回数据不完整";
+        return false;
+    }
+    if (!has_feels || feels < -100 || feels > 100)
+        feels = temp;
+    if (has_humidity && humidity > 1.0 && humidity <= 100.0)
+        humidity /= 100.0;
+
+    const std::string wind_name =
+        legacy ? (compass[0] ? compass : "风向不明") : CompassName(compass);
     char details[256];
-    snprintf(details, sizeof(details), "%s %.0f°C\n体感 %.0f°C · 湿度 %.0f%%\n%s %.0f级",
-             condition_text, temp, feels, humidity * 100.0, CompassName(compass).c_str(), scale);
+    const int written = snprintf(details, sizeof(details), "%s %.0f°C\n体感 %.0f°C · ",
+                                 condition_text, temp, feels);
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(details)) {
+        error = "和风天气返回数据过长";
+        return false;
+    }
+    size_t used = static_cast<size_t>(written);
+    if (has_humidity && humidity >= 0 && humidity <= 1)
+        used += snprintf(details + used, sizeof(details) - used, "湿度 %.0f%%", humidity * 100.0);
+    else
+        used += snprintf(details + used, sizeof(details) - used, "湿度 --");
+    if (has_scale && scale >= 0 && scale <= 17)
+        snprintf(details + used, sizeof(details) - used, "\n%s %.0f级", wind_name.c_str(), scale);
+    else
+        snprintf(details + used, sizeof(details) - used, "\n%s", wind_name.c_str());
     summary = details;
     return true;
 }
@@ -225,7 +342,7 @@ bool QWeatherService::Refresh(const ContentStore& store, std::string& display_te
 
     char location[256];
     snprintf(location, sizeof(location),
-             "https://%s/weather/v1/current/%.4f/%.4f?lang=zh&localTime=true",
+             "https://%s/weather/v1/current/%.2f/%.2f?lang=zh&localTime=true",
              config.api_host.c_str(), config.latitude, config.longitude);
     auto network = Board::GetInstance().GetNetwork();
     auto http = network ? network->CreateHttp(0) : nullptr;
@@ -236,11 +353,16 @@ bool QWeatherService::Refresh(const ContentStore& store, std::string& display_te
     http->SetTimeout(8000);
     http->SetHeader("X-QW-Api-Key", config.api_key);
     http->SetHeader("Accept", "application/json");
+    // The board HTTP abstraction returns the response body verbatim and does not transparently
+    // inflate gzip. Ask QWeather for plain JSON so cJSON always receives decodable text.
+    http->SetHeader("Accept-Encoding", "identity");
     if (!http->Open("GET", location)) {
         error = "连接和风天气失败";
         return false;
     }
     const int status = http->GetStatusCode();
+    const auto content_type = http->GetResponseHeader("Content-Type");
+    const auto content_encoding = http->GetResponseHeader("Content-Encoding");
     std::string body;
     const bool read = status == 200 && ReadResponse(*http, body);
     http->Close();
@@ -252,6 +374,23 @@ bool QWeatherService::Refresh(const ContentStore& store, std::string& display_te
     if (!read) {
         error = "和风天气响应过大或读取失败";
         return false;
+    }
+    if (content_encoding == "gzip" || (body.size() >= 2 && static_cast<uint8_t>(body[0]) == 0x1f &&
+                                       static_cast<uint8_t>(body[1]) == 0x8b)) {
+        std::string plain;
+        if (!InflateGzip(body, plain)) {
+            ESP_LOGW(kTag, "Could not decompress gzip weather response (%u bytes)",
+                     static_cast<unsigned>(body.size()));
+            error = "和风天气响应解压失败";
+            return false;
+        }
+        ESP_LOGI(kTag, "Decompressed weather response: %u -> %u bytes",
+                 static_cast<unsigned>(body.size()), static_cast<unsigned>(plain.size()));
+        body = std::move(plain);
+    } else {
+        ESP_LOGI(kTag, "Weather response: type=%s encoding=%s bytes=%u", content_type.c_str(),
+                 content_encoding.empty() ? "identity" : content_encoding.c_str(),
+                 static_cast<unsigned>(body.size()));
     }
     std::string summary;
     if (!ParseCurrent(body, summary, error))

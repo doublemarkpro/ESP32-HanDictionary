@@ -84,7 +84,7 @@ lv_image_set_src(image, source);
 **92,335 字节，约 90.17 KiB**；还需少量描述符/索引/函数空间，且解码占 RAM。
 不是整个包只有这么多运行内存。
 
-大插画使用 SD PNG。后续加载方式沿用 `HanDisplay::ApplyStrokeFrame` 的原则：
+大插画使用 SD PNG。后续加载方式沿用后台读取、UI 线程提交的原则：
 
 1. 工作线程有大小上限地读取可信清单中的 PNG；不接受任意网络路径。
 2. 切回显示线程，在 UI 锁内设置 `LV_COLOR_FORMAT_RAW_ALPHA` 描述符。

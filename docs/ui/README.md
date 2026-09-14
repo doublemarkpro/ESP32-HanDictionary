@@ -9,7 +9,7 @@
 | 页面 | 运行截图 | 当前边界 |
 | --- | --- | --- |
 | 主页 | [home.png](rendered/home.png) | 六入口、可见返回、点击说话；非按住说话 |
-| 查字 | [dictionary.png](rendered/dictionary.png) | 规字八步笔顺、MCP 结果联动；未知页码不猜测 |
+| 查字 | [dictionary.png](rendered/dictionary.png) | SD 索引字典、矢量逐笔动画与 MCP 结果联动 |
 | 音标 | [phonetics.png](rendered/phonetics.png) | 44 张入门卡、分类分页、SD 点读接口；教学录音未提供 |
 | 联网 | [network.png](rendered/network.png) | 复用手机热点配网；屏上 Wi-Fi 列表/键盘待做 |
 | 课程 | [timetable.png](rendered/timetable.png) | 读取 SD 周课表；编辑与今日高亮待做 |

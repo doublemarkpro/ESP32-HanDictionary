@@ -30,8 +30,11 @@ public:
     void UpdateStatusBar(bool update_all = false) override;
     void ShowEntry(const han::Entry& entry);
     bool OpenPage(const std::string& page);
-    bool ApplyStrokeFrame(const std::string& path, std::string data);
+    bool ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph glyph);
     bool ApplyTimetable(const std::string& json);
+#ifdef HAN_UI_HOST_SIM
+    void SetWeatherTextForTest(std::string text);
+#endif
 
 private:
     enum class Page { Home, Dictionary, Phonetics, Timetable, Timer, Alarm, Weather, Network };
@@ -40,8 +43,6 @@ private:
         char value[128];
     };
     static void OnClick(lv_event_t* event);
-    static void OnTalk(lv_event_t* event);
-    void ReleaseTalk();
     static void Tick(lv_timer_t* timer);
     static void OnRefresh(lv_event_t* event);
     static void Worker(void* self);
@@ -59,15 +60,24 @@ private:
     void UpdateSettingLabels();
     void UpdateTimer();
     void UpdateStroke();
+    void RenderStroke();
+    void OpenPinyinSearch();
+    void RenderPinyinResults(const char* status);
+    void ApplyPinyinResults(const std::string& query, std::vector<std::string> results);
+    void ApplyWeatherArt(std::string id, std::string data);
     void SaveTimer();
     void LoadPreferences();
     bool Queue(int type, const std::string& value);
     void Toast(const char* text);
     lv_obj_t* Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color);
+    lv_obj_t* Card(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color);
     lv_obj_t* Label(lv_obj_t* parent, const char* text, int x, int y, int w,
                     const lv_font_t* font = nullptr);
     const lv_font_t* DynamicTextFont() const;
+    const lv_font_t* DictionaryTextFont() const;
     void ApplyDynamicTextFont(lv_obj_t* label);
+    void ApplyDictionaryTextFont(lv_obj_t* label);
+    void InstallDictionaryFont(std::string data);
     lv_obj_t* Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h, uint32_t color,
                      int action);
 
@@ -75,31 +85,53 @@ private:
     lv_obj_t* body_ = nullptr;
     lv_obj_t* title_ = nullptr;
     lv_obj_t* back_ = nullptr;
+    lv_obj_t* back_image_ = nullptr;
     lv_obj_t* clock_ = nullptr;
     lv_obj_t* date_ = nullptr;
     lv_obj_t* mascot_ = nullptr;
+    lv_obj_t* footer_ = nullptr;
+    lv_obj_t* top_divider_left_ = nullptr;
+    lv_obj_t* top_divider_right_ = nullptr;
+    lv_obj_t* wifi_button_ = nullptr;
     lv_obj_t* wifi_image_ = nullptr;
     lv_obj_t* battery_image_ = nullptr;
-    lv_obj_t* talk_button_ = nullptr;
-    lv_obj_t* talk_label_ = nullptr;
-    std::atomic<bool> talk_held_{false};
-    std::atomic<bool> talk_started_{false};
-    std::atomic<bool> talk_release_pending_{false};
-    int64_t talk_pressed_ms_ = 0;
+    lv_obj_t* page_icon_ = nullptr;
+    lv_obj_t* assistant_card_ = nullptr;
+    lv_obj_t* assistant_badge_ = nullptr;
+    lv_obj_t* role_box_ = nullptr;
+    lv_obj_t* role_label_ = nullptr;
     lv_obj_t* message_ = nullptr;
+    lv_obj_t* status_box_ = nullptr;
+    lv_obj_t* timetable_voice_label_ = nullptr;
+    lv_obj_t* timetable_reply_card_ = nullptr;
+    lv_obj_t* timetable_message_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
     lv_obj_t* brightness_value_ = nullptr;
     lv_obj_t* volume_value_ = nullptr;
+    lv_obj_t* brightness_bar_ = nullptr;
+    lv_obj_t* volume_bar_ = nullptr;
     lv_obj_t* screen_wake_overlay_ = nullptr;
     lv_obj_t* timer_value_ = nullptr;
     lv_obj_t* totals_[3]{};
     lv_obj_t* stroke_value_ = nullptr;
     lv_obj_t* stroke_image_ = nullptr;
     lv_obj_t* stroke_placeholder_ = nullptr;
-    lv_image_dsc_t sd_stroke_{};
-    std::string stroke_png_;
-    std::string expected_stroke_path_;
+    lv_obj_t* glyph_title_image_ = nullptr;
+    lv_obj_t* glyph_title_placeholder_ = nullptr;
+    lv_draw_buf_t* stroke_draw_buf_ = nullptr;
+    lv_draw_buf_t* glyph_title_draw_buf_ = nullptr;
+    han::StrokeGlyph stroke_glyph_;
+    std::string expected_stroke_character_;
+    std::array<lv_obj_t*, 64> stroke_chips_{};
+    std::array<lv_obj_t*, 64> stroke_chip_images_{};
+    std::array<lv_draw_buf_t*, 64> stroke_chip_draw_bufs_{};
     lv_obj_t* search_ = nullptr;
+    lv_obj_t* search_overlay_ = nullptr;
+    lv_obj_t* search_input_ = nullptr;
+    lv_obj_t* search_results_ = nullptr;
+    lv_obj_t* search_status_ = nullptr;
+    std::string pinyin_query_;
+    std::vector<std::string> pinyin_results_;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
     lv_timer_t* tick_ = nullptr;
@@ -135,11 +167,19 @@ private:
     std::atomic<bool> local_audio_{false};
     int64_t last_checkpoint_ms_ = 0;
     han::TimetableData timetable_;
-    int timetable_row_ = 0, timetable_week_ = 0, timetable_day_group_ = 0;
+    int timetable_week_ = 0, timetable_day_group_ = 0;
     int timetable_today_ = -1, supplies_page_ = 0;
     int64_t timetable_date_key_ = -1;
     std::array<bool, 8> supplies_checked_{};
     std::string weather_text_;
+    std::string weather_art_id_;
+    std::string weather_art_data_;
+    lv_image_dsc_t weather_art_dsc_{};
+#ifndef HAN_UI_HOST_SIM
+    std::string dictionary_font_data_;
+    lv_font_t* dictionary_font_ = nullptr;
+#endif
     int brightness_setting_ = 75;
     int volume_setting_ = 70;
+    bool initial_banner_pending_ = true;
 };
