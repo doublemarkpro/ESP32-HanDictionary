@@ -148,9 +148,18 @@ struct PendingStrokeGlyph {
     std::string character;
     han::StrokeGlyph glyph;
 };
+struct PendingMissingStrokeGlyph {
+    HanDisplay* display;
+    std::string character;
+};
 void ApplyStrokeGlyphAsync(void* context) {
     std::unique_ptr<PendingStrokeGlyph> pending(static_cast<PendingStrokeGlyph*>(context));
     pending->display->ApplyStrokeGlyph(pending->character, std::move(pending->glyph));
+}
+void ApplyMissingStrokeGlyphAsync(void* context) {
+    std::unique_ptr<PendingMissingStrokeGlyph> pending(
+        static_cast<PendingMissingStrokeGlyph*>(context));
+    pending->display->ApplyMissingStrokeGlyph(pending->character);
 }
 void SetTextIfChanged(lv_obj_t* label, const char* text) {
     if (strcmp(lv_label_get_text(label), text) != 0)
@@ -381,8 +390,8 @@ const lv_font_t* HanDisplay::DynamicTextFont() const {
 
 const lv_font_t* HanDisplay::DictionaryTextFont() const {
 #ifndef HAN_UI_HOST_SIM
-    if (dictionary_font_ != nullptr)
-        return dictionary_font_;
+    if (dictionary_ui_font_ready_)
+        return &dictionary_ui_font_;
 #endif
     return DynamicTextFont();
 }
@@ -400,6 +409,7 @@ void HanDisplay::ApplyDictionaryTextFont(lv_obj_t* label) {
 void HanDisplay::InstallDictionaryFont(std::string data) {
 #ifndef HAN_UI_HOST_SIM
     DisplayLockGuard guard(this);
+    dictionary_ui_font_ready_ = false;
     if (dictionary_font_ != nullptr) {
         cbin_font_delete(dictionary_font_);
         dictionary_font_ = nullptr;
@@ -412,6 +422,11 @@ void HanDisplay::InstallDictionaryFont(std::string data) {
         return;
     }
     dictionary_font_->fallback = DynamicTextFont();
+    // Prefer the antialiased regular-weight UI font for glyphs compiled into the firmware,
+    // while retaining the complete SD font as a fallback for uncommon dictionary characters.
+    dictionary_ui_font_ = han_font_28;
+    dictionary_ui_font_.fallback = dictionary_font_;
+    dictionary_ui_font_ready_ = true;
     ESP_LOGI("HanDisplay", "SD dictionary font loaded: %u bytes",
              static_cast<unsigned>(dictionary_font_data_.size()));
     if (page_ == Page::Dictionary)
@@ -528,8 +543,10 @@ void HanDisplay::SetTheme(Theme* theme) {
     ApplyDynamicTextFont(notification_label_);
     ApplyDynamicTextFont(message_);
 #ifndef HAN_UI_HOST_SIM
-    if (dictionary_font_ != nullptr)
+    if (dictionary_font_ != nullptr) {
         dictionary_font_->fallback = DynamicTextFont();
+        dictionary_ui_font_.fallback = dictionary_font_;
+    }
 #endif
 }
 
@@ -660,6 +677,7 @@ void HanDisplay::Render(Page page) {
     page_ = page;
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
+    stroke_fallback_character_ = nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
     search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
     definition_overlay_ = nullptr;
@@ -895,6 +913,18 @@ void HanDisplay::Dictionary() {
     lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
     stroke_placeholder_ = Label(grid, "正在读取笔顺…", 58, 178, 350);
     lv_obj_set_style_text_align(stroke_placeholder_, LV_TEXT_ALIGN_CENTER, 0);
+    stroke_fallback_character_ = Label(grid, entry_.character.c_str(), 0, 0, 36);
+    ApplyDictionaryTextFont(stroke_fallback_character_);
+    lv_obj_set_style_text_align(stroke_fallback_character_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(stroke_fallback_character_, lv_color_hex(0x274878), 0);
+    lv_obj_align(stroke_fallback_character_, LV_ALIGN_CENTER, 0, -4);
+    lv_obj_set_style_transform_pivot_x(stroke_fallback_character_, 18, 0);
+    lv_obj_set_style_transform_pivot_y(stroke_fallback_character_, 14, 0);
+    // The complete SD font is intentionally compact (28 px). A moderate 6x transform keeps
+    // its contours readable; larger scaling looks blurred on the Tab5 panel.
+    lv_obj_set_style_transform_scale_x(stroke_fallback_character_, 1536, 0);
+    lv_obj_set_style_transform_scale_y(stroke_fallback_character_, 1536, 0);
+    lv_obj_add_flag(stroke_fallback_character_, LV_OBJ_FLAG_HIDDEN);
     auto progress = Box(body_, 341, 448, 124, 34, 0xffdfe3);
     lv_obj_set_style_radius(progress, 17, 0);
     stroke_value_ = Label(progress, "", 4, 0, 116, &han_font_stroke_name);
@@ -941,16 +971,16 @@ void HanDisplay::Dictionary() {
     const uint32_t action_colors[] = {kOrange, kBlue};
     const int action_codes[] = {25, 23};
     for (int index = 0; index < 2; ++index) {
-        auto button = Button(details, "", 586 + index * 70, 12, 62, 62, action_colors[index],
+        auto button = Button(details, "", 548 + index * 94, 6, 84, 76, action_colors[index],
                              action_codes[index]);
-        lv_obj_set_style_radius(button, 19, 0);
+        lv_obj_set_style_radius(button, 23, 0);
         lv_obj_set_style_border_width(button, 2, 0);
         lv_obj_set_style_border_color(button, lv_color_hex(0xffffff), 0);
         lv_obj_set_style_transform_scale_x(button, 235, LV_STATE_PRESSED);
         lv_obj_set_style_transform_scale_y(button, 235, LV_STATE_PRESSED);
         lv_obj_add_flag(lv_obj_get_child(button, 0), LV_OBJ_FLAG_HIDDEN);
-        auto icon = Image(button, action_icons[index], 4, 4);
-        lv_image_set_scale(icon, 144);
+        auto icon = Image(button, action_icons[index], 8, 5);
+        lv_image_set_scale(icon, 176);
         lv_image_set_pivot(icon, 0, 0);
     }
     const std::string radical =
@@ -1139,11 +1169,13 @@ void HanDisplay::RenderPinyinResults(const char* status) {
         return;
     lv_obj_clean(search_results_);
     search_status_ = Label(search_results_, status, 20, 18, 480);
-    ApplyDynamicTextFont(search_status_);
+    ApplyDictionaryTextFont(search_status_);
     lv_obj_set_style_text_color(search_status_, lv_color_hex(kMuted), 0);
+    lv_label_set_long_mode(search_status_, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(search_status_, 40);
     for (int index = 0; index < static_cast<int>(pinyin_results_.size()); ++index) {
         auto button = Button(search_results_, pinyin_results_[index].c_str(), 20 + index % 5 * 96,
-                             70 + index / 5 * 68, 82, 56,
+                             78 + index / 5 * 68, 82, 56,
                              index % 3 == 0   ? kGreen
                              : index % 3 == 1 ? kBlue
                                               : kOrange,
@@ -1159,7 +1191,7 @@ void HanDisplay::ApplyPinyinResults(const std::string& query, std::vector<std::s
     const std::string status =
         pinyin_results_.empty()
             ? "没有找到 “" + query + "” 对应的汉字"
-            : "找到 " + std::to_string(pinyin_results_.size()) + " 个常用候选字，点一下查看笔顺";
+            : query + " · " + std::to_string(pinyin_results_.size()) + "个候选字，点击查看";
     RenderPinyinResults(status.c_str());
 }
 
@@ -1167,9 +1199,8 @@ void HanDisplay::UpdateStroke() {
     if (!stroke_value_)
         return;
     if (entry_.strokes.empty()) {
-        lv_label_set_text(stroke_value_, "暂无笔顺资料");
-        if (stroke_placeholder_)
-            lv_label_set_text(stroke_placeholder_, "暂无矢量笔顺资料");
+        lv_label_set_text(stroke_value_, "无动画");
+        ShowStrokeFallback(entry_.character);
         return;
     }
     stroke_ = std::clamp(stroke_, 0, static_cast<int>(entry_.strokes.size()) - 1);
@@ -1191,8 +1222,31 @@ void HanDisplay::UpdateStroke() {
     }
     if (expected_stroke_character_ != entry_.character) {
         expected_stroke_character_ = entry_.character;
-        Queue(3, entry_.character);
+        if (!Queue(3, entry_.character))
+            ShowStrokeFallback(entry_.character);
     }
+}
+
+void HanDisplay::ShowStrokeFallback(const std::string& character) {
+    if (character.empty() || character != entry_.character)
+        return;
+    if (stroke_image_)
+        lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+    if (stroke_placeholder_)
+        lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
+    if (stroke_fallback_character_) {
+        lv_label_set_text(stroke_fallback_character_, character.c_str());
+        lv_obj_remove_flag(stroke_fallback_character_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+bool HanDisplay::ApplyMissingStrokeGlyph(const std::string& character) {
+    DisplayLockGuard guard(this);
+    if (page_ != Page::Dictionary || character.empty() || character != expected_stroke_character_ ||
+        character != entry_.character)
+        return false;
+    ShowStrokeFallback(character);
+    return true;
 }
 
 bool HanDisplay::ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph glyph) {
@@ -1212,9 +1266,12 @@ void HanDisplay::RenderStroke() {
 #if LV_USE_VECTOR_GRAPHIC
     if (DrawGlyph(stroke_image_, stroke_glyph_, 400, 400, 10, stroke_, -1, true)) {
         lv_obj_remove_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
+        if (stroke_fallback_character_)
+            lv_obj_add_flag(stroke_fallback_character_, LV_OBJ_FLAG_HIDDEN);
         if (stroke_placeholder_)
             lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
-    }
+    } else
+        ShowStrokeFallback(entry_.character);
     if (glyph_title_image_ && glyph_title_draw_buf_ &&
         DrawGlyph(glyph_title_image_, stroke_glyph_, 82, 82, 5, stroke_, -1, false)) {
         lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
@@ -2336,6 +2393,13 @@ void HanDisplay::Worker(void* ptr) {
                     delete pending;
                     self->Toast("笔顺绘制排队失败");
                 }
+            } else {
+                auto pending = new (std::nothrow) PendingMissingStrokeGlyph{self, job.value};
+                if (!pending)
+                    continue;
+                DisplayLockGuard guard(self);
+                if (lv_async_call(ApplyMissingStrokeGlyphAsync, pending) != LV_RESULT_OK)
+                    delete pending;
             }
         } else if (job.type == 6) {
             std::string data;

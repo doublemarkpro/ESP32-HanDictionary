@@ -30,7 +30,7 @@ for(const size of [28,40]) {
     '--size',String(size),'--bpp','4','--format','lvgl','--no-kerning',
     '--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')],{stdio:'inherit'});
 }
-execFileSync(process.execPath,[fontTool,'--font',path.join(source,'fonts','ResourceHanRoundedCN-Heavy.ttf'),
+execFileSync(process.execPath,[fontTool,'--font',path.join(fonts,'SourceHanSansSC-Normal.otf'),
   '--symbols','横折撇竖弯点钩提捺斜第0123456789笔/',
   '--size','18','--bpp','4','--format','lvgl','--no-kerning',
   '--lv-font-name','han_font_stroke_name','--lv-include','lvgl.h',

@@ -20,7 +20,10 @@ import content_pack
 SOURCE_ID = "guoxuedashi-xinhua-community"
 SOURCE_URL = "https://github.com/lxs602/Chinese-Mandarin-Dictionaries"
 CBIN_CONVERTER_COMMIT = "c420999fe79adb0bc2a480c4a64fd33fc6e34519"
-DEFAULT_FONT = content_pack.ROOT / "assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf"
+DEFAULT_FONT = (
+    content_pack.ROOT
+    / "managed_components/lvgl__lvgl/scripts/built_in_font/SourceHanSansSC-Normal.otf"
+)
 PINYIN_RE = re.compile(
     r"[A-Za-züÜāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ]+(?:[ '\-]"
     r"[A-Za-züÜāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ]+)*"

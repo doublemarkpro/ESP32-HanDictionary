@@ -39,6 +39,15 @@ lv_obj_t* FindLabel(lv_obj_t* obj, const char* text) {
             return v;
     return nullptr;
 }
+lv_obj_t* FindScaledLabel(lv_obj_t* obj, const char* text) {
+    if (lv_obj_check_type(obj, &lv_label_class) && std::string(lv_label_get_text(obj)) == text &&
+        lv_obj_get_style_transform_scale_x(obj, LV_PART_MAIN) > 256)
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto v = FindScaledLabel(lv_obj_get_child(obj, i), text))
+            return v;
+    return nullptr;
+}
 lv_obj_t* FindImage(lv_obj_t* obj, const lv_image_dsc_t* source) {
     if (lv_obj_check_type(obj, &lv_image_class) && lv_image_get_src(obj) == source)
         return obj;
@@ -233,10 +242,12 @@ int main(int argc, char** argv) {
                 Click("下一步");
                 Check(FindLabel(lv_screen_active(), "2/8"), "stroke advance");
                 Click("上一步");
-                Check(FindImage(lv_screen_active(), &han_icon_pinyin_search),
-                      "pinyin search uses illustrated icon");
-                Check(FindImage(lv_screen_active(), &han_icon_definition_detail),
-                      "definition details uses illustrated icon");
+                auto pinyin_icon = FindImage(lv_screen_active(), &han_icon_pinyin_search);
+                auto definition_icon = FindImage(lv_screen_active(), &han_icon_definition_detail);
+                Check(pinyin_icon && lv_obj_get_width(lv_obj_get_parent(pinyin_icon)) >= 84,
+                      "pinyin search uses a large illustrated touch target");
+                Check(definition_icon && lv_obj_get_width(lv_obj_get_parent(definition_icon)) >= 84,
+                      "definition details uses a large illustrated touch target");
                 ClickImage(&han_icon_definition_detail);
                 Check(FindLabel(lv_screen_active(), "规 的完整释义"),
                       "full definition opens above dictionary");
@@ -271,6 +282,14 @@ int main(int argc, char** argv) {
                 Check(!FindLabel(lv_screen_active(), "当前：横"),
                       "redundant current-stroke caption is absent");
                 Shot(folder, "dictionary-thirteen-strokes");
+                Check(ui.ApplyMissingStrokeGlyph(long_entry.character),
+                      "missing vector data falls back to the character");
+                auto fallback_character =
+                    FindScaledLabel(lv_screen_active(), long_entry.character.c_str());
+                Check(
+                    fallback_character && !lv_obj_has_flag(fallback_character, LV_OBJ_FLAG_HIDDEN),
+                    "fallback character is large and visible in the grid");
+                Shot(folder, "dictionary-missing-strokes");
             }
             if (i == 1) {
                 Click("下一页");

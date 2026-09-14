@@ -31,6 +31,7 @@ public:
     void ShowEntry(const han::Entry& entry);
     bool OpenPage(const std::string& page);
     bool ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph glyph);
+    bool ApplyMissingStrokeGlyph(const std::string& character);
     bool ApplyTimetable(const std::string& json);
 #ifdef HAN_UI_HOST_SIM
     void SetWeatherTextForTest(std::string text);
@@ -61,6 +62,7 @@ private:
     void UpdateTimer();
     void UpdateStroke();
     void RenderStroke();
+    void ShowStrokeFallback(const std::string& character);
     void OpenPinyinSearch();
     void OpenDefinitionDetails();
     void StartPinyinSearch();
@@ -119,6 +121,7 @@ private:
     lv_obj_t* stroke_value_ = nullptr;
     lv_obj_t* stroke_image_ = nullptr;
     lv_obj_t* stroke_placeholder_ = nullptr;
+    lv_obj_t* stroke_fallback_character_ = nullptr;
     lv_obj_t* glyph_title_image_ = nullptr;
     lv_obj_t* glyph_title_placeholder_ = nullptr;
     lv_draw_buf_t* stroke_draw_buf_ = nullptr;
@@ -185,6 +188,8 @@ private:
 #ifndef HAN_UI_HOST_SIM
     std::string dictionary_font_data_;
     lv_font_t* dictionary_font_ = nullptr;
+    lv_font_t dictionary_ui_font_{};
+    bool dictionary_ui_font_ready_ = false;
 #endif
     int brightness_setting_ = 75;
     int volume_setting_ = 70;
