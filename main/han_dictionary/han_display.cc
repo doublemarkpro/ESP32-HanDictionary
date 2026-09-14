@@ -1066,25 +1066,35 @@ void HanDisplay::Dictionary() {
 
     auto stroke_panel = Box(details, 20, 375, 702, 174, 0xfafcfd);
     lv_obj_set_style_radius(stroke_panel, 16, 0);
+    // Box() deliberately disables input. A scrollable object also needs to be a hit-test target,
+    // otherwise a finger drag falls through to the dictionary card and never starts scrolling.
     lv_obj_add_flag(stroke_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(stroke_panel, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_scroll_dir(stroke_panel, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(stroke_panel, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_style_width(stroke_panel, 9, LV_PART_SCROLLBAR);
+    lv_obj_set_style_radius(stroke_panel, 5, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_color(stroke_panel, lv_color_hex(0x79b9e8), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(stroke_panel, LV_OPA_70, LV_PART_SCROLLBAR);
     const int shown = std::min<int>(stroke_chips_.size(), entry_.strokes.size());
     for (int i = 0; i < shown; ++i) {
-        auto chip = Box(stroke_panel, 4 + i % 5 * 138, 4 + i / 5 * 82, 132, 78, 0xf7fafb);
+        // Four columns leave enough room for five-character names such as “横折折折钩”.
+        // Additional rows remain reachable through the vertical scroller.
+        auto chip = Box(stroke_panel, 4 + i % 4 * 170, 4 + i / 4 * 82, 164, 78, 0xf7fafb);
         lv_obj_set_style_radius(chip, 14, 0);
         lv_obj_set_style_border_width(chip, 2, 0);
         lv_obj_set_style_border_color(chip, lv_color_hex(0xdde8ec), 0);
         auto canvas = lv_canvas_create(chip);
         auto draw_buf = lv_draw_buf_create(48, 43, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
-        lv_obj_set_pos(canvas, 42, 2);
+        lv_obj_set_pos(canvas, 58, 1);
         lv_obj_remove_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
         if (draw_buf) {
             lv_canvas_set_draw_buf(canvas, draw_buf);
         }
         lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
-        auto text = Label(chip, entry_.strokes[i].c_str(), 2, 44, 128);
+        auto text = Label(chip, entry_.strokes[i].c_str(), 2, 44, 160);
         ApplyDictionaryTextFont(text);
+        lv_obj_set_height(text, 31);
         lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_letter_space(text, -1, 0);
         lv_label_set_long_mode(text, LV_LABEL_LONG_CLIP);
@@ -1172,8 +1182,14 @@ void HanDisplay::OpenDefinitionDetails() {
 
     auto content = Card(definition_overlay_, 24, 96, 1184, 442, 0xffffff);
     lv_obj_add_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(content, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_scroll_dir(content, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_style_width(content, 10, LV_PART_SCROLLBAR);
+    lv_obj_set_style_radius(content, 5, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_color(content, lv_color_hex(0x79b9e8), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(content, LV_OPA_70, LV_PART_SCROLLBAR);
+    lv_obj_set_style_pad_bottom(content, 24, 0);
     auto meaning = Label(content, entry_.definition.c_str(), 26, 22, 1116);
     ApplyDictionaryTextFont(meaning);
     lv_label_set_long_mode(meaning, LV_LABEL_LONG_WRAP);

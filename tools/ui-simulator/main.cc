@@ -269,8 +269,33 @@ int main(int argc, char** argv) {
                       "definition overlay keeps the dictionary body font");
                 Check(!FindLabel(definition_overlay, demo.pinyin.c_str()),
                       "definition overlay omits redundant pinyin");
+                Check(
+                    lv_obj_has_flag(lv_obj_get_parent(full_definition), LV_OBJ_FLAG_CLICKABLE) &&
+                        lv_obj_has_flag(lv_obj_get_parent(full_definition), LV_OBJ_FLAG_SCROLLABLE),
+                    "definition detail accepts vertical touch scrolling");
                 Shot(folder, "dictionary-definition");
                 Click("关闭");
+                auto long_definition_entry = demo;
+                long_definition_entry.definition.clear();
+                for (int paragraph = 0; paragraph < 12; ++paragraph) {
+                    long_definition_entry.definition += demo.definition;
+                    long_definition_entry.definition += '\n';
+                }
+                ui.ShowEntry(long_definition_entry);
+                ClickImage(&han_icon_definition_detail);
+                auto long_definition =
+                    FindLabel(lv_screen_active(), long_definition_entry.definition.c_str());
+                auto definition_scroller = lv_obj_get_parent(long_definition);
+                lv_obj_update_layout(definition_scroller);
+                Check(lv_obj_get_scroll_bottom(definition_scroller) > 0,
+                      "long definition creates vertical scroll range");
+                lv_obj_scroll_to_y(definition_scroller,
+                                   lv_obj_get_scroll_bottom(definition_scroller), LV_ANIM_OFF);
+                Check(lv_obj_get_scroll_y(definition_scroller) > 0,
+                      "definition detail can reach its final paragraph");
+                Shot(folder, "dictionary-definition-scrolled");
+                Click("关闭");
+                ui.ShowEntry(demo);
                 ClickImage(&han_icon_pinyin_search);
                 Check(FindLabel(lv_screen_active(), "输入拼音，例如 han"), "pinyin search opens");
                 Check(
@@ -324,9 +349,23 @@ int main(int argc, char** argv) {
                       "stroke total stays on one line");
                 Check(FindLabel(lv_screen_active(), "横撇弯钩"),
                       "long stroke names after the eighth remain available");
+                auto long_stroke_label = FindLabel(lv_screen_active(), "横撇弯钩");
+                auto stroke_panel = lv_obj_get_parent(lv_obj_get_parent(long_stroke_label));
+                lv_obj_update_layout(stroke_panel);
+                Check(lv_obj_get_width(lv_obj_get_parent(long_stroke_label)) >= 164 &&
+                          lv_obj_get_width(long_stroke_label) >= 160,
+                      "long stroke names have enough horizontal room");
+                Check(lv_obj_has_flag(stroke_panel, LV_OBJ_FLAG_CLICKABLE) &&
+                          lv_obj_has_flag(stroke_panel, LV_OBJ_FLAG_SCROLLABLE) &&
+                          lv_obj_get_scroll_bottom(stroke_panel) > 0,
+                      "extra stroke rows are vertically scrollable");
                 Check(!FindLabel(lv_screen_active(), "当前：横"),
                       "redundant current-stroke caption is absent");
                 Shot(folder, "dictionary-thirteen-strokes");
+                lv_obj_scroll_to_y(stroke_panel, lv_obj_get_scroll_bottom(stroke_panel),
+                                   LV_ANIM_OFF);
+                Check(lv_obj_get_scroll_y(stroke_panel) > 0, "stroke list can reach its final row");
+                Shot(folder, "dictionary-thirteen-strokes-scrolled");
                 Check(ui.ApplyMissingStrokeGlyph(long_entry.character),
                       "missing vector data is handled for the current character");
                 Check(empty_canvas && lv_obj_has_flag(empty_canvas, LV_OBJ_FLAG_HIDDEN),
