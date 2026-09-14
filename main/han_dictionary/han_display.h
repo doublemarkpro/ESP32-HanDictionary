@@ -183,7 +183,8 @@ private:
     int sound_ = 0;
     int category_ = 0;
     int sound_page_ = 0;
-    int stroke_ = 0;
+    // -1: untouched preview, [0, count): active stroke, count: playback complete.
+    int stroke_ = -1;
     bool stroke_playing_ = false;
     int alarm_minutes_ = 405;
     bool alarm_enabled_ = false;

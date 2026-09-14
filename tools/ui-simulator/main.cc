@@ -247,9 +247,31 @@ int main(int argc, char** argv) {
                           lv_obj_get_style_text_font(stroke_text, LV_PART_MAIN) ==
                               dictionary_body_font,
                       "definitions, words and stroke names share one font");
+                Check(FindLabel(lv_screen_active(), "0/8"),
+                      "stroke preview starts before the first stroke");
+                auto first_stroke_chip = lv_obj_get_parent(stroke_text);
+                Check(lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
+                                  lv_color_hex(0xf7fafb)),
+                      "initial stroke card is not selected");
                 Click("下一步");
-                Check(FindLabel(lv_screen_active(), "2/8"), "stroke advance");
+                Check(FindLabel(lv_screen_active(), "1/8"), "first next selects stroke one");
+                Check(lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
+                                  lv_color_hex(0xffd8d4)),
+                      "active stroke card is selected");
                 Click("上一步");
+                Check(FindLabel(lv_screen_active(), "0/8") &&
+                          lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
+                                      lv_color_hex(0xf7fafb)),
+                      "previous returns to untouched preview");
+                Click("播放笔顺");
+                for (int tick = 0; tick < 9; ++tick) {
+                    lv_tick_inc(800);
+                    lv_timer_handler();
+                }
+                Check(FindLabel(lv_screen_active(), "8/8") &&
+                          lv_color_eq(lv_obj_get_style_bg_color(first_stroke_chip, LV_PART_MAIN),
+                                      lv_color_hex(0xf7fafb)),
+                      "finished playback clears the active stroke selection");
                 auto pinyin_icon = FindImage(lv_screen_active(), &han_icon_pinyin_search);
                 auto definition_icon = FindImage(lv_screen_active(), &han_icon_definition_detail);
                 Check(pinyin_icon && lv_obj_get_width(lv_obj_get_parent(pinyin_icon)) >= 84,
@@ -347,14 +369,23 @@ int main(int argc, char** argv) {
                       "new character canvas stays hidden until its glyph renders");
                 Check(FindLabel(lv_screen_active(), "笔顺 · 共13画"),
                       "stroke total stays on one line");
+                auto stroke_summary = FindLabel(lv_screen_active(), "笔顺 · 共13画");
+                lv_obj_update_layout(stroke_summary);
+                Check(lv_obj_get_width(stroke_summary) >= 250 &&
+                          lv_obj_get_height(stroke_summary) >=
+                              lv_obj_get_style_text_font(stroke_summary, LV_PART_MAIN)->line_height,
+                      "stroke summary fits the actual dictionary font metrics");
                 Check(FindLabel(lv_screen_active(), "横撇弯钩"),
                       "long stroke names after the eighth remain available");
                 auto long_stroke_label = FindLabel(lv_screen_active(), "横撇弯钩");
                 auto stroke_panel = lv_obj_get_parent(lv_obj_get_parent(long_stroke_label));
                 lv_obj_update_layout(stroke_panel);
                 Check(lv_obj_get_width(lv_obj_get_parent(long_stroke_label)) >= 164 &&
-                          lv_obj_get_width(long_stroke_label) >= 160,
-                      "long stroke names have enough horizontal room");
+                          lv_obj_get_width(long_stroke_label) >= 160 &&
+                          lv_obj_get_height(long_stroke_label) >=
+                              lv_obj_get_style_text_font(long_stroke_label, LV_PART_MAIN)
+                                  ->line_height,
+                      "long stroke names fit horizontally and vertically");
                 Check(lv_obj_has_flag(stroke_panel, LV_OBJ_FLAG_CLICKABLE) &&
                           lv_obj_has_flag(stroke_panel, LV_OBJ_FLAG_SCROLLABLE) &&
                           lv_obj_get_scroll_bottom(stroke_panel) > 0,

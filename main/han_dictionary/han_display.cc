@@ -722,7 +722,10 @@ void HanDisplay::Render(Page page) {
 #ifndef HAN_UI_HOST_SIM
     page_render_started_ms_ = NowMs();
 #endif
+    const bool entering_dictionary = page == Page::Dictionary && page_ != Page::Dictionary;
     page_ = page;
+    if (entering_dictionary)
+        stroke_ = -1;
     CloseBatteryPopup();
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
@@ -1056,15 +1059,25 @@ void HanDisplay::Dictionary() {
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
     }
     Box(details, 24, 312, 694, 2, 0xeee8df);
-    auto order = Box(details, 24, 326, 190, 42, kBlue);
-    lv_obj_set_style_radius(order, 21, 0);
+    const int dictionary_line_height = DictionaryTextFont()->line_height;
+    const int order_y = 322;
+    const int order_height = std::max(46, dictionary_line_height + 10);
+    const int order_width = 276;
+    auto order = Box(details, 24, order_y, order_width, order_height, kBlue);
+    lv_obj_set_style_radius(order, order_height / 2, 0);
     const std::string stroke_summary = "笔顺 · 共" + std::to_string(entry_.strokes.size()) + "画";
-    auto order_text = Label(order, stroke_summary.c_str(), 6, 0, 178);
+    // Keep the label on the details card instead of inside the pill. Some SD fonts have glyph
+    // extents larger than their nominal size; the pill must never clip those extents.
+    auto order_text =
+        Label(details, stroke_summary.c_str(), 34,
+              order_y + (order_height - dictionary_line_height) / 2 - 1, order_width - 20);
     ApplyDictionaryTextFont(order_text);
+    lv_obj_set_height(order_text, dictionary_line_height + 4);
     lv_obj_set_style_text_align(order_text, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(order_text, LV_ALIGN_CENTER, 0, 0);
+    lv_label_set_long_mode(order_text, LV_LABEL_LONG_CLIP);
 
-    auto stroke_panel = Box(details, 20, 375, 702, 174, 0xfafcfd);
+    const int stroke_panel_y = order_y + order_height + 7;
+    auto stroke_panel = Box(details, 20, stroke_panel_y, 702, 549 - stroke_panel_y, 0xfafcfd);
     lv_obj_set_style_radius(stroke_panel, 16, 0);
     // Box() deliberately disables input. A scrollable object also needs to be a hit-test target,
     // otherwise a finger drag falls through to the dictionary card and never starts scrolling.
@@ -1076,11 +1089,15 @@ void HanDisplay::Dictionary() {
     lv_obj_set_style_radius(stroke_panel, 5, LV_PART_SCROLLBAR);
     lv_obj_set_style_bg_color(stroke_panel, lv_color_hex(0x79b9e8), LV_PART_SCROLLBAR);
     lv_obj_set_style_bg_opa(stroke_panel, LV_OPA_70, LV_PART_SCROLLBAR);
+    const int stroke_name_height = dictionary_line_height + 4;
+    const int stroke_chip_height = 50 + stroke_name_height;
+    const int stroke_row_step = stroke_chip_height + 8;
     const int shown = std::min<int>(stroke_chips_.size(), entry_.strokes.size());
     for (int i = 0; i < shown; ++i) {
         // Four columns leave enough room for five-character names such as “横折折折钩”.
-        // Additional rows remain reachable through the vertical scroller.
-        auto chip = Box(stroke_panel, 4 + i % 4 * 170, 4 + i / 4 * 82, 164, 78, 0xf7fafb);
+        // Height follows the actual SD font metrics; additional rows remain scrollable.
+        auto chip = Box(stroke_panel, 4 + i % 4 * 170, 4 + i / 4 * stroke_row_step, 164,
+                        stroke_chip_height, 0xf7fafb);
         lv_obj_set_style_radius(chip, 14, 0);
         lv_obj_set_style_border_width(chip, 2, 0);
         lv_obj_set_style_border_color(chip, lv_color_hex(0xdde8ec), 0);
@@ -1092,9 +1109,9 @@ void HanDisplay::Dictionary() {
             lv_canvas_set_draw_buf(canvas, draw_buf);
         }
         lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
-        auto text = Label(chip, entry_.strokes[i].c_str(), 2, 44, 160);
+        auto text = Label(chip, entry_.strokes[i].c_str(), 2, 47, 160);
         ApplyDictionaryTextFont(text);
-        lv_obj_set_height(text, 31);
+        lv_obj_set_height(text, stroke_name_height);
         lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_letter_space(text, -1, 0);
         lv_label_set_long_mode(text, LV_LABEL_LONG_CLIP);
@@ -1287,18 +1304,23 @@ void HanDisplay::UpdateStroke() {
         HideStrokeArtwork();
         return;
     }
-    stroke_ = std::clamp(stroke_, 0, static_cast<int>(entry_.strokes.size()) - 1);
-    auto value = std::to_string(stroke_ + 1) + "/" + std::to_string(entry_.strokes.size());
+    const int stroke_count = static_cast<int>(entry_.strokes.size());
+    stroke_ = std::clamp(stroke_, -1, stroke_count);
+    const int completed_strokes = stroke_ < 0 ? 0 : std::min(stroke_ + 1, stroke_count);
+    auto value = std::to_string(completed_strokes) + "/" + std::to_string(stroke_count);
     lv_label_set_text(stroke_value_, value.c_str());
+    const bool has_active_stroke = stroke_ >= 0 && stroke_ < stroke_count;
     for (int i = 0; i < static_cast<int>(stroke_chips_.size()); ++i) {
         if (!stroke_chips_[i])
             continue;
-        lv_obj_set_style_bg_color(stroke_chips_[i],
-                                  lv_color_hex(i == stroke_ ? 0xffd8d4 : 0xf7fafb), 0);
+        const bool selected = has_active_stroke && i == stroke_;
+        lv_obj_set_style_bg_color(stroke_chips_[i], lv_color_hex(selected ? 0xffd8d4 : 0xf7fafb),
+                                  0);
         lv_obj_set_style_border_color(stroke_chips_[i],
-                                      lv_color_hex(i == stroke_ ? 0xf16d63 : 0xdde8ec), 0);
+                                      lv_color_hex(selected ? 0xf16d63 : 0xdde8ec), 0);
     }
-    if (stroke_ < static_cast<int>(stroke_chips_.size()) && stroke_chips_[stroke_])
+    if (has_active_stroke && stroke_ < static_cast<int>(stroke_chips_.size()) &&
+        stroke_chips_[stroke_])
         lv_obj_scroll_to_view(stroke_chips_[stroke_], LV_ANIM_ON);
     if (stroke_glyph_.character == entry_.character) {
         RenderStroke();
@@ -2236,14 +2258,22 @@ void HanDisplay::Action(int a) {
     }
     if (a == 20 || a == 22) {
         stroke_playing_ = false;
-        stroke_ += a == 20 ? -1 : 1;
+        const int stroke_count = static_cast<int>(entry_.strokes.size());
+        stroke_ = std::clamp(stroke_ + (a == 20 ? -1 : 1), -1, stroke_count);
         UpdateStroke();
         return;
     }
     if (a == 21) {
-        stroke_playing_ = !stroke_playing_;
-        if (stroke_ + 1 >= static_cast<int>(entry_.strokes.size()))
+        if (entry_.strokes.empty())
+            return;
+        if (stroke_playing_) {
+            stroke_playing_ = false;
+            return;
+        }
+        if (stroke_ >= static_cast<int>(entry_.strokes.size()) - 1)
             stroke_ = -1;
+        stroke_playing_ = true;
+        UpdateStroke();
         return;
     }
     if (a == 23) {
@@ -2356,9 +2386,17 @@ void HanDisplay::Tick(lv_timer_t* timer) {
         self->SaveTimer();
     }
     if (self->stroke_playing_) {
-        ++self->stroke_;
-        if (self->stroke_ + 1 >= static_cast<int>(self->entry_.strokes.size()))
+        const int stroke_count = static_cast<int>(self->entry_.strokes.size());
+        if (stroke_count <= 0) {
             self->stroke_playing_ = false;
+        } else if (self->stroke_ < stroke_count - 1) {
+            ++self->stroke_;
+        } else {
+            // One final state after the last highlighted stroke: all strokes are ink blue and
+            // no individual stroke card remains selected.
+            self->stroke_ = stroke_count;
+            self->stroke_playing_ = false;
+        }
         self->UpdateStroke();
     }
 }
@@ -2366,7 +2404,7 @@ void HanDisplay::Tick(lv_timer_t* timer) {
 void HanDisplay::ShowEntry(const han::Entry& entry) {
     DisplayLockGuard guard(this);
     entry_ = entry;
-    stroke_ = 0;
+    stroke_ = -1;
     if (setup_ui_called_)
         Render(Page::Dictionary);
 }
@@ -2434,7 +2472,7 @@ void HanDisplay::UpdateStatusBar(bool) {
         battery = info.charging      ? &han_status_battery_charging
                   : info.level <= 5  ? &han_status_battery_empty
                   : info.level <= 20 ? &han_status_battery_low
-                  : info.level <= 65 ? &han_status_battery_half
+                   : info.level <= 65 ? &han_status_battery_half
                                 : &han_status_battery_full;
     }
     SetImageIfChanged(battery_image_, battery);
