@@ -454,14 +454,12 @@ int main(int argc, char** argv) {
                           FindLabel(lv_screen_active(), "社团") &&
                           FindLabel(lv_screen_active(), "第7节"),
                       "all seven lessons and custom subjects fit on one screen");
-                Click("本周");
-                Check(FindLabel(lv_screen_active(), "下周"), "next weekly template");
-                Click("下周");
-                Check(
-                    FindLabel(lv_screen_active(), "周六") && FindLabel(lv_screen_active(), "周日"),
-                    "weekend reachable");
-                Shot(folder, "timetable-weekend");
-                Click("周末");
+                Check(!FindLabel(lv_screen_active(), "本周") &&
+                          !FindLabel(lv_screen_active(), "下周") &&
+                          !FindLabel(lv_screen_active(), "周末") &&
+                          !FindLabel(lv_screen_active(), "周六") &&
+                          !FindLabel(lv_screen_active(), "周日"),
+                      "weekly timetable has no redundant week or weekend navigation");
                 Check(!ui.ApplyTimetable("{}"), "invalid import returns failure");
                 Check(FindLabel(lv_screen_active(), "课表未加载或格式错误"),
                       "invalid import clears stale courses");

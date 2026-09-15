@@ -187,7 +187,6 @@ private:
     std::atomic<bool> local_audio_{false};
     int64_t last_checkpoint_ms_ = 0;
     han::TimetableData timetable_;
-    int timetable_week_ = 0, timetable_day_group_ = 0;
     int timetable_today_ = -1;
     int64_t timetable_date_key_ = -1;
     std::string weather_text_;

@@ -20,7 +20,6 @@ LV_IMAGE_DECLARE(han_subject_star);
 LV_IMAGE_DECLARE(han_subject_club);
 LV_IMAGE_DECLARE(han_timetable_back);
 LV_IMAGE_DECLARE(han_timetable_calendar);
-LV_IMAGE_DECLARE(han_timetable_chevron_down);
 LV_IMAGE_DECLARE(han_timetable_mascot);
 LV_IMAGE_DECLARE(han_timetable_books);
 LV_IMAGE_DECLARE(han_timetable_leaves);

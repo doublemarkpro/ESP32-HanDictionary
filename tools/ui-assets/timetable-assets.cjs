@@ -21,7 +21,7 @@ const folder=path.join(root,'assets/graphics/timetable');fs.mkdirSync(folder,{re
   fs.writeFileSync(path.join(folder,id+'.png'),png);
   c+=`static const uint8_t ${id}_png[]={${Array.from(png).join(',')}};\nconst lv_image_dsc_t han_subject_${id}={.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RAW_ALPHA,.w=48,.h=48},.data_size=sizeof(${id}_png),.data=${id}_png};\n`;
  }
- const controls=[['back',48,48],['calendar',48,48],['chevron-down',32,32]];
+ const controls=[['back',48,48],['calendar',48,48]];
  for(const [id,w,h] of controls) {
   const svg=vectorAssets().find(a=>a.id==='control-'+id).svg;
   const png=await sharp(Buffer.from(svg)).resize(w,h).png().toBuffer();bytes+=png.length;

@@ -1367,14 +1367,10 @@ void HanDisplay::Timetable() {
     auto date_card = Card(body_, 466, 34, 340, 69, 0xffffff);
     lv_obj_set_style_radius(date_card, 35, 0);
     Image(date_card, &han_timetable_calendar, 20, 10);
-    auto week = Button(body_, timetable_day_group_ ? "周末" : (timetable_week_ ? "下周" : "本周"),
-                       868, 40, 126, 57, kGreen, 502);
-    lv_obj_set_style_radius(week, 29, 0);
-    Image(week, &han_timetable_chevron_down, 88, 13);
 
     auto table = Card(body_, 17, 126, 1246, 560, 0xffffff);
-    const int first_day = timetable_day_group_ ? 5 : 0;
-    const int columns = timetable_day_group_ ? 2 : 5;
+    constexpr int first_day = 0;
+    constexpr int columns = 5;
     const int col_width = 1110 / columns;
     int lesson_count = 5;
     for (int c = 0; c < columns; ++c)
@@ -1390,7 +1386,7 @@ void HanDisplay::Timetable() {
     lv_obj_set_style_text_align(range_label, LV_TEXT_ALIGN_CENTER, 0);
     for (int c = 0; c < columns; ++c) {
         int day = first_day + c;
-        const bool today = timetable_week_ == 0 && day == timetable_today_;
+        const bool today = day == timetable_today_;
         const int x = 124 + c * col_width;
         if (today)
             Box(table, x, 12, col_width - 4, 536, 0xe6f4ff);
@@ -1439,7 +1435,7 @@ void HanDisplay::Timetable() {
         lv_obj_set_style_text_align(row_label, LV_TEXT_ALIGN_CENTER, 0);
     }
 
-    // All configured lessons fit on one page. The top week selector cycles 本周 / 下周 / 周末.
+    // The regular Monday-to-Friday schedule always fits on one page.
     if (!timetable_.valid || timetable_.empty()) {
         auto empty = Box(table, 132, 174, 758, 118, 0xfffbf4);
         auto hint =
@@ -1913,19 +1909,6 @@ void HanDisplay::Action(int a) {
     }
     if (usb_storage_active_)
         return;
-    if (a == 502) {
-        if (timetable_day_group_) {
-            timetable_day_group_ = 0;
-            timetable_week_ = 0;
-        } else if (timetable_week_) {
-            timetable_day_group_ = 1;
-            timetable_week_ = 0;
-        } else {
-            timetable_week_ = 1;
-        }
-        Render(Page::Timetable);
-        return;
-    }
     if (a >= 700 && a < 756) {
         const int day = (a - 700) / 8, lesson = (a - 700) % 8;
         const auto& classes = timetable_.days[day];
