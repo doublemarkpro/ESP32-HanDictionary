@@ -47,8 +47,13 @@ private:
         char value[128];
     };
     static void OnClick(lv_event_t* event);
+    static void OnScreenWake(lv_event_t* event);
     static void OnPinyinGesture(lv_event_t* event);
+    static void OnLockGesture(lv_event_t* event);
+    static void OnSettingSliderChanged(lv_event_t* event);
+    static void OnSettingSliderReleased(lv_event_t* event);
     static void Tick(lv_timer_t* timer);
+    static void TimerTick(lv_timer_t* timer);
     static void OnRefresh(lv_event_t* event);
     static void Worker(void* self);
     void Action(int action);
@@ -62,6 +67,10 @@ private:
     void Weather();
     void Network();
     void SetScreenOff(bool off);
+    void ShowLockScreen();
+    void ShowLockScreenLocked();
+    void UnlockScreen();
+    void SaveAutoLockSetting();
     void ShowBatteryPopup();
     void CloseBatteryPopup();
     void ShowWeatherIndexPopup();
@@ -77,6 +86,8 @@ private:
     void UpdatePinyinToneButtons();
     void RenderPinyinResults(const char* status);
     void ApplyPinyinResults(const std::string& query, std::vector<std::string> results);
+    void SyncTimerWeek();
+    std::array<int64_t, 3> TimerDaySeconds(int day, int64_t now_ms) const;
     void SaveTimer();
     void LoadPreferences();
     bool Queue(int type, const std::string& value);
@@ -125,11 +136,16 @@ private:
     lv_obj_t* network_info_ = nullptr;
     lv_obj_t* brightness_value_ = nullptr;
     lv_obj_t* volume_value_ = nullptr;
-    lv_obj_t* brightness_bar_ = nullptr;
-    lv_obj_t* volume_bar_ = nullptr;
+    lv_obj_t* auto_lock_value_ = nullptr;
+    lv_obj_t* brightness_slider_ = nullptr;
+    lv_obj_t* volume_slider_ = nullptr;
+    lv_obj_t* auto_lock_slider_ = nullptr;
     lv_obj_t* screen_wake_overlay_ = nullptr;
     lv_obj_t* timer_value_ = nullptr;
+    lv_obj_t* timer_progress_ = nullptr;
+    lv_obj_t* timer_today_value_ = nullptr;
     lv_obj_t* totals_[3]{};
+    std::array<lv_obj_t*, 5> timer_week_bars_{};
     lv_obj_t* stroke_value_ = nullptr;
     lv_obj_t* stroke_image_ = nullptr;
     lv_obj_t* stroke_placeholder_ = nullptr;
@@ -156,6 +172,7 @@ private:
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
     lv_timer_t* tick_ = nullptr;
+    lv_timer_t* timer_tick_ = nullptr;
     bool page_refresh_pending_ = false;
     bool page_refresh_active_ = false;
     int64_t page_render_started_ms_ = 0;
@@ -173,8 +190,16 @@ private:
     std::atomic<bool> usb_storage_requested_{false};
     std::atomic<bool> usb_storage_active_{false};
     std::atomic<bool> screen_off_{false};
+    std::atomic<bool> lock_screen_visible_{false};
+    int64_t lock_screen_shown_ms_ = 0;
     han::Entry entry_ = han::ContentStore::Demo();
     han::StudyTimer study_;
+    std::array<std::array<int64_t, 3>, 5> timer_week_subject_seconds_{};
+    std::array<int64_t, 3> timer_week_baseline_seconds_{};
+    int timer_week_anchor_ = -1;
+    int timer_today_index_ = -1;
+    int timer_view_day_ = -1;
+    int64_t timer_last_rendered_second_ = -1;
     Page page_ = Page::Home;
     int sound_ = 0;
     int category_ = 0;
@@ -204,6 +229,7 @@ private:
 #endif
     int brightness_setting_ = 75;
     int volume_setting_ = 70;
+    int auto_lock_minutes_ = 10;
     int battery_level_ = -1;
     int battery_voltage_mv_ = -1;
     int battery_current_ma_ = 0;

@@ -65,7 +65,9 @@ if(CONFIG_HAN_DICTIONARY)
         "han_dictionary/assets/han_font_weather_title.c"
         "han_dictionary/assets/han_font_weather_hero.c"
         "han_dictionary/assets/han_font_phonetics.c"
-        "han_dictionary/assets/han_font_phonetics_ipa.c")
+        "han_dictionary/assets/han_font_phonetics_ipa.c"
+        "han_dictionary/assets/han_font_timer.c"
+        "han_dictionary/assets/han_font_timer_title.c")
     list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
 endif()
 

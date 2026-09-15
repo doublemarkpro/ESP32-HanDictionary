@@ -41,6 +41,10 @@ constexpr uint32_t kInk = 0x142b57, kBg = 0xfff9f0, kGreen = 0xd9f4df, kBlue = 0
 constexpr uint32_t kPurple = 0xe9dffc, kOrange = 0xffe8d6, kPink = 0xffdfe3;
 constexpr uint32_t kMuted = 0x61708f, kCardBorder = 0xf1e8d9;
 constexpr int kPinyinPageSize = 12;
+constexpr int64_t kTimerMaximumMs = (99 * 60 + 59) * 1000LL;
+// A full ring is one ordinary 45-minute focus period. This becomes a user setting later;
+// the elapsed counter itself remains available up to 99:59.
+constexpr int64_t kTimerRingMs = 45 * 60 * 1000LL;
 #if LV_USE_VECTOR_GRAPHIC
 struct GlyphBounds {
     float min_x = std::numeric_limits<float>::max();
@@ -204,12 +208,37 @@ lv_obj_t* Image(lv_obj_t* parent, const char* source, int x, int y) {
     lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
     return image;
 }
+#ifndef HAN_UI_HOST_SIM
+bool SdFileAvailable(const char* path) {
+    auto file = fopen(path, "rb");
+    if (file == nullptr)
+        return false;
+    fclose(file);
+    return true;
+}
+#endif
 int64_t NowMs() { return esp_timer_get_time() / 1000; }
 std::string Duration(int64_t ms) {
-    auto sec = ms / 1000;
+    auto sec = std::clamp<int64_t>(ms / 1000, 0, 99 * 60 + 59);
     char out[40];
-    snprintf(out, sizeof(out), "%02lld:%02lld:%02lld", sec / 3600, sec / 60 % 60, sec % 60);
+    snprintf(out, sizeof(out), "%02lld:%02lld", sec / 60, sec % 60);
     return out;
+}
+
+bool CurrentTimerWeek(int& anchor, int& weekday) {
+    const auto now = time(nullptr);
+    struct tm local{};
+    localtime_r(&now, &local);
+    if (local.tm_year < 125)
+        return false;
+    weekday = (local.tm_wday + 6) % 7;
+    local.tm_mday -= weekday;
+    local.tm_hour = 12;
+    local.tm_min = 0;
+    local.tm_sec = 0;
+    mktime(&local);
+    anchor = (local.tm_year + 1900) * 10000 + (local.tm_mon + 1) * 100 + local.tm_mday;
+    return true;
 }
 
 struct WeatherView {
@@ -418,7 +447,11 @@ void HanDisplay::AttachTouch(esp_lcd_touch_handle_t touch) {
     cfg.handle = touch;
     cfg.scale.x = 1;
     cfg.scale.y = 1;
-    ESP_ERROR_CHECK(lvgl_port_add_touch(&cfg) ? ESP_OK : ESP_FAIL);
+    auto indev = static_cast<lv_indev_t*>(lvgl_port_add_touch(&cfg));
+    ESP_ERROR_CHECK(indev ? ESP_OK : ESP_FAIL);
+    // Waking a dark screen is intentionally different from normal UI interaction.  A deliberate
+    // hold prevents a stray touch in a school bag from lighting and unlocking the display.
+    lv_indev_set_long_press_time(indev, 800);
 }
 
 lv_obj_t* HanDisplay::Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color) {
@@ -592,20 +625,27 @@ void HanDisplay::SetupUI() {
     mascot_ = Image(root_, &han_art_book, 36, 0);
     lv_image_set_scale(mascot_, 195);
     lv_image_set_pivot(mascot_, 0, 0);
-    back_ = Button(root_, "<", 24, 14, 72, 72, kGreen, 6);
+    back_ = Button(root_, "<", 24, 20, 72, 72, kGreen, 6);
     lv_obj_set_style_text_opa(lv_obj_get_child(back_, 0), LV_OPA_TRANSP, 0);
     back_image_ = Image(back_, &han_timetable_back, 12, 12);
-    title_ = Label(root_, "小小助手", 212, 26, 470, &han_font_brand);
-    date_ = Label(root_, "日期待同步", 747, 45, 208);
-    clock_ = Label(root_, "—:—", 970, 36, 132, &han_font_clock);
-    top_divider_left_ = Box(root_, 952, 39, 1, 39, 0xd7d5d0);
-    top_divider_right_ = Box(root_, 1101, 39, 1, 39, 0xd7d5d0);
-    wifi_button_ = Button(root_, "", 1115, 22, 72, 72, kBg, 7);
+    title_ = Label(root_, "小小助手", 212, 24, 470, &han_font_brand);
+    date_ = Label(root_, "日期待同步", 747, 37, 208);
+    clock_ = Label(root_, "—:—", 970, 41, 132, &han_font_clock);
+    top_divider_left_ = Box(root_, 952, 36, 1, 40, 0xd7d5d0);
+    top_divider_right_ = Box(root_, 1101, 36, 1, 40, 0xd7d5d0);
+    wifi_button_ = Button(root_, "", 1115, 20, 72, 72, kBg, 7);
     lv_obj_set_style_bg_opa(wifi_button_, LV_OPA_TRANSP, 0);
-    wifi_image_ = Image(wifi_button_, &han_status_wifi_off, 12, 12);
-    battery_button_ = Button(root_, "", 1183, 22, 72, 72, kBg, 12);
+    wifi_image_ = Image(wifi_button_, &han_status_wifi_off, 9, 9);
+    lv_image_set_scale(wifi_image_, 288);
+    lv_image_set_pivot(wifi_image_, 0, 0);
+    battery_button_ = Button(root_, "", 1183, 20, 72, 72, kBg, 12);
     lv_obj_set_style_bg_opa(battery_button_, LV_OPA_TRANSP, 0);
-    battery_image_ = Image(battery_button_, &han_status_battery_unknown, 11, 12);
+    battery_image_ = Image(battery_button_, &han_status_battery_unknown, 3, 3);
+    // The battery artwork is intentionally wider and shorter than the Wi-Fi mark. Scale it a
+    // little more so their visible strokes, rather than their transparent 48 px canvases, carry
+    // the same visual weight in the shared header.
+    lv_image_set_scale(battery_image_, 352);
+    lv_image_set_pivot(battery_image_, 0, 0);
     body_ = Box(root_, 24, 104, 1232, 490, kBg);
     lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
 
@@ -642,12 +682,14 @@ void HanDisplay::SetupUI() {
     lv_obj_set_style_text_font(notification_label_, &han_font_28, 0);
     lv_obj_set_style_text_font(message_, &han_font_28, 0);
     page_icon_ = lv_image_create(root_);
-    lv_obj_set_pos(page_icon_, 112, 23);
+    lv_obj_set_pos(page_icon_, 112, 27);
     lv_image_set_scale(page_icon_, 112);
     lv_image_set_pivot(page_icon_, 0, 0);
     lv_obj_add_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(page_icon_, LV_OBJ_FLAG_CLICKABLE);
     tick_ = lv_timer_create(Tick, 800, this);
+    // This timer is re-aligned to the next monotonic second boundary after every callback.
+    timer_tick_ = lv_timer_create(TimerTick, 1000, this);
     Render(Page::Home);
     Queue(2, "");  // Read optional timetable/weather content off the LVGL/main tasks.
     Queue(6, "");  // Load the optional indexed-dictionary font on the worker task.
@@ -788,13 +830,17 @@ void HanDisplay::Render(Page page) {
     CloseBatteryPopup();
     CloseWeatherIndexPopup();
     stroke_playing_ = false;
-    timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
+    timer_value_ = timer_progress_ = timer_today_value_ = nullptr;
+    timer_last_rendered_second_ = -1;
+    timer_week_bars_.fill(nullptr);
+    stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
     search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
     pinyin_page_label_ = nullptr;
     definition_overlay_ = nullptr;
     pinyin_tone_buttons_.fill(nullptr);
-    brightness_value_ = volume_value_ = brightness_bar_ = volume_bar_ = nullptr;
+    brightness_value_ = volume_value_ = auto_lock_value_ = nullptr;
+    brightness_slider_ = volume_slider_ = auto_lock_slider_ = nullptr;
     alarm_hour_ = alarm_minute_ = nullptr;
     for (auto& label : totals_)
         label = nullptr;
@@ -827,11 +873,11 @@ void HanDisplay::Render(Page page) {
     lv_obj_remove_flag(battery_button_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(footer_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_pos(back_, 24, 14);
+    lv_obj_set_pos(back_, 24, 20);
     lv_obj_set_size(back_, 72, 72);
     lv_obj_set_style_radius(back_, 24, 0);
     lv_obj_set_pos(back_image_, 12, 12);
-    lv_obj_set_pos(date_, 747, 45);
+    lv_obj_set_pos(date_, 747, 37);
     lv_obj_set_width(date_, 208);
     lv_obj_set_style_text_font(date_, &han_font_28, 0);
     lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_LEFT, 0);
@@ -859,7 +905,7 @@ void HanDisplay::Render(Page page) {
         lv_obj_set_style_radius(back_, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_pos(back_image_, 19, 19);
         lv_obj_set_x(title_, 133);
-        lv_obj_set_y(title_, 25);
+        lv_obj_set_y(title_, 24);
         lv_obj_set_pos(date_, 548, 49);
         lv_obj_set_width(date_, 225);
         lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_CENTER, 0);
@@ -871,9 +917,11 @@ void HanDisplay::Render(Page page) {
         lv_obj_remove_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_x(title_, 178);
+        lv_obj_set_y(title_, 24);
         lv_obj_set_pos(body_, 24, 104);
         lv_obj_set_size(body_, 1232, 490);
-        if (page == Page::Dictionary || page == Page::Phonetics || page == Page::Alarm) {
+        if (page == Page::Dictionary || page == Page::Phonetics || page == Page::Timer ||
+            page == Page::Alarm || page == Page::Network) {
             lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_size(body_, 1232, 592);
@@ -1572,55 +1620,198 @@ void HanDisplay::SetWeatherTextForTest(std::string text) {
 #endif
 
 void HanDisplay::Timer() {
-    auto left = Card(body_, 0, 0, 724, 480, 0xffffff);
-    const uint32_t subject_colors[] = {0xffddd6, 0xd9edfc, 0xe9dffc};
+    SyncTimerWeek();
+    auto left = Card(body_, 0, 0, 694, 592, 0xffffff);
+    lv_obj_set_style_radius(left, 30, 0);
+    const uint32_t subject_colors[] = {0xe3f7ea, 0xddeeff, 0xeee5ff};
+    const lv_image_dsc_t* subject_icons[] = {&han_subject_book, &han_subject_calculator,
+                                             &han_subject_english};
     for (int i = 0; i < 3; ++i) {
-        auto subject = Button(left, kSubjects[i], 20 + i * 229, 20, 210, 64,
-                              i == study_.subject() ? subject_colors[i] : 0xf5f3ee, 300 + i);
-        if (i == study_.subject()) {
-            lv_obj_set_style_border_width(subject, 3, 0);
-            lv_obj_set_style_border_color(subject, lv_color_hex(0x7aaee0), 0);
+        const bool selected = i == study_.subject();
+        auto subject = Button(left, kSubjects[i], 18 + i * 226, 18, 206, 78,
+                              selected ? 0x4a9df7 : subject_colors[i], 300 + i);
+        lv_obj_set_style_radius(subject, 25, 0);
+        lv_obj_set_style_border_width(subject, selected ? 4 : 0, 0);
+        lv_obj_set_style_border_color(subject, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_outline_width(subject, selected ? 3 : 0, 0);
+        lv_obj_set_style_outline_color(subject, lv_color_hex(0xb9ddff), 0);
+        if (selected) {
+            lv_obj_set_style_bg_grad_color(subject, lv_color_hex(0x3389ed), 0);
+            lv_obj_set_style_bg_grad_dir(subject, LV_GRAD_DIR_HOR, 0);
         }
+        // Centre the icon and two-character label as one 124 px-wide unit. The previous wide
+        // label box centred only the text and left the combined content visibly shifted left.
+        auto icon = Image(subject, subject_icons[i], 41, 18);
+        auto subject_label = lv_obj_get_child(subject, 0);
+        lv_obj_set_align(subject_label, LV_ALIGN_TOP_LEFT);
+        lv_obj_set_pos(subject_label, 93, 22);
+        lv_obj_set_size(subject_label, 72, 35);
+        lv_obj_set_style_text_font(subject_label, &han_font_timer, 0);
+        lv_obj_set_style_text_color(subject_label, lv_color_hex(selected ? 0xffffff : kInk), 0);
+        lv_image_set_scale(icon, 220);
+        lv_image_set_pivot(icon, 0, 0);
     }
-    auto mode = Box(left, 248, 103, 228, 42, study_.running() ? 0xd9f4df : 0xffeedf);
-    lv_obj_set_style_radius(mode, 21, 0);
-    auto mode_text = Label(mode, study_.running() ? "正在专注" : "准备开始", 8, 3, 212);
-    lv_obj_set_style_text_align(mode_text, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(mode_text, lv_color_hex(study_.running() ? 0x247a50 : 0xa85c2b), 0);
-    timer_value_ = Label(left, "00:00:00", 24, 154, 676, &han_font_large);
-    lv_obj_set_style_text_align(timer_value_, LV_TEXT_ALIGN_CENTER, 0);
-    Label(left, kSubjects[study_.subject()], 294, 269, 140, &han_font_40);
-    Button(left, study_.running() ? "暂停" : "开始 / 继续", 24, 324, 324, 78, kOrange, 310);
-    Button(left, "完成本科", 372, 324, 328, 78, kGreen, 311);
-    auto hint = Label(left, "计时会在后台继续，专心完成一科再切换", 46, 427, 640);
-    lv_obj_set_style_text_color(hint, lv_color_hex(kMuted), 0);
 
-    auto right = Card(body_, 748, 0, 484, 480, 0xedf9ef);
-    auto timer_icon = Image(right, &han_icon_timer, 388, 13);
-    lv_image_set_scale(timer_icon, 112);
-    lv_image_set_pivot(timer_icon, 0, 0);
-    Label(right, "本次作业记录", 24, 22, 430, &han_font_40);
-    Label(right, "完成一科，就点亮一颗小星星", 24, 70, 430);
+    timer_progress_ = lv_arc_create(left);
+    lv_obj_set_pos(timer_progress_, 179, 112);
+    lv_obj_set_size(timer_progress_, 336, 336);
+    lv_arc_set_rotation(timer_progress_, 270);
+    lv_arc_set_bg_angles(timer_progress_, 0, 360);
+    lv_arc_set_range(timer_progress_, 0, static_cast<int>(kTimerRingMs / 1000));
+    lv_obj_set_style_arc_width(timer_progress_, 24, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(timer_progress_, lv_color_hex(0xe9edf2), LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(timer_progress_, true, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(timer_progress_, 24, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(timer_progress_, lv_color_hex(0x3f95f3), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(timer_progress_, true, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(timer_progress_, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_remove_flag(timer_progress_, LV_OBJ_FLAG_CLICKABLE);
+
+    timer_value_ = Label(left, "00:00", 199, 250, 296, &han_font_weather_hero);
+    // The 60 px text box has the same y=280 centre as the 336 px ring. Keeping an even box
+    // height avoids the half-pixel bias that an odd font line height creates.
+    lv_obj_set_height(timer_value_, 60);
+    lv_obj_set_style_text_align(timer_value_, LV_TEXT_ALIGN_CENTER, 0);
+
+#ifndef HAN_UI_HOST_SIM
+    auto homework_art =
+        Image(left, "S:/sdcard/handict/ui/graphics/timer-page/homework-boy.png", 3, 283);
+    // 345 px × 210 / 256 = 283 px, so the artwork ends at y=566 exactly with the controls.
+    lv_image_set_scale(homework_art, 210);
+    lv_image_set_pivot(homework_art, 0, 0);
+#endif
+
+    auto start =
+        Button(left, study_.running() ? "暂停" : "开始计时", 258, 484, 230, 82, 0xff7969, 310);
+    lv_obj_set_style_radius(start, 41, 0);
+    lv_obj_set_style_bg_grad_color(start, lv_color_hex(0xff9b87), 0);
+    lv_obj_set_style_bg_grad_dir(start, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(start, 0), &han_font_timer_title, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(start, 0), lv_color_hex(0xffffff), 0);
+    auto complete = Button(left, "✓  完成本科", 498, 484, 178, 82, 0xffffff, 311);
+    lv_obj_set_style_radius(complete, 41, 0);
+    lv_obj_set_style_border_width(complete, 2, 0);
+    lv_obj_set_style_border_color(complete, lv_color_hex(0xe3e0d9), 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(complete, 0), &han_font_timer, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(complete, 0), lv_color_hex(0x167b50), 0);
+
+    auto homework = Card(body_, 714, 0, 518, 330, 0xffffff);
+    lv_obj_set_style_radius(homework, 30, 0);
+    const bool viewing_today = timer_view_day_ == timer_today_index_;
+    const std::string homework_title =
+        viewing_today ? "今日作业" : std::string(kWeekdays[timer_view_day_]) + "作业";
+    Label(homework, homework_title.c_str(), 24, 18, 470, &han_font_timer_title);
+    const auto viewed_seconds = TimerDaySeconds(timer_view_day_, NowMs());
     for (int i = 0; i < 3; ++i) {
-        auto row = Box(right, 20, 112 + i * 76, 444, 62, 0xffffff);
-        lv_obj_set_style_radius(row, 18, 0);
-        auto dot = Box(row, 14, 15, 32, 32, subject_colors[i]);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        totals_[i] = Label(row, "", 58, 13, 365);
+        auto row = Box(homework, 18, 76 + i * 80, 482, 68, 0xfffdfa);
+        lv_obj_set_style_radius(row, 20, 0);
+        lv_obj_set_style_border_width(row, 1, 0);
+        lv_obj_set_style_border_color(row, lv_color_hex(0xf1eadf), 0);
+        auto icon = Image(row, subject_icons[i], 12, 10);
+        lv_image_set_scale(icon, 224);
+        lv_image_set_pivot(icon, 0, 0);
+        Label(row, kSubjects[i], 72, 18, 110, &han_font_timer);
+        totals_[i] = Label(row, "", 185, 18, 155, &han_font_timer);
+        lv_obj_set_style_text_align(totals_[i], LV_TEXT_ALIGN_CENTER, 0);
+        const bool active = viewing_today && !study_.completed(i) &&
+                            ((study_.running() && i == study_.subject()) || viewed_seconds[i] > 0);
+        const bool historical_record = !viewing_today && viewed_seconds[i] > 0;
+        auto state = Box(row, 354, 10, 116, 48,
+                         viewing_today && study_.completed(i) ? 0xe3f7ea
+                         : active                             ? 0xdcecff
+                         : historical_record                  ? 0xe9f7ef
+                                                              : 0xf4f2f4);
+        lv_obj_set_style_radius(state, 24, 0);
+        auto state_text = Label(state,
+                                viewing_today && study_.completed(i) ? "已完成"
+                                : active                             ? "进行中"
+                                : historical_record                  ? "有记录"
+                                                    : (viewing_today ? "未开始" : "未记录"),
+                                4, 8, 108, &han_font_timer);
+        lv_obj_set_style_text_align(state_text, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(state_text,
+                                    lv_color_hex(viewing_today && study_.completed(i) ? 0x27865c
+                                                 : active                             ? 0x2573cd
+                                                 : historical_record                  ? 0x27865c
+                                                                                      : 0x75809a),
+                                    0);
     }
-    Button(right, "新一轮作业", 20, 374, 444, 70, 0xffffff, 312);
+
+    auto week = Card(body_, 714, 348, 518, 244, 0xffffff);
+    lv_obj_set_style_radius(week, 30, 0);
+    Label(week, "本周用时", 24, 18, 220, &han_font_timer_title);
+    auto today_chip = Box(week, 305, 16, 193, 54, 0xf0f6ff);
+    lv_obj_set_style_radius(today_chip, 27, 0);
+    timer_today_value_ = Label(today_chip, "", 8, 10, 177, &han_font_timer);
+    lv_obj_set_style_text_align(timer_today_value_, LV_TEXT_ALIGN_CENTER, 0);
+    Box(week, 34, 191, 450, 2, 0xd9e0ea);
+    static const char* day_labels[] = {"一", "二", "三", "四", "五"};
+    for (int i = 0; i < 5; ++i) {
+        const bool selected_day = i == timer_view_day_;
+        auto day_button =
+            Button(week, "", 24 + i * 94, 76, 86, 156, selected_day ? 0xecf8f1 : 0xffffff, 320 + i);
+        lv_obj_set_style_radius(day_button, 22, 0);
+        lv_obj_set_style_bg_opa(day_button, selected_day ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        timer_week_bars_[i] =
+            Box(day_button, 26, 105, 34, 10, i == timer_today_index_ ? 0x5dc991 : 0x70aff2);
+        lv_obj_set_style_radius(timer_week_bars_[i], 8, 0);
+        auto day = Label(day_button, day_labels[i], 15, 122, 56, &han_font_timer);
+        lv_obj_set_style_text_align(day, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(
+            day, lv_color_hex(selected_day || i == timer_today_index_ ? 0x247a50 : kInk), 0);
+    }
     UpdateTimer();
 }
 
 void HanDisplay::UpdateTimer() {
+    const auto now_ms = NowMs();
+    const int64_t current_elapsed = study_.Elapsed(study_.subject(), now_ms);
+    const int64_t current_second = std::clamp<int64_t>(current_elapsed / 1000, 0, 99 * 60 + 59);
+    if (timer_last_rendered_second_ == current_second)
+        return;
+    timer_last_rendered_second_ = current_second;
     if (timer_value_)
-        SetTextIfChanged(timer_value_, Duration(study_.Elapsed(study_.subject(), NowMs())).c_str());
+        SetTextIfChanged(timer_value_, Duration(current_elapsed).c_str());
+    if (timer_progress_)
+        lv_arc_set_value(timer_progress_,
+                         static_cast<int>(std::min(current_elapsed, kTimerRingMs) / 1000));
+    const auto viewed_seconds = TimerDaySeconds(timer_view_day_, now_ms);
     for (int i = 0; i < 3; ++i)
         if (totals_[i]) {
-            auto label = std::string(kSubjects[i]) + "  " + Duration(study_.Elapsed(i, NowMs())) +
-                         (study_.completed(i) ? " 已完成" : "");
+            const auto seconds = viewed_seconds[i];
+            const auto minutes = seconds <= 0 ? 0 : std::max<int64_t>(1, seconds / 60);
+            const auto label = minutes > 0 ? std::to_string(minutes) + "分钟" : "—";
             SetTextIfChanged(totals_[i], label.c_str());
         }
+
+    std::array<int64_t, 5> week_seconds{};
+    for (int day = 0; day < 5; ++day) {
+        const auto subject_seconds = TimerDaySeconds(day, now_ms);
+        for (const auto seconds : subject_seconds)
+            week_seconds[day] += seconds;
+    }
+    const auto max_seconds =
+        std::max<int64_t>(60, *std::max_element(week_seconds.begin(), week_seconds.end()));
+    for (int i = 0; i < 5; ++i) {
+        if (!timer_week_bars_[i])
+            continue;
+        const int height =
+            week_seconds[i] > 0 ? 10 + static_cast<int>(week_seconds[i] * 72 / max_seconds) : 6;
+        lv_obj_set_y(timer_week_bars_[i], 115 - height);
+        lv_obj_set_height(timer_week_bars_[i], height);
+    }
+    if (timer_today_value_) {
+        const auto selected_total =
+            timer_view_day_ >= 0 && timer_view_day_ < 5 ? week_seconds[timer_view_day_] : 0;
+        const auto day_name =
+            timer_view_day_ == timer_today_index_
+                ? "今天"
+                : (timer_view_day_ >= 0 && timer_view_day_ < 5 ? kWeekdays[timer_view_day_]
+                                                               : "本日");
+        const auto text =
+            std::string(day_name) + "共 " + std::to_string(selected_total / 60) + " 分钟";
+        SetTextIfChanged(timer_today_value_, text.c_str());
+    }
 }
 
 void HanDisplay::Alarm() {
@@ -1934,8 +2125,8 @@ void HanDisplay::Weather() {
 }
 
 void HanDisplay::Network() {
-    auto card = Card(body_, 0, 0, 1232, 480, 0xffffff);
     if (usb_storage_active_) {
+        auto card = Card(body_, 0, 0, 1232, 592, 0xffffff);
         Label(card, "USB 读卡器已开启", 28, 22, 1120, &han_font_40);
         auto message =
             Label(card,
@@ -1943,49 +2134,129 @@ void HanDisplay::Network() {
                   "再重启设备。",
                   28, 118, 1130);
         ApplyDynamicTextFont(message);
-        Label(card, "此模式下字典内容和语音唤醒暂停", 28, 415, 1160);
+        Label(card, "此模式下字典内容和语音唤醒暂停", 28, 500, 1160);
         network_info_ = nullptr;
         return;
     }
-    Label(card, "网络与存储", 28, 22, 550, &han_font_40);
-    Image(card, &han_status_wifi_3, 516, 22);
-    auto connection = Box(card, 28, 82, 558, 150, 0xebf6ff);
-    network_info_ = Label(connection, "正在读取网络状态…", 22, 18, 514);
-    ApplyDynamicTextFont(network_info_);
-    Button(card, "手机配网", 28, 256, 270, 70, kBlue, 10);
-    Button(card, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 316, 256, 270, 70, kGreen,
-           11);
-    auto usb_hint = Label(card, "USB 模式用于给内容卡复制字典、音频和课表", 28, 365, 558);
+    auto left = Card(body_, 0, 0, 650, 592, 0xffffff);
+    Label(left, "网络与存储", 24, 16, 580, &han_font_timer_title);
+
+    auto style_action_button = [](lv_obj_t* button) {
+        auto label = lv_obj_get_child(button, 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_text_font(label, &han_font_timer, 0);
+    };
+
+    auto connection = Box(left, 18, 72, 614, 202, 0xebf6ff);
+#ifndef HAN_UI_HOST_SIM
+    if (SdFileAvailable("/sdcard/handict/ui/graphics/settings-page/network-wifi.png")) {
+        Image(connection, "S:/sdcard/handict/ui/graphics/settings-page/network-wifi.png", 18, 29);
+    } else
+#endif
+    {
+        auto wifi_art = Image(connection, &han_status_wifi_3, 38, 52);
+        lv_image_set_scale(wifi_art, 420);
+        lv_image_set_pivot(wifi_art, 0, 0);
+    }
+    network_info_ = Label(connection, "正在读取网络状态…", 184, 38, 210);
+    lv_obj_set_height(network_info_, 120);
+    lv_label_set_long_mode(network_info_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(network_info_, &han_font_timer, 0);
+    lv_obj_set_style_text_color(network_info_, lv_color_hex(0x102347), 0);
+    auto network_button = Button(connection, "手机配网", 410, 63, 184, 76, 0x86c9ff, 10);
+    lv_obj_set_style_radius(network_button, 30, 0);
+    style_action_button(network_button);
+
+    auto storage = Box(left, 18, 292, 614, 202, 0xedfbf3);
+#ifndef HAN_UI_HOST_SIM
+    if (SdFileAvailable("/sdcard/handict/ui/graphics/settings-page/storage-usb.png")) {
+        Image(storage, "S:/sdcard/handict/ui/graphics/settings-page/storage-usb.png", 10, 21);
+    } else
+#endif
+    {
+        auto storage_art = Image(storage, &han_icon_settings, 44, 50);
+        lv_image_set_scale(storage_art, 270);
+        lv_image_set_pivot(storage_art, 0, 0);
+    }
+    auto storage_title = Label(storage, "microSD卡", 184, 37, 210, &han_font_timer);
+    lv_obj_set_style_text_color(storage_title, lv_color_hex(0x102347), 0);
+    auto storage_hint = Label(storage, "字典、语音和插画资源", 184, 86, 218);
+    lv_obj_set_style_text_color(storage_hint, lv_color_hex(kMuted), 0);
+    auto storage_button = Button(storage, usb_storage_requested_ ? "正在切换…" : "USB 读卡器", 410,
+                                 63, 184, 76, 0x91e6b4, 11);
+    lv_obj_set_style_radius(storage_button, 30, 0);
+    style_action_button(storage_button);
+    auto usb_hint = Label(left, "USB 模式仅用于安全复制 SD 卡内容", 24, 526, 590);
     ApplyDynamicTextFont(usb_hint);
     lv_obj_set_style_text_color(usb_hint, lv_color_hex(kMuted), 0);
 
-    Box(card, 614, 22, 2, 420, 0xe8e3dc);
-    Label(card, "显示与声音", 650, 22, 530, &han_font_40);
-    auto settings_right = Image(card, &han_icon_settings, 1080, 15);
-    lv_image_set_scale(settings_right, 112);
-    lv_image_set_pivot(settings_right, 0, 0);
-    Label(card, "屏幕亮度", 650, 95, 180);
-    Button(card, "-", 836, 80, 70, 62, kBlue, 910);
-    brightness_value_ = Label(card, "", 920, 95, 145);
-    lv_obj_set_style_text_align(brightness_value_, LV_TEXT_ALIGN_CENTER, 0);
-    Button(card, "+", 1078, 80, 70, 62, kBlue, 911);
-    auto brightness_track = Box(card, 836, 151, 312, 12, 0xe5e9ef);
-    lv_obj_set_style_radius(brightness_track, 6, 0);
-    brightness_bar_ = Box(brightness_track, 0, 0, 1, 12, 0x63aef1);
-    lv_obj_set_style_radius(brightness_bar_, 6, 0);
-    Label(card, "播放音量", 650, 210, 180);
-    Button(card, "-", 836, 195, 70, 62, kGreen, 912);
-    volume_value_ = Label(card, "", 920, 210, 145);
-    lv_obj_set_style_text_align(volume_value_, LV_TEXT_ALIGN_CENTER, 0);
-    Button(card, "+", 1078, 195, 70, 62, kGreen, 913);
-    auto volume_track = Box(card, 836, 266, 312, 12, 0xe5e9ef);
-    lv_obj_set_style_radius(volume_track, 6, 0);
-    volume_bar_ = Box(volume_track, 0, 0, 1, 12, 0x55c892);
-    lv_obj_set_style_radius(volume_bar_, 6, 0);
-    Button(card, "立即关屏", 650, 320, 498, 70, kPurple, 914);
-    auto wake_hint = Label(card, "关屏后，轻触屏幕任意位置即可唤醒", 650, 417, 550);
+    auto right = Card(body_, 670, 0, 562, 592, 0xffffff);
+    Label(right, "显示与声音", 24, 16, 510, &han_font_timer_title);
+
+    auto make_slider_row = [this, right](int y, uint32_t background, uint32_t accent,
+                                         const char* sd_icon_path, const char* lvgl_icon_path,
+                                         const lv_image_dsc_t* fallback_icon, const char* title,
+                                         int minimum, int maximum, int value,
+                                         lv_obj_t** value_label) {
+        auto row = Box(right, 18, y, 526, 112, background);
+#ifndef HAN_UI_HOST_SIM
+        if (SdFileAvailable(sd_icon_path)) {
+            Image(row, lvgl_icon_path, 9, 18);
+        } else
+#endif
+        {
+            auto icon = Image(row, fallback_icon, 9, 18);
+            lv_image_set_scale(icon, 152);
+            lv_image_set_pivot(icon, 0, 0);
+        }
+        Label(row, title, 92, 13, 270);
+        *value_label = Label(row, "", 390, 13, 112);
+        lv_obj_set_style_text_align(*value_label, LV_TEXT_ALIGN_RIGHT, 0);
+        auto minus = Label(row, "-", 89, 60, 34);
+        lv_obj_set_style_text_align(minus, LV_TEXT_ALIGN_CENTER, 0);
+        auto plus = Label(row, "+", 475, 60, 34);
+        lv_obj_set_style_text_align(plus, LV_TEXT_ALIGN_CENTER, 0);
+        auto slider = lv_slider_create(row);
+        lv_obj_set_pos(slider, 126, 69);
+        lv_obj_set_size(slider, 340, 14);
+        lv_slider_set_range(slider, minimum, maximum);
+        lv_slider_set_value(slider, value, LV_ANIM_OFF);
+        lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(slider, lv_color_hex(0xdde5ec), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(slider, lv_color_hex(accent), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(slider, lv_color_hex(accent), LV_PART_KNOB);
+        lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(slider, 8, LV_PART_KNOB);
+        lv_obj_set_style_border_width(slider, 3, LV_PART_KNOB);
+        lv_obj_set_style_border_color(slider, lv_color_hex(0xffffff), LV_PART_KNOB);
+        lv_obj_add_event_cb(slider, OnSettingSliderChanged, LV_EVENT_VALUE_CHANGED, this);
+        lv_obj_add_event_cb(slider, OnSettingSliderReleased, LV_EVENT_RELEASED, this);
+        return slider;
+    };
+
+    brightness_slider_ = make_slider_row(
+        72, 0xfff7dd, 0xf5bb4c, "/sdcard/handict/ui/graphics/settings-page/brightness-sun.png",
+        "S:/sdcard/handict/ui/graphics/settings-page/brightness-sun.png", &han_icon_weather,
+        "屏幕亮度", 10, 100, brightness_setting_, &brightness_value_);
+    volume_slider_ = make_slider_row(
+        194, 0xe9f7ff, 0x5caeef, "/sdcard/handict/ui/graphics/settings-page/volume-speaker.png",
+        "S:/sdcard/handict/ui/graphics/settings-page/volume-speaker.png", &han_icon_phonetics,
+        "播放音量", 0, 100, volume_setting_, &volume_value_);
+    auto_lock_slider_ = make_slider_row(
+        316, 0xedfbf3, 0x52c98a, "/sdcard/handict/ui/graphics/settings-page/auto-lock.png",
+        "S:/sdcard/handict/ui/graphics/settings-page/auto-lock.png", &han_icon_alarm, "自动锁屏", 1,
+        30, auto_lock_minutes_, &auto_lock_value_);
+
+    auto screen_button = Button(right, "立即关屏", 18, 456, 526, 76, 0xffabc2, 914);
+    lv_obj_set_style_radius(screen_button, 30, 0);
+    style_action_button(screen_button);
+    auto wake_hint = Label(right, "关屏后点一下屏幕，再向上滑动解锁", 24, 547, 514);
     ApplyDynamicTextFont(wake_hint);
     lv_obj_set_style_text_color(wake_hint, lv_color_hex(kMuted), 0);
+    lv_obj_set_style_text_align(wake_hint, LV_TEXT_ALIGN_CENTER, 0);
     UpdateSettingLabels();
 }
 
@@ -1995,49 +2266,157 @@ void HanDisplay::UpdateSettingLabels() {
         snprintf(value, sizeof(value), "%d%%", brightness_setting_);
         SetTextIfChanged(brightness_value_, value);
     }
-    if (brightness_bar_)
-        lv_obj_set_width(brightness_bar_, 312 * brightness_setting_ / 100);
+    if (brightness_slider_)
+        lv_slider_set_value(brightness_slider_, brightness_setting_, LV_ANIM_OFF);
     if (volume_value_) {
         snprintf(value, sizeof(value), "%d%%", volume_setting_);
         SetTextIfChanged(volume_value_, value);
     }
-    if (volume_bar_)
-        lv_obj_set_width(volume_bar_, 312 * volume_setting_ / 100);
+    if (volume_slider_)
+        lv_slider_set_value(volume_slider_, volume_setting_, LV_ANIM_OFF);
+    if (auto_lock_value_) {
+        snprintf(value, sizeof(value), "%d 分钟", auto_lock_minutes_);
+        SetTextIfChanged(auto_lock_value_, value);
+    }
+    if (auto_lock_slider_)
+        lv_slider_set_value(auto_lock_slider_, auto_lock_minutes_, LV_ANIM_OFF);
 }
 
 void HanDisplay::SetScreenOff(bool off) {
-    if (screen_off_.load() == off)
+    if (off && screen_off_.load())
+        return;
+    if (!off) {
+        UnlockScreen();
+        return;
+    }
+    DisplayLockGuard guard(this);
+    if (!setup_ui_called_ || root_ == nullptr)
+        return;
+
+    if (screen_wake_overlay_ != nullptr)
+        lv_obj_delete(screen_wake_overlay_);
+    screen_wake_overlay_ = Box(root_, 0, 0, 1280, 720, 0x000000);
+    lv_obj_set_style_radius(screen_wake_overlay_, 0, 0);
+    // Keep an opaque black frame above the current page while the backlight is off. Some display
+    // hardware restores the backlight as soon as touch activity is detected; a transparent wake
+    // layer would briefly expose the settings page before ShowLockScreen() runs.
+    lv_obj_set_style_bg_opa(screen_wake_overlay_, LV_OPA_COVER, 0);
+    lv_obj_add_flag(screen_wake_overlay_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(screen_wake_overlay_, this);
+    lv_obj_add_event_cb(screen_wake_overlay_, OnScreenWake, LV_EVENT_PRESSED, this);
+    lv_obj_move_foreground(screen_wake_overlay_);
+    screen_off_ = true;
+    lock_screen_visible_ = false;
+#ifndef HAN_UI_HOST_SIM
+    Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+    Board::GetInstance().GetBacklight()->SetBrightness(0);
+#endif
+}
+
+void HanDisplay::ShowLockScreen() {
+    if (!screen_off_)
+        return;
+    DisplayLockGuard guard(this);
+    ShowLockScreenLocked();
+}
+
+void HanDisplay::ShowLockScreenLocked() {
+    if (!screen_off_)
+        return;
+    if (!setup_ui_called_ || root_ == nullptr)
+        return;
+
+    if (screen_wake_overlay_ != nullptr)
+        lv_obj_delete(screen_wake_overlay_);
+    screen_wake_overlay_ = Box(root_, 0, 0, 1280, 720, 0xfffaf1);
+    lv_obj_set_style_radius(screen_wake_overlay_, 0, 0);
+    lv_obj_add_flag(screen_wake_overlay_, LV_OBJ_FLAG_CLICKABLE);
+    // Child labels and the card bubble gestures upward. Stop that chain here so the lock-screen
+    // callback receives the swipe instead of the otherwise non-interactive page root.
+    lv_obj_remove_flag(screen_wake_overlay_, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_flag(screen_wake_overlay_, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_set_user_data(screen_wake_overlay_, this);
+    lv_obj_add_event_cb(screen_wake_overlay_, OnLockGesture, LV_EVENT_GESTURE, this);
+
+    auto panel = Card(screen_wake_overlay_, 120, 68, 1040, 584, 0xffffff);
+    lv_obj_set_style_radius(panel, 42, 0);
+#ifndef HAN_UI_HOST_SIM
+    if (SdFileAvailable("/sdcard/handict/ui/graphics/settings-page/lock-screen.png")) {
+        Image(panel, "S:/sdcard/handict/ui/graphics/settings-page/lock-screen.png", 48, 182);
+    } else
+#endif
+    {
+        auto lock_art = Image(panel, &han_art_alarm, 70, 184);
+        lv_image_set_scale(lock_art, 144);
+        lv_image_set_pivot(lock_art, 0, 0);
+    }
+
+    char time_text[16] = "--:--";
+    char date_text[48] = "日期待同步";
+    const auto now = time(nullptr);
+    struct tm tm{};
+    localtime_r(&now, &tm);
+    if (tm.tm_year + 1900 >= 2024) {
+        strftime(time_text, sizeof(time_text), "%H:%M", &tm);
+        static const char* weekdays[] = {"日", "一", "二", "三", "四", "五", "六"};
+        snprintf(date_text, sizeof(date_text), "%d月%d日 周%s", tm.tm_mon + 1, tm.tm_mday,
+                 weekdays[tm.tm_wday]);
+    }
+    auto lock_time = Label(panel, time_text, 410, 92, 520, &han_font_clock);
+    lv_obj_set_style_text_align(lock_time, LV_TEXT_ALIGN_CENTER, 0);
+    auto lock_date = Label(panel, date_text, 410, 186, 520, &han_font_28);
+    lv_obj_set_style_text_align(lock_date, LV_TEXT_ALIGN_CENTER, 0);
+    auto arrow = Label(panel, "↑", 410, 280, 520, &han_font_40);
+    lv_obj_set_style_text_align(arrow, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(arrow, lv_color_hex(0x45b987), 0);
+    auto hint = Label(panel, "向上滑动解锁", 410, 350, 520, &han_font_40);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    auto note = Label(panel, "10 秒内未操作将自动关屏", 410, 430, 520, &han_font_28);
+    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(note, lv_color_hex(kMuted), 0);
+
+    lv_obj_move_foreground(screen_wake_overlay_);
+    screen_off_ = false;
+    lock_screen_visible_ = true;
+    lock_screen_shown_ms_ = NowMs();
+#ifndef HAN_UI_HOST_SIM
+    // Finish drawing the lock screen before restoring the backlight so no intermediate black or
+    // underlying application frame becomes visible.
+    lv_refr_now(display_);
+    Board::GetInstance().GetBacklight()->SetBrightness(brightness_setting_);
+    Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+#endif
+}
+
+void HanDisplay::UnlockScreen() {
+    if (!screen_off_ && !lock_screen_visible_)
         return;
     DisplayLockGuard guard(this);
     if (!setup_ui_called_ || root_ == nullptr)
         return;
 
-    if (off) {
-        screen_wake_overlay_ = Box(root_, 0, 0, 1280, 720, 0x000000);
-        lv_obj_set_style_radius(screen_wake_overlay_, 0, 0);
-        lv_obj_set_style_bg_opa(screen_wake_overlay_, LV_OPA_TRANSP, 0);
-        lv_obj_add_flag(screen_wake_overlay_, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_user_data(screen_wake_overlay_, this);
-        lv_obj_add_event_cb(screen_wake_overlay_, OnClick, LV_EVENT_CLICKED,
-                            reinterpret_cast<void*>(static_cast<intptr_t>(915)));
-        screen_off_ = true;
-#ifndef HAN_UI_HOST_SIM
-        Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
-        Board::GetInstance().GetBacklight()->SetBrightness(0);
-#endif
-        return;
-    }
-
     screen_off_ = false;
+    lock_screen_visible_ = false;
     if (screen_wake_overlay_ != nullptr) {
         lv_obj_delete(screen_wake_overlay_);
         screen_wake_overlay_ = nullptr;
     }
+    lv_display_trigger_activity(display_);
 #ifndef HAN_UI_HOST_SIM
     Board::GetInstance().GetBacklight()->SetBrightness(brightness_setting_);
     const auto state = Application::GetInstance().GetDeviceState();
     Board::GetInstance().SetPowerSaveLevel(state == kDeviceStateIdle ? PowerSaveLevel::LOW_POWER
                                                                      : PowerSaveLevel::PERFORMANCE);
+#endif
+}
+
+void HanDisplay::SaveAutoLockSetting() {
+#ifndef HAN_UI_HOST_SIM
+    const int minutes = auto_lock_minutes_;
+    Application::GetInstance().Schedule([minutes] {
+        Settings display("display", true);
+        display.SetInt("lock_min", minutes);
+    });
 #endif
 }
 
@@ -2192,6 +2571,12 @@ void HanDisplay::OnClick(lv_event_t* e) {
     self->Action(static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e))));
 }
 
+void HanDisplay::OnScreenWake(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    if (self)
+        self->ShowLockScreenLocked();
+}
+
 void HanDisplay::OnPinyinGesture(lv_event_t* event) {
     auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
     auto indev = lv_event_get_indev(event);
@@ -2204,9 +2589,60 @@ void HanDisplay::OnPinyinGesture(lv_event_t* event) {
         self->Action(1137);
 }
 
+void HanDisplay::OnLockGesture(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    auto indev = lv_event_get_indev(event);
+    if (!self || !indev)
+        return;
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_TOP)
+        Application::GetInstance().Schedule([self] { self->UnlockScreen(); });
+}
+
+void HanDisplay::OnSettingSliderChanged(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    auto slider = lv_event_get_target_obj(event);
+    if (!self || !slider)
+        return;
+    const int value = lv_slider_get_value(slider);
+    if (slider == self->brightness_slider_)
+        self->brightness_setting_ = value;
+    else if (slider == self->volume_slider_)
+        self->volume_setting_ = value;
+    else if (slider == self->auto_lock_slider_)
+        self->auto_lock_minutes_ = value;
+    self->UpdateSettingLabels();
+}
+
+void HanDisplay::OnSettingSliderReleased(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    auto slider = lv_event_get_target_obj(event);
+    if (!self || !slider)
+        return;
+    if (slider == self->auto_lock_slider_) {
+        self->SaveAutoLockSetting();
+        return;
+    }
+#ifndef HAN_UI_HOST_SIM
+    const int brightness = self->brightness_setting_;
+    const int volume = self->volume_setting_;
+    const bool is_brightness = slider == self->brightness_slider_;
+    Application::GetInstance().Schedule([brightness, volume, is_brightness] {
+        auto& board = Board::GetInstance();
+        if (is_brightness)
+            board.GetBacklight()->SetBrightness(brightness, true);
+        else
+            board.GetAudioCodec()->SetOutputVolume(volume);
+    });
+#endif
+}
+
 void HanDisplay::Action(int a) {
     if (screen_off_) {
-        Application::GetInstance().Schedule([this] { SetScreenOff(false); });
+        if (a == 915)
+            Application::GetInstance().Schedule([this] { ShowLockScreen(); });
+        return;
+    }
+    if (lock_screen_visible_) {
         return;
     }
     if (usb_storage_active_)
@@ -2456,6 +2892,8 @@ void HanDisplay::Action(int a) {
             return;
         }
         study_.Select(a - 300);
+        if (timer_today_index_ >= 0 && timer_today_index_ < 5)
+            timer_view_day_ = timer_today_index_;
         Render(Page::Timer);
         return;
     }
@@ -2464,12 +2902,21 @@ void HanDisplay::Action(int a) {
             study_.Pause(NowMs());
         else
             study_.Start(study_.subject(), NowMs());
+        if (timer_today_index_ >= 0 && timer_today_index_ < 5)
+            timer_view_day_ = timer_today_index_;
         SaveTimer();
         Render(Page::Timer);
+        const auto elapsed = study_.Elapsed(study_.subject(), NowMs());
+        const uint32_t next_second =
+            study_.running() ? static_cast<uint32_t>(1000 - elapsed % 1000) : 1000;
+        lv_timer_set_period(timer_tick_, std::max<uint32_t>(20, next_second));
+        lv_timer_reset(timer_tick_);
         return;
     }
     if (a == 311) {
         study_.Complete(NowMs());
+        if (timer_today_index_ >= 0 && timer_today_index_ < 5)
+            timer_view_day_ = timer_today_index_;
         SaveTimer();
         Render(Page::Timer);
         return;
@@ -2489,6 +2936,11 @@ void HanDisplay::Action(int a) {
         confirm_until = 0;
         study_ = han::StudyTimer();
         SaveTimer();
+        Render(Page::Timer);
+        return;
+    }
+    if (a >= 320 && a <= 324) {
+        timer_view_day_ = a - 320;
         Render(Page::Timer);
         return;
     }
@@ -2528,11 +2980,6 @@ void HanDisplay::Action(int a) {
 
 void HanDisplay::Tick(lv_timer_t* timer) {
     auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
-    self->UpdateTimer();
-    if (self->study_.running() && NowMs() - self->last_checkpoint_ms_ >= 60000) {
-        self->last_checkpoint_ms_ = NowMs();
-        self->SaveTimer();
-    }
     if (self->stroke_playing_) {
         const int stroke_count = static_cast<int>(self->entry_.strokes.size());
         if (stroke_count <= 0) {
@@ -2547,6 +2994,39 @@ void HanDisplay::Tick(lv_timer_t* timer) {
         }
         self->UpdateStroke();
     }
+    if (self->lock_screen_visible_ && NowMs() - self->lock_screen_shown_ms_ >= 10000) {
+        Application::GetInstance().Schedule([self] { self->SetScreenOff(true); });
+        return;
+    }
+    if (!self->screen_off_ && !self->lock_screen_visible_ && !self->usb_storage_active_ &&
+        !self->alarm_ringing_ && self->auto_lock_minutes_ > 0 &&
+        lv_display_get_inactive_time(self->display_) >=
+            static_cast<uint32_t>(self->auto_lock_minutes_) * 60U * 1000U) {
+        Application::GetInstance().Schedule([self] { self->SetScreenOff(true); });
+    }
+}
+
+void HanDisplay::TimerTick(lv_timer_t* timer) {
+    auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    if (self->study_.running() &&
+        self->study_.Elapsed(self->study_.subject(), NowMs()) >= kTimerMaximumMs) {
+        self->study_.Pause(NowMs());
+        self->SaveTimer();
+        if (self->page_ == Page::Timer)
+            self->Render(Page::Timer);
+        return;
+    }
+    self->UpdateTimer();
+    if (self->study_.running() && NowMs() - self->last_checkpoint_ms_ >= 60000) {
+        self->last_checkpoint_ms_ = NowMs();
+        self->SaveTimer();
+    }
+    const auto elapsed = self->study_.Elapsed(self->study_.subject(), NowMs());
+    const uint32_t next_second =
+        self->study_.running() ? static_cast<uint32_t>(1000 - elapsed % 1000) : 1000;
+    // A busy frame can delay a callback slightly. Scheduling from the remainder prevents that
+    // delay from accumulating and keeps every visible MM:SS transition on a whole second.
+    lv_timer_set_period(timer, std::max<uint32_t>(20, next_second));
 }
 
 void HanDisplay::ShowEntry(const han::Entry& entry) {
@@ -2578,11 +3058,11 @@ void HanDisplay::UpdateStatusBar(bool) {
     std::string network;
     const bool config = wifi.IsConfigMode();
     if (config)
-        network = "手机连接热点：" + wifi.GetApSsid() + "\n浏览器打开：" + wifi.GetApWebUrl();
+        network = "手机配网模式\n" + wifi.GetApSsid();
     else if (wifi.IsConnected())
-        network = "已连接：" + wifi.GetSsid() + "\n需要更换网络时，打开手机配网。";
+        network = "Wi-Fi 已连接\n" + wifi.GetSsid();
     else
-        network = "尚未联网\n可以先使用本地学习功能，也可打开手机配网。";
+        network = "Wi-Fi 未连接\n可使用本地功能";
 #ifndef HAN_UI_HOST_SIM
     BatteryInfo info;
 #else
@@ -2648,6 +3128,42 @@ void HanDisplay::UpdateStatusBar(bool) {
     }
 }
 
+void HanDisplay::SyncTimerWeek() {
+    int anchor = -1;
+    int weekday = -1;
+    if (!CurrentTimerWeek(anchor, weekday)) {
+        if (timer_view_day_ < 0 || timer_view_day_ >= 5)
+            timer_view_day_ = 0;
+        return;
+    }
+    timer_today_index_ = weekday;
+    if (timer_view_day_ < 0 || timer_view_day_ >= 5)
+        timer_view_day_ = weekday >= 0 && weekday < 5 ? weekday : 4;
+    if (timer_week_anchor_ == anchor)
+        return;
+    for (auto& day : timer_week_subject_seconds_)
+        day.fill(0);
+    timer_week_anchor_ = anchor;
+    timer_view_day_ = weekday >= 0 && weekday < 5 ? weekday : 4;
+    for (int i = 0; i < 3; ++i)
+        timer_week_baseline_seconds_[i] = study_.Elapsed(i, NowMs()) / 1000;
+}
+
+std::array<int64_t, 3> HanDisplay::TimerDaySeconds(int day, int64_t now_ms) const {
+    std::array<int64_t, 3> result{};
+    if (day < 0 || day >= 5)
+        return result;
+    result = timer_week_subject_seconds_[day];
+    if (day == timer_today_index_) {
+        for (int subject = 0; subject < 3; ++subject) {
+            const auto current = study_.Elapsed(subject, now_ms) / 1000;
+            result[subject] +=
+                std::max<int64_t>(0, current - timer_week_baseline_seconds_[subject]);
+        }
+    }
+    return result;
+}
+
 void HanDisplay::LoadPreferences() {
     Settings s("han_study");
     for (int i = 0; i < 3; ++i) {
@@ -2655,6 +3171,27 @@ void HanDisplay::LoadPreferences() {
         study_.Restore(i, static_cast<int64_t>(s.GetInt("s" + key, 0)) * 1000,
                        s.GetBool("c" + key, false));
     }
+    timer_week_anchor_ = static_cast<int>(s.GetInt("week", -1));
+    const bool has_subject_week = s.GetInt("wv", 0) >= 2;
+    for (int day = 0; day < 5; ++day) {
+        for (int subject = 0; subject < 3; ++subject) {
+            const auto key = "d" + std::to_string(day) + "s" + std::to_string(subject);
+            timer_week_subject_seconds_[day][subject] = std::max<int64_t>(0, s.GetInt(key, 0));
+        }
+        // Keep the old daily total visible after upgrading. Old data did not identify its
+        // subject, so it is placed in the first row only during this one-time migration.
+        if (!has_subject_week) {
+            const auto legacy = std::max<int64_t>(0, s.GetInt("w" + std::to_string(day), 0));
+            timer_week_subject_seconds_[day][0] = legacy;
+        }
+    }
+    for (int subject = 0; subject < 3; ++subject) {
+        const auto key = "b" + std::to_string(subject);
+        const auto stored = s.GetInt(key, -1);
+        timer_week_baseline_seconds_[subject] =
+            stored >= 0 ? stored : study_.Elapsed(subject, NowMs()) / 1000;
+    }
+    SyncTimerWeek();
     Settings a("han_alarm");
     alarm_minutes_ = std::clamp(static_cast<int>(a.GetInt("minutes", 405)), 0, 1439);
     alarm_days_ =
@@ -2662,25 +3199,51 @@ void HanDisplay::LoadPreferences() {
     alarm_enabled_ = a.GetBool("enabled", false);
     Settings display("display");
     brightness_setting_ = std::clamp(static_cast<int>(display.GetInt("brightness", 75)), 10, 100);
+    auto_lock_minutes_ = std::clamp(static_cast<int>(display.GetInt("lock_min", 10)), 1, 30);
     Settings audio("audio");
-    volume_setting_ = std::clamp(static_cast<int>(audio.GetInt("output_volume", 70)), 10, 100);
+    volume_setting_ = std::clamp(static_cast<int>(audio.GetInt("output_volume", 70)), 0, 100);
 }
 
 void HanDisplay::SaveTimer() {
     int seconds[3];
     bool completed[3];
+    SyncTimerWeek();
     for (int i = 0; i < 3; ++i) {
         seconds[i] = study_.Elapsed(i, NowMs()) / 1000;
         completed[i] = study_.completed(i);
-    }
-    Application::GetInstance().Schedule([seconds, completed] {
-        Settings s("han_study", true);
-        for (int i = 0; i < 3; ++i) {
-            auto k = std::to_string(i);
-            s.SetInt("s" + k, seconds[i]);
-            s.SetBool("c" + k, completed[i]);
+        if (timer_today_index_ >= 0 && timer_today_index_ < 5) {
+            timer_week_subject_seconds_[timer_today_index_][i] +=
+                std::max<int64_t>(0, seconds[i] - timer_week_baseline_seconds_[i]);
         }
-    });
+        timer_week_baseline_seconds_[i] = seconds[i];
+    }
+    const auto week_subject_seconds = timer_week_subject_seconds_;
+    const auto week_anchor = timer_week_anchor_;
+    const auto week_baseline = timer_week_baseline_seconds_;
+    Application::GetInstance().Schedule(
+        [seconds, completed, week_subject_seconds, week_anchor, week_baseline] {
+            Settings s("han_study", true);
+            for (int i = 0; i < 3; ++i) {
+                auto k = std::to_string(i);
+                s.SetInt("s" + k, seconds[i]);
+                s.SetBool("c" + k, completed[i]);
+            }
+            s.SetInt("week", week_anchor);
+            s.SetInt("wv", 2);
+            for (int subject = 0; subject < 3; ++subject)
+                s.SetInt("b" + std::to_string(subject), static_cast<int>(week_baseline[subject]));
+            for (int day = 0; day < 5; ++day) {
+                int64_t total = 0;
+                for (int subject = 0; subject < 3; ++subject) {
+                    const auto seconds = week_subject_seconds[day][subject];
+                    total += seconds;
+                    const auto key = "d" + std::to_string(day) + "s" + std::to_string(subject);
+                    s.SetInt(key, static_cast<int>(seconds));
+                }
+                // Retain the aggregate keys so a downgrade does not lose the visible totals.
+                s.SetInt("w" + std::to_string(day), static_cast<int>(total));
+            }
+        });
 }
 
 bool HanDisplay::Queue(int type, const std::string& value) {

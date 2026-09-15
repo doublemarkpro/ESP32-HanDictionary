@@ -109,6 +109,46 @@ test('alarm page illustration is full-colour SD-only art', async()=>{
   assert.ok(!cmake.includes('alarm-sunrise.png'),'alarm illustration stays off firmware');
 });
 
+test('timer page illustration is a compact full-colour SD-only cutout', async()=>{
+  const timerFolder=path.join(folder,'timer-page');
+  assert.deepEqual(fs.readdirSync(timerFolder).sort(),['homework-boy.png']);
+  const png=fs.readFileSync(path.join(timerFolder,'homework-boy.png'));
+  const metadata=await sharp(png).metadata();
+  assert.deepEqual([metadata.width,metadata.height,metadata.hasAlpha],[320,345,true]);
+  assert.ok(png.length<256*1024,'timer illustration stays compact');
+  const stats=await sharp(png).stats();
+  assert.equal(stats.channels[3].min,0,'timer illustration keeps transparency');
+  const cmake=fs.readFileSync(path.join(root,'main/CMakeLists.txt'),'utf8');
+  assert.ok(!cmake.includes('homework-boy.png'),'timer illustration stays off firmware');
+});
+
+test('settings and lock-screen illustrations are transparent SD-only assets', async()=>{
+  const settingsFolder=path.join(folder,'settings-page');
+  const expected={
+    'network-wifi.png':[144,144],
+    'storage-usb.png':[160,160],
+    'lock-screen.png':[220,220],
+    'brightness-sun.png':[76,76],
+    'volume-speaker.png':[76,76],
+    'auto-lock.png':[76,76],
+  };
+  assert.deepEqual(fs.readdirSync(settingsFolder).sort(),Object.keys(expected).sort());
+  let bytes=0;
+  for(const [name,size] of Object.entries(expected)) {
+    const png=fs.readFileSync(path.join(settingsFolder,name));
+    const metadata=await sharp(png).metadata();
+    const stats=await sharp(png).stats();
+    assert.deepEqual([metadata.width,metadata.height,metadata.hasAlpha],[...size,true],name);
+    assert.equal(stats.channels[3].min,0,`${name} keeps a transparent background`);
+    assert.ok(png.length<256*1024,`${name} stays within the SD decode budget`);
+    bytes+=png.length;
+  }
+  assert.ok(bytes<384*1024,'complete settings art stays compact');
+  const cmake=fs.readFileSync(path.join(root,'main/CMakeLists.txt'),'utf8');
+  for(const name of Object.keys(expected))
+    assert.ok(!cmake.includes(name),`${name} stays off firmware flash`);
+});
+
 test('phonetics word illustrations are complete, traceable and SD-only', async()=>{
   const phoneticsFolder=path.join(folder,'phonetics-page');
   const wordFolder=path.join(phoneticsFolder,'words');

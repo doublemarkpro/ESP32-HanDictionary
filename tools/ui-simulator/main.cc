@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include "assets/home_skin.h"
+#include "assets/timetable_assets.h"
 #include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "han_display.h"
@@ -39,6 +40,14 @@ lv_obj_t* FindLabel(lv_obj_t* obj, const char* text) {
             return v;
     return nullptr;
 }
+lv_obj_t* FindLabelAt(lv_obj_t* obj, int x, int y) {
+    if (lv_obj_check_type(obj, &lv_label_class) && lv_obj_get_x(obj) == x && lv_obj_get_y(obj) == y)
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto label = FindLabelAt(lv_obj_get_child(obj, i), x, y))
+            return label;
+    return nullptr;
+}
 lv_obj_t* FindImage(lv_obj_t* obj, const lv_image_dsc_t* source) {
     if (lv_obj_check_type(obj, &lv_image_class) && lv_image_get_src(obj) == source)
         return obj;
@@ -54,6 +63,14 @@ lv_obj_t* FindCanvas(lv_obj_t* obj, int width, int height) {
     for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
         if (auto canvas = FindCanvas(lv_obj_get_child(obj, i), width, height))
             return canvas;
+    return nullptr;
+}
+lv_obj_t* FindArc(lv_obj_t* obj) {
+    if (lv_obj_check_type(obj, &lv_arc_class))
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto arc = FindArc(lv_obj_get_child(obj, i)))
+            return arc;
     return nullptr;
 }
 void ClickImage(const lv_image_dsc_t* source) {
@@ -225,9 +242,23 @@ int main(int argc, char** argv) {
               "home uses heavyweight rounded type");
         const char* pages[] = {"查字典", "英语音标", "课程表", "作业计时", "闹钟", "天气"};
         const char* files[] = {"dictionary", "phonetics", "timetable", "timer", "alarm", "weather"};
+        const char* page_titles[] = {"小小字典", "英语音标", "课程表", "作业计时", "闹钟", "天气"};
         for (int i = 0; i < 6; ++i) {
             Click(pages[i]);
             Shot(folder, files[i]);
+            if (i != 2) {
+                auto page_title = FindLabel(lv_screen_active(), page_titles[i]);
+                auto page_date = FindLabelAt(lv_screen_active(), 747, 37);
+                auto page_clock = FindLabelAt(lv_screen_active(), 970, 41);
+                auto page_wifi = FindImage(lv_screen_active(), &han_status_wifi_off);
+                auto page_battery = FindImage(lv_screen_active(), &han_status_battery_unknown);
+                Check(page_title && page_date && page_clock && page_wifi && page_battery &&
+                          lv_obj_get_y(page_title) == 24 && lv_obj_get_y(page_date) == 37 &&
+                          lv_obj_get_y(page_clock) == 41 &&
+                          lv_image_get_scale_x(page_wifi) == 288 &&
+                          lv_image_get_scale_x(page_battery) == 352,
+                      "shared page header keeps one optical centre and balanced status icons");
+            }
             if (i == 0) {
                 Check(!FindLabel(lv_screen_active(), "语音查字"),
                       "dictionary voice button removed");
@@ -424,13 +455,81 @@ int main(int argc, char** argv) {
                 Click("单元音");
             }
             if (i == 3) {
-                Click("开始 / 继续");
-                lv_tick_inc(65000);
+                Check(FindLabel(lv_screen_active(), "今日作业") &&
+                          FindLabel(lv_screen_active(), "本周用时"),
+                      "timer includes the polished homework and weekly summaries");
+                Check(!FindLabel(lv_screen_active(), "专心完成这一科") &&
+                          !FindLabel(lv_screen_active(), "调整记录") &&
+                          !FindLabel(lv_screen_active(), "新一轮作业"),
+                      "timer omits the rejected footer and record controls");
+                Check(FindLabel(lv_screen_active(), "00:00"),
+                      "timer uses minutes and seconds only");
+                const char* timer_subjects[] = {"语文", "数学", "英语"};
+                for (int subject = 0; subject < 3; ++subject) {
+                    auto subject_label = FindLabel(lv_screen_active(), timer_subjects[subject]);
+                    auto subject_chip = lv_obj_get_parent(subject_label);
+                    auto subject_icon =
+                        FindImage(subject_chip, subject == 0   ? &han_subject_book
+                                                : subject == 1 ? &han_subject_calculator
+                                                               : &han_subject_english);
+                    Check(subject_icon && lv_obj_get_x(subject_icon) == 41 &&
+                              lv_obj_get_y(subject_icon) == 18 &&
+                              lv_obj_get_x(subject_label) == 93 &&
+                              lv_obj_get_y(subject_label) == 22 &&
+                              lv_obj_get_width(subject_label) == 72 &&
+                              lv_obj_get_x(subject_chip) == 18 + subject * 226,
+                          "subject icon and label are centred as one unit");
+                }
+                auto timer_value = FindLabel(lv_screen_active(), "00:00");
+                auto timer_arc = FindArc(lv_screen_active());
+                Check(timer_arc && timer_value, "timer ring and value exist");
+                auto timer_card = lv_obj_get_parent(timer_arc);
+                Check(lv_obj_get_x(timer_arc) == 179 && lv_obj_get_y(timer_arc) == 112 &&
+                          lv_obj_get_width(timer_arc) == 336 && lv_obj_get_x(timer_value) == 199 &&
+                          lv_obj_get_y(timer_value) == 250 &&
+                          lv_obj_get_height(timer_value) == 60 &&
+                          lv_obj_get_x(timer_arc) * 2 + lv_obj_get_width(timer_arc) ==
+                              lv_obj_get_width(timer_card) &&
+                          lv_obj_get_y(timer_arc) * 2 + lv_obj_get_height(timer_arc) ==
+                              lv_obj_get_y(timer_value) * 2 + lv_obj_get_height(timer_value),
+                      "timer ring and value share the exact card centre");
+                Check(!FindLabel(lv_screen_active(), "六") && !FindLabel(lv_screen_active(), "日"),
+                      "weekly chart keeps school days only");
+                lv_font_glyph_dsc_t timer_glyph{};
+                Check(lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x8bb0, 0) &&
+                          lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x5f55, 0) &&
+                          lv_font_get_glyph_dsc(&han_font_timer_title, &timer_glyph, 0x4e00, 0) &&
+                          lv_font_get_glyph_dsc(&han_font_timer_title, &timer_glyph, 0x4e94, 0),
+                      "timer fonts contain historical status and weekday glyphs");
+                const char* chart_days[] = {"一", "二", "三", "四", "五"};
+                const char* chart_titles[] = {"周一作业", "周二作业", "周三作业", "周四作业",
+                                              "周五作业"};
+                const auto now = std::time(nullptr);
+                std::tm local{};
+                localtime_s(&local, &now);
+                const int today = (local.tm_wday + 6) % 7;
+                const int history_day = today == 0 ? 1 : 0;
+                Click(chart_days[history_day]);
+                Check(FindLabel(lv_screen_active(), chart_titles[history_day]),
+                      "weekday selection refreshes the homework card");
+                if (today >= 0 && today < 5)
+                    Click(chart_days[today]);
+                Click("开始计时");
+                lv_tick_inc(999);
+                lv_timer_handler();
+                Check(FindLabel(lv_screen_active(), "00:00"),
+                      "timer does not advance before a whole second");
+                lv_tick_inc(1);
+                lv_timer_handler();
+                Check(FindLabel(lv_screen_active(), "00:01"),
+                      "timer advances exactly on the first whole second");
+                lv_tick_inc(64000);
                 lv_timer_handler();
                 Click("<");
                 Click("作业计时");
                 Click("暂停");
-                Check(FindLabel(lv_screen_active(), "00:01:05"), "timer survives back");
+                Check(FindLabel(lv_screen_active(), "01:05"), "timer survives back in MM:SS");
+                Shot(folder, "timer-paused");
             }
             if (i == 5) {
                 ui.SetWeatherTextForTest(
@@ -507,6 +606,17 @@ int main(int argc, char** argv) {
         lv_obj_send_event(lv_obj_get_parent(wifi), LV_EVENT_CLICKED, nullptr);
         ui.UpdateStatusBar();
         Shot(folder, "network");
+        Check(FindLabel(lv_screen_active(), "网络与存储") &&
+                  FindLabel(lv_screen_active(), "显示与声音") &&
+                  FindLabel(lv_screen_active(), "自动锁屏") &&
+                  FindLabel(lv_screen_active(), "10 分钟") &&
+                  FindLabel(lv_screen_active(), "立即关屏"),
+              "settings page exposes storage, sliders, auto lock and screen-off controls");
+        auto settings_assistant = FindLabel(lv_screen_active(), "小智");
+        Check(settings_assistant &&
+                  lv_obj_has_flag(lv_obj_get_parent(lv_obj_get_parent(settings_assistant)),
+                                  LV_OBJ_FLAG_HIDDEN),
+              "settings page uses the full content height without the assistant footer");
         Click("<");
         ui.ShowEntry(han::ContentStore::Demo());
         Check(FindLabel(lv_screen_active(), "小小字典"), "MCP result opens dictionary");

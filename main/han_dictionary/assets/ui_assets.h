@@ -10,6 +10,8 @@ LV_FONT_DECLARE(han_font_character);
 LV_FONT_DECLARE(han_font_stroke_name);
 LV_FONT_DECLARE(han_font_phonetics);
 LV_FONT_DECLARE(han_font_phonetics_ipa);
+LV_FONT_DECLARE(han_font_timer);
+LV_FONT_DECLARE(han_font_timer_title);
 LV_IMAGE_DECLARE(han_icon_dictionary);
 LV_IMAGE_DECLARE(han_icon_phonetics);
 LV_IMAGE_DECLARE(han_icon_timetable);
