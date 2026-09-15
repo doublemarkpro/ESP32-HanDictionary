@@ -8,8 +8,8 @@ namespace han {
 
 class QWeatherService {
 public:
-    // Reads /sdcard/handict/qweather.json, requests QWeather current-weather v1, and updates the
-    // local weather cache. Credentials are never compiled into the firmware.
+    // Reads /sdcard/handict/qweather.json and builds one normalized dashboard snapshot from
+    // QWeather current, daily, air-quality and lifestyle-index data. Credentials stay on SD.
 #ifdef HAN_UI_HOST_SIM
     static bool Refresh(const ContentStore&, std::string& display_text, std::string& error) {
         display_text.clear();

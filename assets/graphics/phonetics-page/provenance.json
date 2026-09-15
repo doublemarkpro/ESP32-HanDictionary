@@ -1,0 +1,416 @@
+{
+  "name": "Microsoft Fluent Emoji word illustrations",
+  "repository": "https://github.com/microsoft/fluentui-emoji",
+  "revision": "1ffb34c752ecf5d402f04cfb4b392c77f57c54bc",
+  "license": "MIT",
+  "words": [
+    {
+      "word": "about",
+      "asset": "Information"
+    },
+    {
+      "word": "air",
+      "asset": "Wind face"
+    },
+    {
+      "word": "back",
+      "asset": "Back arrow"
+    },
+    {
+      "word": "bag",
+      "asset": "Backpack"
+    },
+    {
+      "word": "ball",
+      "asset": "Soccer ball"
+    },
+    {
+      "word": "banana",
+      "asset": "Banana"
+    },
+    {
+      "word": "bath",
+      "asset": "Bathtub"
+    },
+    {
+      "word": "bed",
+      "asset": "Bed"
+    },
+    {
+      "word": "bike",
+      "asset": "Bicycle"
+    },
+    {
+      "word": "bird",
+      "asset": "Bird"
+    },
+    {
+      "word": "blue",
+      "asset": "Blue circle"
+    },
+    {
+      "word": "boat",
+      "asset": "Sailboat"
+    },
+    {
+      "word": "book",
+      "asset": "Open book"
+    },
+    {
+      "word": "box",
+      "asset": "Package"
+    },
+    {
+      "word": "boy",
+      "asset": "Boy"
+    },
+    {
+      "word": "bridge",
+      "asset": "Bridge at night"
+    },
+    {
+      "word": "bus",
+      "asset": "Bus"
+    },
+    {
+      "word": "cake",
+      "asset": "Shortcake"
+    },
+    {
+      "word": "cap",
+      "asset": "Billed cap"
+    },
+    {
+      "word": "car",
+      "asset": "Automobile"
+    },
+    {
+      "word": "cat",
+      "asset": "Cat"
+    },
+    {
+      "word": "chair",
+      "asset": "Chair"
+    },
+    {
+      "word": "cheese",
+      "asset": "Cheese wedge"
+    },
+    {
+      "word": "coin",
+      "asset": "Coin"
+    },
+    {
+      "word": "cow",
+      "asset": "Cow"
+    },
+    {
+      "word": "cup",
+      "asset": "Teacup without handle"
+    },
+    {
+      "word": "cure",
+      "asset": "Medical symbol"
+    },
+    {
+      "word": "day",
+      "asset": "Sun"
+    },
+    {
+      "word": "deer",
+      "asset": "Deer"
+    },
+    {
+      "word": "dog",
+      "asset": "Dog"
+    },
+    {
+      "word": "door",
+      "asset": "Door"
+    },
+    {
+      "word": "ear",
+      "asset": "Ear"
+    },
+    {
+      "word": "fan",
+      "asset": "Folding hand fan"
+    },
+    {
+      "word": "fish",
+      "asset": "Fish"
+    },
+    {
+      "word": "five",
+      "asset": "Keycap 5"
+    },
+    {
+      "word": "food",
+      "asset": "Pot of food"
+    },
+    {
+      "word": "foot",
+      "asset": "Foot"
+    },
+    {
+      "word": "game",
+      "asset": "Video game"
+    },
+    {
+      "word": "go",
+      "asset": "Play button"
+    },
+    {
+      "word": "good",
+      "asset": "Check mark button"
+    },
+    {
+      "word": "hair",
+      "asset": "Hair pick"
+    },
+    {
+      "word": "hand",
+      "asset": "Raised hand"
+    },
+    {
+      "word": "hat",
+      "asset": "Top hat"
+    },
+    {
+      "word": "home",
+      "asset": "House"
+    },
+    {
+      "word": "hot",
+      "asset": "Fire"
+    },
+    {
+      "word": "house",
+      "asset": "House with garden"
+    },
+    {
+      "word": "jam",
+      "asset": "Jar"
+    },
+    {
+      "word": "juice",
+      "asset": "Beverage box"
+    },
+    {
+      "word": "key",
+      "asset": "Key"
+    },
+    {
+      "word": "kite",
+      "asset": "Kite"
+    },
+    {
+      "word": "leaf",
+      "asset": "Leaf fluttering in wind"
+    },
+    {
+      "word": "leg",
+      "asset": "Leg"
+    },
+    {
+      "word": "long",
+      "asset": "Right arrow"
+    },
+    {
+      "word": "measure",
+      "asset": "Straight ruler"
+    },
+    {
+      "word": "milk",
+      "asset": "Glass of milk"
+    },
+    {
+      "word": "moon",
+      "asset": "Full moon"
+    },
+    {
+      "word": "mother",
+      "asset": "Woman"
+    },
+    {
+      "word": "mouse",
+      "asset": "Mouse"
+    },
+    {
+      "word": "near",
+      "asset": "Bullseye"
+    },
+    {
+      "word": "net",
+      "asset": "Goal net"
+    },
+    {
+      "word": "nose",
+      "asset": "Nose"
+    },
+    {
+      "word": "nurse",
+      "asset": "Woman health worker"
+    },
+    {
+      "word": "park",
+      "asset": "National park"
+    },
+    {
+      "word": "pen",
+      "asset": "Fountain pen"
+    },
+    {
+      "word": "pig",
+      "asset": "Pig"
+    },
+    {
+      "word": "pure",
+      "asset": "Sparkles"
+    },
+    {
+      "word": "rain",
+      "asset": "Cloud with rain"
+    },
+    {
+      "word": "red",
+      "asset": "Red circle"
+    },
+    {
+      "word": "ring",
+      "asset": "Ring"
+    },
+    {
+      "word": "room",
+      "asset": "Door"
+    },
+    {
+      "word": "saw",
+      "asset": "Carpentry saw"
+    },
+    {
+      "word": "sheep",
+      "asset": "Ewe"
+    },
+    {
+      "word": "ship",
+      "asset": "Passenger ship"
+    },
+    {
+      "word": "shoe",
+      "asset": "Running shoe"
+    },
+    {
+      "word": "sing",
+      "asset": "Microphone"
+    },
+    {
+      "word": "sit",
+      "asset": "Chair"
+    },
+    {
+      "word": "sofa",
+      "asset": "Couch and lamp"
+    },
+    {
+      "word": "star",
+      "asset": "Star"
+    },
+    {
+      "word": "sun",
+      "asset": "Sun with face"
+    },
+    {
+      "word": "tea",
+      "asset": "Hot beverage"
+    },
+    {
+      "word": "that",
+      "asset": "Right arrow"
+    },
+    {
+      "word": "thin",
+      "asset": "Pinching hand"
+    },
+    {
+      "word": "think",
+      "asset": "Thinking face"
+    },
+    {
+      "word": "this",
+      "asset": "Down arrow"
+    },
+    {
+      "word": "top",
+      "asset": "Up arrow"
+    },
+    {
+      "word": "tour",
+      "asset": "Globe showing europe-africa"
+    },
+    {
+      "word": "toy",
+      "asset": "Teddy bear"
+    },
+    {
+      "word": "tree",
+      "asset": "Deciduous tree"
+    },
+    {
+      "word": "turn",
+      "asset": "Counterclockwise arrows button"
+    },
+    {
+      "word": "usual",
+      "asset": "Repeat button"
+    },
+    {
+      "word": "van",
+      "asset": "Minibus"
+    },
+    {
+      "word": "vet",
+      "asset": "Health worker"
+    },
+    {
+      "word": "vision",
+      "asset": "Eye"
+    },
+    {
+      "word": "watch",
+      "asset": "Watch"
+    },
+    {
+      "word": "water",
+      "asset": "Droplet"
+    },
+    {
+      "word": "wet",
+      "asset": "Sweat droplets"
+    },
+    {
+      "word": "win",
+      "asset": "Trophy"
+    },
+    {
+      "word": "yellow",
+      "asset": "Yellow circle"
+    },
+    {
+      "word": "yes",
+      "asset": "Check mark button"
+    },
+    {
+      "word": "young",
+      "asset": "Baby"
+    },
+    {
+      "word": "zip",
+      "asset": "Zipper-mouth face"
+    },
+    {
+      "word": "zoo",
+      "asset": "Lion"
+    }
+  ]
+}

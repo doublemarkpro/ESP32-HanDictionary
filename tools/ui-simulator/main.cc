@@ -396,6 +396,13 @@ int main(int argc, char** argv) {
                 Shot(folder, "dictionary-missing-strokes");
             }
             if (i == 1) {
+                Check(!FindLabel(lv_screen_active(), "英式音标 · 44 音学习卡") &&
+                          !FindLabel(lv_screen_active(), "当前音标") &&
+                          !FindLabel(lv_screen_active(), "点选音标开始学习") &&
+                          !FindLabel(lv_screen_active(), "听一听，跟着读") &&
+                          !FindLabel(lv_screen_active(), "点音标或单词即可播放发音") &&
+                          FindLabel(lv_screen_active(), "▶  听示范"),
+                      "phonetics uses the approved full-height learning composition");
                 Click("下一页");
                 Check(FindLabel(lv_screen_active(), "ɒ"), "second vowel page");
                 Click("上一页");
@@ -427,10 +434,37 @@ int main(int argc, char** argv) {
             }
             if (i == 5) {
                 ui.SetWeatherTextForTest(
-                    "青岛（缓存）\n晴 26°C\n体感 27°C · 湿度 58%\n东南风 2级\n\n"
-                    "数据来源：和风天气\n更新时间：09-14 06:38");
-                Check(FindLabel(lv_screen_active(), "缓存天气"), "cached weather is explicit");
+                    R"({"schema_version":2,"city":"青岛","updated_at":"09-15 08:49","cached":true,"current":{"condition":"晴间多云","condition_code":"101","temperature":24,"feels_like":22,"humidity":45,"wind":"西北风","wind_scale":3},"days":[{"date":"2026-09-15","condition":"晴","condition_code":"100","temperature_min":20,"temperature_max":26,"precipitation_probability":10,"sunrise":"05:42","sunset":"18:08"},{"date":"2026-09-16","condition":"多云","condition_code":"101","temperature_min":19,"temperature_max":25,"precipitation_probability":30,"sunrise":"05:43","sunset":"18:06"},{"date":"2026-09-17","condition":"小雨","condition_code":"305","temperature_min":18,"temperature_max":22,"precipitation_probability":70,"sunrise":"05:44","sunset":"18:05"},{"date":"2026-09-18","condition":"阴","condition_code":"104","temperature_min":19,"temperature_max":24,"precipitation_probability":20,"sunrise":"05:45","sunset":"18:03"}],"air":{"category":"优","aqi":"34"},"index":{"name":"穿衣","category":"舒适","text":"天气舒适，适合穿长袖衬衫或薄外套。早晚海边风大，记得及时添衣。"}})");
+                Check(FindLabel(lv_screen_active(), "缓存"), "cached weather is explicit");
+                Check(FindLabel(lv_screen_active(), "空气质量") &&
+                          FindLabel(lv_screen_active(), "降水概率") &&
+                          FindLabel(lv_screen_active(), "日出日落") &&
+                          FindLabel(lv_screen_active(), "生活指数"),
+                      "weather metrics are all visible");
                 Shot(folder, "weather-data");
+                Click("生活指数");
+                Check(FindLabel(lv_screen_active(), "生活指数完整建议"),
+                      "lifestyle index opens a complete detail popup");
+                Shot(folder, "weather-index-detail");
+                Click("关闭");
+                Check(!FindLabel(lv_screen_active(), "生活指数完整建议"),
+                      "lifestyle index popup closes");
+            } else if (i == 4) {
+                Check(!FindLabel(lv_screen_active(), "设置提醒时间") &&
+                          !FindLabel(lv_screen_active(), "上学起床"),
+                      "alarm removes redundant time and purpose labels");
+                Check(!FindLabel(lv_screen_active(), "重复日期") &&
+                          FindLabel(lv_screen_active(), "周一") &&
+                          FindLabel(lv_screen_active(), "周日"),
+                      "alarm exposes all seven day choices without a redundant heading");
+                Check(FindLabel(lv_screen_active(), "保存并开启") &&
+                          FindLabel(lv_screen_active(), "关闭闹钟"),
+                      "alarm actions remain large and explicit");
+                Click("保存并开启");
+                Check(FindLabel(lv_screen_active(), "闹钟已开启") &&
+                          FindLabel(lv_screen_active(), "✓"),
+                      "enabled alarm uses the checked status pill");
+                Shot(folder, "alarm-enabled");
             }
             if (i == 2) {
                 Check(FindLabel(lv_screen_active(), "还没有课程，请导入课表"),

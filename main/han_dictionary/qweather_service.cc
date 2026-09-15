@@ -1,12 +1,15 @@
 #include "qweather_service.h"
 
 #include <cJSON.h>
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include <esp_log.h>
 #include <miniz.h>
@@ -19,7 +22,7 @@ namespace han {
 namespace {
 
 constexpr char kTag[] = "QWeather";
-constexpr size_t kMaxResponseBytes = 16 * 1024;
+constexpr size_t kMaxResponseBytes = 48 * 1024;
 constexpr char kConfigFile[] = "qweather.json";
 constexpr char kCacheFile[] = "weather.json";
 constexpr char kCachePath[] = "/sdcard/handict/weather.json";
@@ -33,6 +36,35 @@ struct Config {
     std::string city;
     double latitude = NAN;
     double longitude = NAN;
+};
+
+struct ForecastDay {
+    std::string date;
+    std::string condition;
+    std::string condition_code;
+    int temperature_min = 0;
+    int temperature_max = 0;
+    int precipitation_probability = -1;
+    std::string sunrise;
+    std::string sunset;
+};
+
+struct Snapshot {
+    std::string city;
+    std::string condition;
+    std::string condition_code;
+    int temperature = 0;
+    int feels_like = 0;
+    int humidity = -1;
+    std::string wind;
+    int wind_scale = -1;
+    std::vector<ForecastDay> days;
+    std::string air_category;
+    std::string air_aqi;
+    std::string index_name;
+    std::string index_category;
+    std::string index_text;
+    std::string updated;
 };
 
 const char* StringValue(cJSON* object, const char* key) {
@@ -127,7 +159,7 @@ std::string CompassName(const char* code) {
 }
 
 std::string Timestamp() {
-    auto now = time(nullptr);
+    const auto now = time(nullptr);
     struct tm local{};
     localtime_r(&now, &local);
     if (local.tm_year < 125)
@@ -137,10 +169,21 @@ std::string Timestamp() {
     return text;
 }
 
-std::string Format(const std::string& city, const std::string& summary, const std::string& updated,
-                   bool cached) {
-    return city + (cached ? "（缓存）\n" : "\n") + summary + "\n\n数据来源：和风天气\n更新时间：" +
-           updated;
+std::string DatePart(const char* value) {
+    if (!value)
+        return {};
+    const std::string text(value);
+    return text.size() >= 10 ? text.substr(0, 10) : text;
+}
+
+std::string TimePart(const char* value) {
+    if (!value || !value[0])
+        return {};
+    const std::string text(value);
+    const auto separator = text.find('T');
+    if (separator != std::string::npos && separator + 6 <= text.size())
+        return text.substr(separator + 1, 5);
+    return text.size() >= 5 ? text.substr(0, 5) : text;
 }
 
 bool ReadResponse(Http& http, std::string& body) {
@@ -150,7 +193,7 @@ bool ReadResponse(Http& http, std::string& body) {
         return false;
     char buffer[1024];
     for (;;) {
-        int count = http.Read(buffer, sizeof(buffer));
+        const int count = http.Read(buffer, sizeof(buffer));
         if (count < 0 || body.size() + count > kMaxResponseBytes) {
             body.clear();
             return false;
@@ -166,25 +209,21 @@ bool InflateGzip(const std::string& compressed, std::string& plain) {
     const size_t size = compressed.size();
     if (size < 18 || data[0] != 0x1f || data[1] != 0x8b || data[2] != 8 || (data[3] & 0xe0))
         return false;
-
     size_t offset = 10;
     const uint8_t flags = data[3];
     if (flags & 0x04) {
         if (offset + 2 > size - 8)
             return false;
-        const size_t extra_length = data[offset] | (static_cast<size_t>(data[offset + 1]) << 8);
+        const size_t length = data[offset] | (static_cast<size_t>(data[offset + 1]) << 8);
         offset += 2;
-        if (extra_length > size - 8 - offset)
+        if (length > size - 8 - offset)
             return false;
-        offset += extra_length;
+        offset += length;
     }
     auto skip_text = [&] {
         while (offset < size - 8 && data[offset] != 0)
             ++offset;
-        if (offset >= size - 8)
-            return false;
-        ++offset;
-        return true;
+        return offset < size - 8 ? (++offset, true) : false;
     };
     if ((flags & 0x08) && !skip_text())
         return false;
@@ -197,12 +236,10 @@ bool InflateGzip(const std::string& compressed, std::string& plain) {
     }
     if (offset >= size - 8)
         return false;
-
-    const size_t trailer = size - 8;
     const size_t output_size =
         static_cast<size_t>(data[size - 4]) | (static_cast<size_t>(data[size - 3]) << 8) |
         (static_cast<size_t>(data[size - 2]) << 16) | (static_cast<size_t>(data[size - 1]) << 24);
-    if (output_size == 0 || output_size > kMaxResponseBytes)
+    if (!output_size || output_size > kMaxResponseBytes)
         return false;
     auto decompressor = std::unique_ptr<tinfl_decompressor, decltype(&free)>(
         static_cast<tinfl_decompressor*>(calloc(1, sizeof(tinfl_decompressor))), free);
@@ -210,7 +247,7 @@ bool InflateGzip(const std::string& compressed, std::string& plain) {
         return false;
     tinfl_init(decompressor.get());
     plain.assign(output_size, '\0');
-    size_t input_bytes = trailer - offset;
+    size_t input_bytes = size - 8 - offset;
     size_t output_bytes = plain.size();
     const auto status = tinfl_decompress(decompressor.get(), data + offset, &input_bytes,
                                          reinterpret_cast<uint8_t*>(plain.data()),
@@ -223,18 +260,41 @@ bool InflateGzip(const std::string& compressed, std::string& plain) {
     return true;
 }
 
-bool ParseCurrent(const std::string& body, std::string& summary, std::string& error) {
+bool Request(const Config& config, const std::string& path, std::string& body, int& status) {
+    status = 0;
+    auto network = Board::GetInstance().GetNetwork();
+    auto http = network ? network->CreateHttp(0) : nullptr;
+    if (!http)
+        return false;
+    http->SetTimeout(8000);
+    http->SetHeader("X-QW-Api-Key", config.api_key);
+    http->SetHeader("Accept", "application/json");
+    http->SetHeader("Accept-Encoding", "identity");
+    const std::string url = "https://" + config.api_host + path;
+    if (!http->Open("GET", url))
+        return false;
+    status = http->GetStatusCode();
+    const auto encoding = http->GetResponseHeader("Content-Encoding");
+    const bool read = status == 200 && ReadResponse(*http, body);
+    http->Close();
+    if (!read)
+        return false;
+    if (encoding == "gzip" || (body.size() >= 2 && static_cast<uint8_t>(body[0]) == 0x1f &&
+                               static_cast<uint8_t>(body[1]) == 0x8b)) {
+        std::string plain;
+        if (!InflateGzip(body, plain))
+            return false;
+        body = std::move(plain);
+    }
+    return true;
+}
+
+bool ParseCurrent(const std::string& body, Snapshot& out, std::string& error) {
     Json root(cJSON_ParseWithLength(body.data(), body.size()), cJSON_Delete);
     if (!root) {
-        ESP_LOGW(kTag, "Could not parse current weather JSON (%u bytes)",
-                 static_cast<unsigned>(body.size()));
         error = "和风天气返回数据不完整";
         return false;
     }
-
-    // QWeather's current API uses numeric values in nested objects. Accept numeric strings and
-    // the retiring city-weather shape too, so an account still routed through the compatibility
-    // response does not turn otherwise useful weather into a hard failure.
     auto legacy = ObjectValue(root.get(), "now");
     auto condition = legacy ? legacy : ObjectValue(root.get(), "condition");
     auto temperature = legacy ? legacy : ObjectValue(root.get(), "temperature");
@@ -243,65 +303,171 @@ bool ParseCurrent(const std::string& body, std::string& summary, std::string& er
     auto direction = legacy ? nullptr : ObjectValue(wind, "direction");
     double temp = 0, feels = 0, humidity = 0, scale = 0;
     const char* condition_text = StringValue(condition, "text");
-    const bool has_temp = FlexibleNumberValue(temperature, legacy ? "temp" : "value", temp);
-    const bool has_feels = FlexibleNumberValue(feels_like, legacy ? "feelsLike" : "value", feels);
-    const bool has_humidity =
-        FlexibleNumberValue(legacy ? legacy : root.get(), "humidity", humidity);
-    const bool has_scale = FlexibleNumberValue(wind, legacy ? "windScale" : "scale", scale);
-    const char* compass =
-        legacy ? StringValue(legacy, "windDir") : StringValue(direction, "compass");
-    if (!condition_text[0] || !has_temp || temp < -100 || temp > 100) {
-        ESP_LOGW(kTag,
-                 "Current weather missing required fields: condition=%d temperature=%d "
-                 "legacy=%d bytes=%u",
-                 condition_text[0] != '\0', has_temp, legacy != nullptr,
-                 static_cast<unsigned>(body.size()));
+    if (!condition_text[0] || !FlexibleNumberValue(temperature, legacy ? "temp" : "value", temp) ||
+        temp < -100 || temp > 100) {
         error = "和风天气返回数据不完整";
         return false;
     }
-    if (!has_feels || feels < -100 || feels > 100)
+    if (!FlexibleNumberValue(feels_like, legacy ? "feelsLike" : "value", feels) || feels < -100 ||
+        feels > 100)
         feels = temp;
-    if (has_humidity && humidity > 1.0 && humidity <= 100.0)
-        humidity /= 100.0;
-
-    const std::string wind_name =
-        legacy ? (compass[0] ? compass : "风向不明") : CompassName(compass);
-    char details[256];
-    const int written = snprintf(details, sizeof(details), "%s %.0f°C\n体感 %.0f°C · ",
-                                 condition_text, temp, feels);
-    if (written < 0 || static_cast<size_t>(written) >= sizeof(details)) {
-        error = "和风天气返回数据过长";
-        return false;
-    }
-    size_t used = static_cast<size_t>(written);
-    if (has_humidity && humidity >= 0 && humidity <= 1)
-        used += snprintf(details + used, sizeof(details) - used, "湿度 %.0f%%", humidity * 100.0);
-    else
-        used += snprintf(details + used, sizeof(details) - used, "湿度 --");
-    if (has_scale && scale >= 0 && scale <= 17)
-        snprintf(details + used, sizeof(details) - used, "\n%s %.0f级", wind_name.c_str(), scale);
-    else
-        snprintf(details + used, sizeof(details) - used, "\n%s", wind_name.c_str());
-    summary = details;
+    const bool has_humidity =
+        FlexibleNumberValue(legacy ? legacy : root.get(), "humidity", humidity);
+    if (has_humidity && humidity <= 1.0)
+        humidity *= 100.0;
+    const bool has_scale = FlexibleNumberValue(wind, legacy ? "windScale" : "scale", scale);
+    const char* compass =
+        legacy ? StringValue(legacy, "windDir") : StringValue(direction, "compass");
+    out.condition = condition_text;
+    out.condition_code = StringValue(condition, legacy ? "icon" : "code");
+    out.temperature = static_cast<int>(lround(temp));
+    out.feels_like = static_cast<int>(lround(feels));
+    out.humidity =
+        has_humidity && humidity >= 0 && humidity <= 100 ? static_cast<int>(lround(humidity)) : -1;
+    out.wind = legacy ? (compass[0] ? compass : "风向不明") : CompassName(compass);
+    out.wind_scale = has_scale && scale >= 0 && scale <= 17 ? static_cast<int>(lround(scale)) : -1;
     return true;
 }
 
-void SaveCache(const Config& config, const std::string& summary, const std::string& updated) {
+bool ParseDaily(const std::string& body, Snapshot& out) {
+    Json root(cJSON_ParseWithLength(body.data(), body.size()), cJSON_Delete);
+    if (!root)
+        return false;
+    auto days = cJSON_GetObjectItemCaseSensitive(root.get(), "days");
+    const bool legacy = !cJSON_IsArray(days);
+    if (legacy)
+        days = cJSON_GetObjectItemCaseSensitive(root.get(), "daily");
+    if (!cJSON_IsArray(days))
+        return false;
+    const int count = std::min(4, cJSON_GetArraySize(days));
+    for (int index = 0; index < count; ++index) {
+        auto day = cJSON_GetArrayItem(days, index);
+        if (!cJSON_IsObject(day))
+            continue;
+        ForecastDay parsed;
+        double minimum = 0, maximum = 0, probability = -1;
+        if (legacy) {
+            parsed.date = DatePart(StringValue(day, "fxDate"));
+            parsed.condition = StringValue(day, "textDay");
+            parsed.condition_code = StringValue(day, "iconDay");
+            if (!FlexibleNumberValue(day, "tempMin", minimum) ||
+                !FlexibleNumberValue(day, "tempMax", maximum))
+                continue;
+            FlexibleNumberValue(day, "pop", probability);
+            parsed.sunrise = TimePart(StringValue(day, "sunrise"));
+            parsed.sunset = TimePart(StringValue(day, "sunset"));
+        } else {
+            parsed.date = DatePart(StringValue(day, "forecastStartTime"));
+            auto daytime = ObjectValue(day, "daytime");
+            auto condition = ObjectValue(daytime, "condition");
+            parsed.condition = StringValue(condition, "text");
+            parsed.condition_code = StringValue(condition, "code");
+            if (!FlexibleNumberValue(ObjectValue(day, "temperatureMin"), "value", minimum) ||
+                !FlexibleNumberValue(ObjectValue(day, "temperatureMax"), "value", maximum))
+                continue;
+            auto precipitation = ObjectValue(daytime, "precipitation");
+            FlexibleNumberValue(precipitation, "probability", probability);
+            auto astro = ObjectValue(day, "astro");
+            parsed.sunrise = TimePart(StringValue(astro, "sunrise"));
+            parsed.sunset = TimePart(StringValue(astro, "sunset"));
+        }
+        if (probability >= 0 && probability <= 1)
+            probability *= 100;
+        parsed.temperature_min = static_cast<int>(lround(minimum));
+        parsed.temperature_max = static_cast<int>(lround(maximum));
+        parsed.precipitation_probability =
+            probability >= 0 && probability <= 100 ? static_cast<int>(lround(probability)) : -1;
+        out.days.push_back(std::move(parsed));
+    }
+    return !out.days.empty();
+}
+
+bool ParseAir(const std::string& body, Snapshot& out) {
+    Json root(cJSON_ParseWithLength(body.data(), body.size()), cJSON_Delete);
+    if (!root)
+        return false;
+    auto indexes = cJSON_GetObjectItemCaseSensitive(root.get(), "indexes");
+    if (cJSON_IsArray(indexes)) {
+        cJSON* selected = nullptr;
+        cJSON* item = nullptr;
+        cJSON_ArrayForEach (item, indexes) {
+            if (!selected)
+                selected = item;
+            if (strcmp(StringValue(item, "code"), "cn-mee") == 0) {
+                selected = item;
+                break;
+            }
+        }
+        if (selected) {
+            out.air_category = StringValue(selected, "category");
+            out.air_aqi = StringValue(selected, "aqiDisplay");
+        }
+    } else if (auto now = ObjectValue(root.get(), "now")) {
+        out.air_category = StringValue(now, "category");
+        out.air_aqi = StringValue(now, "aqi");
+    }
+    return !out.air_category.empty() || !out.air_aqi.empty();
+}
+
+bool ParseIndices(const std::string& body, Snapshot& out) {
+    Json root(cJSON_ParseWithLength(body.data(), body.size()), cJSON_Delete);
+    auto daily = root ? cJSON_GetObjectItemCaseSensitive(root.get(), "daily") : nullptr;
+    auto first = cJSON_IsArray(daily) ? cJSON_GetArrayItem(daily, 0) : nullptr;
+    if (!cJSON_IsObject(first))
+        return false;
+    out.index_name = StringValue(first, "name");
+    out.index_category = StringValue(first, "category");
+    out.index_text = StringValue(first, "text");
+    return !out.index_text.empty();
+}
+
+std::string Serialize(const Snapshot& snapshot, bool cached) {
     Json root(cJSON_CreateObject(), cJSON_Delete);
     if (!root)
-        return;
-    cJSON_AddStringToObject(root.get(), "city", config.city.c_str());
-    cJSON_AddStringToObject(root.get(), "summary", summary.c_str());
-    cJSON_AddStringToObject(root.get(), "updated_at", updated.c_str());
+        return {};
+    cJSON_AddNumberToObject(root.get(), "schema_version", 2);
+    cJSON_AddStringToObject(root.get(), "city", snapshot.city.c_str());
+    cJSON_AddStringToObject(root.get(), "updated_at", snapshot.updated.c_str());
+    cJSON_AddBoolToObject(root.get(), "cached", cached);
+    auto current = cJSON_AddObjectToObject(root.get(), "current");
+    cJSON_AddStringToObject(current, "condition", snapshot.condition.c_str());
+    cJSON_AddStringToObject(current, "condition_code", snapshot.condition_code.c_str());
+    cJSON_AddNumberToObject(current, "temperature", snapshot.temperature);
+    cJSON_AddNumberToObject(current, "feels_like", snapshot.feels_like);
+    cJSON_AddNumberToObject(current, "humidity", snapshot.humidity);
+    cJSON_AddStringToObject(current, "wind", snapshot.wind.c_str());
+    cJSON_AddNumberToObject(current, "wind_scale", snapshot.wind_scale);
+    auto days = cJSON_AddArrayToObject(root.get(), "days");
+    for (const auto& day : snapshot.days) {
+        auto item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "date", day.date.c_str());
+        cJSON_AddStringToObject(item, "condition", day.condition.c_str());
+        cJSON_AddStringToObject(item, "condition_code", day.condition_code.c_str());
+        cJSON_AddNumberToObject(item, "temperature_min", day.temperature_min);
+        cJSON_AddNumberToObject(item, "temperature_max", day.temperature_max);
+        cJSON_AddNumberToObject(item, "precipitation_probability", day.precipitation_probability);
+        cJSON_AddStringToObject(item, "sunrise", day.sunrise.c_str());
+        cJSON_AddStringToObject(item, "sunset", day.sunset.c_str());
+        cJSON_AddItemToArray(days, item);
+    }
+    auto air = cJSON_AddObjectToObject(root.get(), "air");
+    cJSON_AddStringToObject(air, "category", snapshot.air_category.c_str());
+    cJSON_AddStringToObject(air, "aqi", snapshot.air_aqi.c_str());
+    auto index = cJSON_AddObjectToObject(root.get(), "index");
+    cJSON_AddStringToObject(index, "name", snapshot.index_name.c_str());
+    cJSON_AddStringToObject(index, "category", snapshot.index_category.c_str());
+    cJSON_AddStringToObject(index, "text", snapshot.index_text.c_str());
     std::unique_ptr<char, decltype(&cJSON_free)> json(cJSON_PrintUnformatted(root.get()),
                                                       cJSON_free);
-    if (!json)
-        return;
-    const auto size = strlen(json.get());
+    return json ? json.get() : std::string();
+}
+
+void SaveCache(const std::string& data) {
     FILE* file = fopen(kCacheTempPath, "wb");
     if (!file)
         return;
-    const bool written = fwrite(json.get(), 1, size, file) == size && fflush(file) == 0;
+    const bool written =
+        fwrite(data.data(), 1, data.size(), file) == data.size() && fflush(file) == 0;
     fclose(file);
     bool saved = written;
     if (saved && rename(kCacheTempPath, kCachePath) != 0) {
@@ -314,19 +480,33 @@ void SaveCache(const Config& config, const std::string& summary, const std::stri
     }
 }
 
+std::string LegacyCache(cJSON* root) {
+    const std::string city = StringValue(root, "city");
+    const std::string summary = StringValue(root, "summary");
+    const std::string updated = StringValue(root, "updated_at");
+    if (city.empty() || summary.empty() || updated.empty())
+        return {};
+    return city + "（缓存）\n" + summary + "\n\n数据来源：和风天气\n更新时间：" + updated;
+}
+
 }  // namespace
 
 std::string QWeatherService::LoadCache(const ContentStore& store) {
     std::string data;
-    if (!store.Read(kCacheFile, data, 4096))
+    if (!store.Read(kCacheFile, data, kMaxResponseBytes))
         return {};
     Json root(cJSON_ParseWithLength(data.data(), data.size()), cJSON_Delete);
-    const std::string city = StringValue(root.get(), "city");
-    const std::string summary = StringValue(root.get(), "summary");
-    const std::string updated = StringValue(root.get(), "updated_at");
-    if (city.empty() || summary.empty() || updated.empty())
+    if (!root)
         return {};
-    return Format(city, summary, updated, true);
+    auto version = cJSON_GetObjectItemCaseSensitive(root.get(), "schema_version");
+    auto current = ObjectValue(root.get(), "current");
+    if (!cJSON_IsNumber(version) || version->valueint != 2 || !current ||
+        !StringValue(root.get(), "city")[0] || !StringValue(current, "condition")[0])
+        return LegacyCache(root.get());
+    cJSON_ReplaceItemInObjectCaseSensitive(root.get(), "cached", cJSON_CreateBool(true));
+    std::unique_ptr<char, decltype(&cJSON_free)> json(cJSON_PrintUnformatted(root.get()),
+                                                      cJSON_free);
+    return json ? json.get() : std::string();
 }
 
 bool QWeatherService::Refresh(const ContentStore& store, std::string& display_text,
@@ -340,65 +520,47 @@ bool QWeatherService::Refresh(const ContentStore& store, std::string& display_te
         return false;
     }
 
-    char location[256];
-    snprintf(location, sizeof(location),
-             "https://%s/weather/v1/current/%.2f/%.2f?lang=zh&localTime=true",
-             config.api_host.c_str(), config.latitude, config.longitude);
-    auto network = Board::GetInstance().GetNetwork();
-    auto http = network ? network->CreateHttp(0) : nullptr;
-    if (!http) {
-        error = "天气网络服务不可用";
-        return false;
-    }
-    http->SetTimeout(8000);
-    http->SetHeader("X-QW-Api-Key", config.api_key);
-    http->SetHeader("Accept", "application/json");
-    // The board HTTP abstraction returns the response body verbatim and does not transparently
-    // inflate gzip. Ask QWeather for plain JSON so cJSON always receives decodable text.
-    http->SetHeader("Accept-Encoding", "identity");
-    if (!http->Open("GET", location)) {
-        error = "连接和风天气失败";
-        return false;
-    }
-    const int status = http->GetStatusCode();
-    const auto content_type = http->GetResponseHeader("Content-Type");
-    const auto content_encoding = http->GetResponseHeader("Content-Encoding");
+    char path[320];
     std::string body;
-    const bool read = status == 200 && ReadResponse(*http, body);
-    http->Close();
-    if (status != 200) {
+    int status = 0;
+    snprintf(path, sizeof(path), "/weather/v1/current/%.2f/%.2f?lang=zh&localTime=true",
+             config.latitude, config.longitude);
+    if (!Request(config, path, body, status)) {
         ESP_LOGW(kTag, "Current weather request failed with HTTP %d", status);
         error = status == 401 || status == 403 ? "和风天气密钥或权限无效" : "和风天气请求失败";
         return false;
     }
-    if (!read) {
-        error = "和风天气响应过大或读取失败";
+
+    Snapshot snapshot;
+    snapshot.city = config.city;
+    if (!ParseCurrent(body, snapshot, error))
+        return false;
+
+    snprintf(path, sizeof(path), "/weather/v1/daily/%.2f/%.2f?days=4&lang=zh&localTime=true",
+             config.latitude, config.longitude);
+    if (Request(config, path, body, status) && ParseDaily(body, snapshot))
+        ESP_LOGI(kTag, "Loaded %u daily forecasts", static_cast<unsigned>(snapshot.days.size()));
+    else
+        ESP_LOGW(kTag, "Daily forecast unavailable (HTTP %d)", status);
+
+    snprintf(path, sizeof(path), "/airquality/v1/current/%.2f/%.2f?lang=zh", config.latitude,
+             config.longitude);
+    if (!Request(config, path, body, status) || !ParseAir(body, snapshot))
+        ESP_LOGW(kTag, "Air quality unavailable (HTTP %d)", status);
+
+    snprintf(path, sizeof(path), "/v7/indices/1d?type=3&location=%.2f%%2C%.2f&lang=zh",
+             config.longitude, config.latitude);
+    if (!Request(config, path, body, status) || !ParseIndices(body, snapshot))
+        ESP_LOGW(kTag, "Lifestyle index unavailable (HTTP %d)", status);
+
+    snapshot.updated = Timestamp();
+    display_text = Serialize(snapshot, false);
+    if (display_text.empty()) {
+        error = "天气数据整理失败";
         return false;
     }
-    if (content_encoding == "gzip" || (body.size() >= 2 && static_cast<uint8_t>(body[0]) == 0x1f &&
-                                       static_cast<uint8_t>(body[1]) == 0x8b)) {
-        std::string plain;
-        if (!InflateGzip(body, plain)) {
-            ESP_LOGW(kTag, "Could not decompress gzip weather response (%u bytes)",
-                     static_cast<unsigned>(body.size()));
-            error = "和风天气响应解压失败";
-            return false;
-        }
-        ESP_LOGI(kTag, "Decompressed weather response: %u -> %u bytes",
-                 static_cast<unsigned>(body.size()), static_cast<unsigned>(plain.size()));
-        body = std::move(plain);
-    } else {
-        ESP_LOGI(kTag, "Weather response: type=%s encoding=%s bytes=%u", content_type.c_str(),
-                 content_encoding.empty() ? "identity" : content_encoding.c_str(),
-                 static_cast<unsigned>(body.size()));
-    }
-    std::string summary;
-    if (!ParseCurrent(body, summary, error))
-        return false;
-    const auto updated = Timestamp();
-    SaveCache(config, summary, updated);
-    display_text = Format(config.city, summary, updated, false);
-    ESP_LOGI(kTag, "Updated current weather for %s", config.city.c_str());
+    SaveCache(display_text);
+    ESP_LOGI(kTag, "Updated weather dashboard for %s", config.city.c_str());
     return true;
 }
 

@@ -52,8 +52,8 @@ async function prepare(args) {
     const outline=font.getPath(text,x,y,size); outline.fill=color; return outline.toSVG(2);
   }
   const cards = path.join(card,'phonetics/cards'); fs.mkdirSync(cards,{recursive:true});
-  const catalog = {schema_version:1,accent:'en-GB',inventory:'traditional-44',audio_included:false,
-    note:'Teaching convention; accent variants exist, especially /ʊə/. r is the conventional teaching symbol. Audio must be independently licensed and reviewed.',sounds:[]};
+  const catalog = {schema_version:1,accent:'mixed-offline-teaching-pack',inventory:'traditional-44',audio_included:true,
+    note:'Teaching convention; accent variants exist. Isolated sounds and synthesized example words are documented in AUDIO_SOURCES.json.',sounds:[]};
   for(const sound of inventory) {
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300"><rect width="480" height="300" rx="24" fill="#e9dffc"/>${textOutline('/'+sound.ipa+'/',155,100,'#142b57')}${textOutline(sound.words.join('   '),236,26,'#142b57')}</svg>`;
     fs.writeFileSync(path.join(cards,sound.id+'.svg'),svg+'\n');

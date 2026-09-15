@@ -64,6 +64,8 @@ private:
     void SetScreenOff(bool off);
     void ShowBatteryPopup();
     void CloseBatteryPopup();
+    void ShowWeatherIndexPopup();
+    void CloseWeatherIndexPopup();
     void UpdateSettingLabels();
     void UpdateTimer();
     void UpdateStroke();
@@ -75,7 +77,6 @@ private:
     void UpdatePinyinToneButtons();
     void RenderPinyinResults(const char* status);
     void ApplyPinyinResults(const std::string& query, std::vector<std::string> results);
-    void ApplyWeatherArt(std::string id, std::string data);
     void SaveTimer();
     void LoadPreferences();
     bool Queue(int type, const std::string& value);
@@ -113,6 +114,7 @@ private:
     lv_obj_t* battery_button_ = nullptr;
     lv_obj_t* battery_image_ = nullptr;
     lv_obj_t* battery_popup_ = nullptr;
+    lv_obj_t* weather_index_popup_ = nullptr;
     lv_obj_t* page_icon_ = nullptr;
     lv_obj_t* assistant_card_ = nullptr;
     lv_obj_t* assistant_badge_ = nullptr;
@@ -181,6 +183,8 @@ private:
     int stroke_ = -1;
     bool stroke_playing_ = false;
     int alarm_minutes_ = 405;
+    // Bit 0 is Monday and bit 6 is Sunday. A school-week alarm is the default.
+    uint8_t alarm_days_ = 0x1f;
     bool alarm_enabled_ = false;
     int64_t alarm_last_day_ = -1;
     bool alarm_ringing_ = false;
@@ -190,9 +194,7 @@ private:
     int timetable_today_ = -1;
     int64_t timetable_date_key_ = -1;
     std::string weather_text_;
-    std::string weather_art_id_;
-    std::string weather_art_data_;
-    lv_image_dsc_t weather_art_dsc_{};
+    std::string weather_index_detail_;
 #ifndef HAN_UI_HOST_SIM
     std::string dictionary_font_data_;
     lv_font_t* dictionary_font_ = nullptr;

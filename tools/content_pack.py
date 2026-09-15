@@ -351,6 +351,51 @@ def validate_qweather(record):
             raise ValueError(f"QWeather {name} is out of range")
 
 
+def validate_weather_page_graphics(folder):
+    graphics = folder / "ui/graphics/weather-page"
+    expected = {
+        "qingdao-hero.png": (760, 344),
+        "qingdao-hero-original.png": (1997, 787),
+        "air-quality.png": (76, 76),
+        "precipitation.png": (76, 76),
+        "sunrise-sunset.png": (76, 76),
+        "lifestyle-index.png": (76, 76),
+        **{f"condition-{name}.png": (192, 192) for name in
+           ("sunny", "partly-cloudy", "cloudy", "rain", "thunderstorm", "snow", "fog", "wind")},
+    }
+    if not graphics.is_dir():
+        raise ValueError("Weather page SD graphics are missing")
+    files = {path.name for path in graphics.iterdir() if path.is_file()}
+    if files != set(expected):
+        raise ValueError("Weather page SD graphics set is incomplete or contains unknown files")
+    total = 0
+    for name, dimensions in expected.items():
+        data = (graphics / name).read_bytes()
+        total += len(data)
+        if not 45 <= len(data) <= 2 * 1024 * 1024 or data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise ValueError(f"Invalid weather page PNG: {name}")
+        if data[12:16] != b"IHDR" or struct.unpack(">II", data[16:24]) != dimensions:
+            raise ValueError(f"Unexpected weather page PNG dimensions: {name}")
+    if total > 3 * 1024 * 1024:
+        raise ValueError("Weather page SD graphics exceed 3 MiB")
+
+
+def validate_alarm_page_graphics(folder):
+    graphics = folder / "ui/graphics/alarm-page"
+    expected = {"alarm-sunrise.png": (512, 512)}
+    if not graphics.is_dir():
+        raise ValueError("Alarm page SD graphics are missing")
+    files = {path.name for path in graphics.iterdir() if path.is_file()}
+    if files != set(expected):
+        raise ValueError("Alarm page SD graphics set is incomplete or contains unknown files")
+    for name, dimensions in expected.items():
+        data = (graphics / name).read_bytes()
+        if not 45 <= len(data) <= 2 * 1024 * 1024 or data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise ValueError(f"Invalid alarm page PNG: {name}")
+        if data[12:16] != b"IHDR" or struct.unpack(">II", data[16:24]) != dimensions:
+            raise ValueError(f"Unexpected alarm page PNG dimensions: {name}")
+
+
 def validate(folder):
     folder = Path(folder)
     manifest = read_json(folder / "manifest.json", 4096)
@@ -366,6 +411,8 @@ def validate(folder):
     count = max(count, validate_index(folder))
     validate_stroke_index(folder)
     validate_pinyin_index(folder)
+    validate_weather_page_graphics(folder)
+    validate_alarm_page_graphics(folder)
     timetable = folder / "timetable.json"
     if timetable.exists():
         validate_timetable(read_json(timetable, 8192))
@@ -374,11 +421,18 @@ def validate(folder):
         validate_qweather(read_json(qweather, 2048))
     weather = folder / "weather.json"
     if weather.exists():
-        record = read_json(weather, 4096)
-        for key, limit in [("city", 96), ("summary", 512), ("updated_at", 64)]:
-            text(record, key, limit)
-        if record.get("summary") and not record.get("updated_at"):
-            raise ValueError("Weather cache must have an update timestamp")
+        record = read_json(weather, 48 * 1024)
+        text(record, "city", 96)
+        text(record, "updated_at", 64)
+        if record.get("schema_version") == 2:
+            if not isinstance(record.get("current"), dict):
+                raise ValueError("Weather cache current data must be an object")
+            if not isinstance(record.get("days", []), list) or len(record.get("days", [])) > 4:
+                raise ValueError("Weather cache supports at most four forecast days")
+        else:
+            text(record, "summary", 512)
+            if record.get("summary") and not record.get("updated_at"):
+                raise ValueError("Weather cache must have an update timestamp")
     for path in (folder / "phonetics").rglob("*.ogg"):
         if not 0 < path.stat().st_size <= 256 * 1024:
             raise ValueError(f"Audio size out of bounds: {path}")

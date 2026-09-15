@@ -28,6 +28,10 @@
 #include "assets/home_skin.h"
 #include "assets/timetable_assets.h"
 #include "assets/ui_assets.h"
+#ifdef HAN_UI_HOST_SIM
+#include "assets/weather_icon_pack.h"
+#endif
+#include "assets/weather_page_assets.h"
 #include "dictionary_service.h"
 #include "phonetics.h"
 #include "qweather_service.h"
@@ -193,6 +197,13 @@ lv_obj_t* Image(lv_obj_t* parent, const lv_image_dsc_t* source, int x, int y) {
     lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
     return image;
 }
+lv_obj_t* Image(lv_obj_t* parent, const char* source, int x, int y) {
+    auto image = lv_image_create(parent);
+    lv_image_set_src(image, source);
+    lv_obj_set_pos(image, x, y);
+    lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
+    return image;
+}
 int64_t NowMs() { return esp_timer_get_time() / 1000; }
 std::string Duration(int64_t ms) {
     auto sec = ms / 1000;
@@ -203,14 +214,94 @@ std::string Duration(int64_t ms) {
 
 struct WeatherView {
     std::string city;
-    std::string current;
-    std::string feels;
+    std::string condition;
+    std::string condition_code;
+    int temperature = 1000;
+    int feels_like = 1000;
+    int humidity = -1;
     std::string wind;
+    int wind_scale = -1;
     std::string updated;
+    struct Day {
+        std::string date;
+        std::string condition;
+        std::string condition_code;
+        int temperature_min = 1000;
+        int temperature_max = 1000;
+        int precipitation_probability = -1;
+        std::string sunrise;
+        std::string sunset;
+    };
+    std::vector<Day> days;
+    std::string air_category;
+    std::string air_aqi;
+    std::string index_name;
+    std::string index_category;
+    std::string index_text;
     bool cached = false;
 };
 
 WeatherView DecodeWeather(const std::string& text) {
+    WeatherView view;
+    if (!text.empty() && text.front() == '{') {
+        auto root = std::unique_ptr<cJSON, decltype(&cJSON_Delete)>(
+            cJSON_ParseWithLength(text.data(), text.size()), cJSON_Delete);
+        auto string_value = [](cJSON* object, const char* key) -> std::string {
+            auto value = object ? cJSON_GetObjectItemCaseSensitive(object, key) : nullptr;
+            return cJSON_IsString(value) && value->valuestring ? value->valuestring : "";
+        };
+        auto number_value = [](cJSON* object, const char* key, int fallback) {
+            auto value = object ? cJSON_GetObjectItemCaseSensitive(object, key) : nullptr;
+            return cJSON_IsNumber(value) ? value->valueint : fallback;
+        };
+        auto object_value = [](cJSON* object, const char* key) {
+            auto value = object ? cJSON_GetObjectItemCaseSensitive(object, key) : nullptr;
+            return cJSON_IsObject(value) ? value : nullptr;
+        };
+        if (root) {
+            view.city = string_value(root.get(), "city");
+            view.updated = string_value(root.get(), "updated_at");
+            view.cached = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root.get(), "cached"));
+            auto current = object_value(root.get(), "current");
+            view.condition = string_value(current, "condition");
+            view.condition_code = string_value(current, "condition_code");
+            view.temperature = number_value(current, "temperature", 1000);
+            view.feels_like = number_value(current, "feels_like", 1000);
+            view.humidity = number_value(current, "humidity", -1);
+            view.wind = string_value(current, "wind");
+            view.wind_scale = number_value(current, "wind_scale", -1);
+            auto days = cJSON_GetObjectItemCaseSensitive(root.get(), "days");
+            if (cJSON_IsArray(days)) {
+                const int count = std::min(4, cJSON_GetArraySize(days));
+                for (int index = 0; index < count; ++index) {
+                    auto item = cJSON_GetArrayItem(days, index);
+                    WeatherView::Day day;
+                    day.date = string_value(item, "date");
+                    day.condition = string_value(item, "condition");
+                    day.condition_code = string_value(item, "condition_code");
+                    day.temperature_min = number_value(item, "temperature_min", 1000);
+                    day.temperature_max = number_value(item, "temperature_max", 1000);
+                    day.precipitation_probability =
+                        number_value(item, "precipitation_probability", -1);
+                    day.sunrise = string_value(item, "sunrise");
+                    day.sunset = string_value(item, "sunset");
+                    view.days.push_back(std::move(day));
+                }
+            }
+            auto air = object_value(root.get(), "air");
+            view.air_category = string_value(air, "category");
+            view.air_aqi = string_value(air, "aqi");
+            auto index = object_value(root.get(), "index");
+            view.index_name = string_value(index, "name");
+            view.index_category = string_value(index, "category");
+            view.index_text = string_value(index, "text");
+            if (!view.city.empty() && !view.condition.empty())
+                return view;
+        }
+    }
+
+    // Read the previous cache shape too, so a firmware update still has weather before its first
+    // successful refresh.
     std::vector<std::string> lines;
     size_t start = 0;
     while (start <= text.size()) {
@@ -220,7 +311,6 @@ WeatherView DecodeWeather(const std::string& text) {
             break;
         start = end + 1;
     }
-    WeatherView view;
     if (!lines.empty()) {
         view.city = lines[0];
         const std::string marker = "（缓存）";
@@ -230,10 +320,20 @@ WeatherView DecodeWeather(const std::string& text) {
             view.cached = true;
         }
     }
-    if (lines.size() > 1)
-        view.current = lines[1];
-    if (lines.size() > 2)
-        view.feels = lines[2];
+    if (lines.size() > 1) {
+        const auto separator = lines[1].rfind(' ');
+        view.condition = separator == std::string::npos ? lines[1] : lines[1].substr(0, separator);
+        if (separator != std::string::npos)
+            view.temperature = std::strtol(lines[1].c_str() + separator + 1, nullptr, 10);
+    }
+    if (lines.size() > 2) {
+        const auto start = lines[2].find("体感 ");
+        if (start != std::string::npos)
+            view.feels_like = std::strtol(lines[2].c_str() + start + strlen("体感 "), nullptr, 10);
+        const auto humidity = lines[2].find("湿度 ");
+        if (humidity != std::string::npos)
+            view.humidity = std::strtol(lines[2].c_str() + humidity + strlen("湿度 "), nullptr, 10);
+    }
     if (lines.size() > 3)
         view.wind = lines[3];
     for (const auto& line : lines) {
@@ -244,83 +344,67 @@ WeatherView DecodeWeather(const std::string& text) {
     return view;
 }
 
-int WeatherTemperature(const WeatherView& weather) {
-    const auto degree = weather.current.find("°C");
-    if (degree == std::string::npos)
-        return 1000;
-    auto begin = weather.current.rfind(' ', degree);
-    begin = begin == std::string::npos ? 0 : begin + 1;
+std::string WeatherConditionId(const std::string& text, const std::string& code) {
     char* end = nullptr;
-    const auto value = std::strtol(weather.current.c_str() + begin, &end, 10);
-    return end == weather.current.c_str() + begin ? 1000 : static_cast<int>(value);
-}
-
-std::string WeatherGraphicId(const std::string& text) {
-    if (text.find("雷") != std::string::npos)
-        return "weather-thunderstorm";
-    if (text.find("冰雹") != std::string::npos)
-        return "weather-hail";
-    if (text.find("雨夹雪") != std::string::npos || text.find("冻雨") != std::string::npos)
-        return "weather-sleet";
-    if (text.find("暴雨") != std::string::npos || text.find("大雨") != std::string::npos)
-        return "weather-heavy-rain";
-    if (text.find("阵雨") != std::string::npos)
-        return "weather-showers";
-    if (text.find("小雨") != std::string::npos)
-        return "weather-light-rain";
+    const long value = code.empty() ? -1 : std::strtol(code.c_str(), &end, 10);
+    if (!code.empty() && end != code.c_str() && *end == '\0') {
+        if (value == 100 || value == 150 || value == 900)
+            return "sunny";
+        if ((value >= 101 && value <= 103) || (value >= 151 && value <= 153))
+            return "partly-cloudy";
+        if (value == 104)
+            return "cloudy";
+        if ((value >= 302 && value <= 304) || value == 350 || value == 351)
+            return "thunderstorm";
+        if (value >= 300 && value <= 399)
+            return "rain";
+        if (value >= 400 && value <= 499)
+            return "snow";
+        if (value >= 500 && value <= 515)
+            return "fog";
+        if (value == 901)
+            return "cloudy";
+    }
+    if (text.find("雷") != std::string::npos || text.find("冰雹") != std::string::npos)
+        return "thunderstorm";
     if (text.find("雨") != std::string::npos)
-        return "weather-rain";
+        return "rain";
     if (text.find("雪") != std::string::npos)
-        return "weather-snow";
-    if (text.find("雾") != std::string::npos || text.find("霾") != std::string::npos)
-        return "weather-fog";
-    if (text.find("沙") != std::string::npos || text.find("尘") != std::string::npos)
-        return "weather-sand";
-    if (text.find("阴") != std::string::npos)
-        return "weather-overcast";
-    if (text.find("多云") != std::string::npos)
-        return "weather-partly-cloudy-day";
-    if (text.find("晴") != std::string::npos)
-        return "weather-clear-day";
-    if (text.find("风") != std::string::npos)
-        return "weather-wind";
-    const auto temperature = WeatherTemperature(DecodeWeather(text));
-    if (temperature >= 35)
-        return "weather-hot";
-    if (temperature <= 0)
-        return "weather-cold";
-    return "weather-unknown";
-}
-
-bool IsPng192(const std::string& data) {
-    if (data.size() < 24 || memcmp(data.data(), "\x89PNG\r\n\x1a\n", 8) != 0)
-        return false;
-    const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
-    const auto read_be32 = [](const uint8_t* value) {
-        return (static_cast<uint32_t>(value[0]) << 24) | (static_cast<uint32_t>(value[1]) << 16) |
-               (static_cast<uint32_t>(value[2]) << 8) | value[3];
-    };
-    return read_be32(bytes + 16) == 192 && read_be32(bytes + 20) == 192;
-}
-
-std::pair<const char*, const char*> WeatherAdvice(const WeatherView& weather) {
-    const auto& text = weather.current;
-    if (text.find("雨") != std::string::npos || text.find("雷") != std::string::npos)
-        return {"带好雨具", "把雨伞放进书包，路滑要慢慢走。"};
-    if (text.find("雪") != std::string::npos || text.find("冰") != std::string::npos)
-        return {"注意保暖", "戴好帽子和手套，小心结冰路面。"};
+        return "snow";
     if (text.find("雾") != std::string::npos || text.find("霾") != std::string::npos ||
-        text.find("沙") != std::string::npos)
-        return {"保护口鼻", "出门戴好口罩，路上注意来往车辆。"};
-    const int temperature = WeatherTemperature(weather);
-    if (temperature <= 10)
-        return {"多穿一件", "早晚比较凉，带上外套更舒服。"};
-    if (temperature >= 30)
-        return {"记得喝水", "天气偏热，户外活动要及时休息。"};
+        text.find("沙") != std::string::npos || text.find("尘") != std::string::npos)
+        return "fog";
+    if (text.find("少云") != std::string::npos || text.find("晴间多云") != std::string::npos ||
+        text.find("多云") != std::string::npos)
+        return "partly-cloudy";
+    if (text.find("阴") != std::string::npos)
+        return "cloudy";
     if (text.find("晴") != std::string::npos)
-        return {"适合出门", "阳光不错，活动后别忘了补充水分。"};
-    return {"轻松准备", "出门前看看窗外，带好今天的学习用品。"};
+        return "sunny";
+    if (text.find("风") != std::string::npos)
+        return "wind";
+    return "cloudy";
 }
+
+#ifdef HAN_UI_HOST_SIM
+const char* LegacyWeatherGraphicId(const std::string& id) {
+    if (id == "sunny")
+        return "weather-clear-day";
+    if (id == "partly-cloudy")
+        return "weather-partly-cloudy-day";
+    if (id == "rain")
+        return "weather-rain";
+    if (id == "thunderstorm")
+        return "weather-thunderstorm";
+    if (id == "snow")
+        return "weather-snow";
+    if (id == "fog")
+        return "weather-fog";
+    if (id == "wind")
+        return "weather-wind";
+    return "weather-overcast";
+}
+#endif
 }  // namespace
 
 void HanDisplay::AttachTouch(esp_lcd_touch_handle_t touch) {
@@ -459,8 +543,8 @@ void HanDisplay::InstallDictionaryFont(std::string data) {
     dictionary_font_->fallback = &han_font_28;
     ESP_LOGI("HanDisplay", "SD dictionary font loaded: %u bytes",
              static_cast<unsigned>(dictionary_font_data_.size()));
-    if (page_ == Page::Dictionary)
-        Render(Page::Dictionary);
+    if (page_ == Page::Dictionary || page_ == Page::Weather)
+        Render(page_);
 #else
     (void)data;
 #endif
@@ -702,6 +786,7 @@ void HanDisplay::Render(Page page) {
     if (entering_dictionary)
         stroke_ = -1;
     CloseBatteryPopup();
+    CloseWeatherIndexPopup();
     stroke_playing_ = false;
     timer_value_ = stroke_value_ = stroke_image_ = network_info_ = search_ = nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
@@ -788,7 +873,11 @@ void HanDisplay::Render(Page page) {
         lv_obj_set_x(title_, 178);
         lv_obj_set_pos(body_, 24, 104);
         lv_obj_set_size(body_, 1232, 490);
-        if (page == Page::Dictionary) {
+        if (page == Page::Dictionary || page == Page::Phonetics || page == Page::Alarm) {
+            lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_size(body_, 1232, 592);
+        } else if (page == Page::Weather) {
             lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_size(body_, 1232, 592);
@@ -1312,15 +1401,19 @@ void HanDisplay::RenderStroke() {
 
 void HanDisplay::Phonetics() {
     const char* cats[] = {"单元音", "双元音", "辅音"};
+    constexpr uint32_t tab_colors[] = {0xe5d9ff, 0xdceeff, 0xe0f6e5};
     for (int i = 0; i < 3; ++i) {
-        auto tab =
-            Button(body_, cats[i], i * 418, 0, 396, 66, i == category_ ? 0xc3a5f4 : kBlue, 100 + i);
+        auto tab = Button(body_, cats[i], i * 418, 0, 396, 66,
+                          i == category_ ? 0x9a78ee : tab_colors[i], 100 + i);
+        auto tab_text = lv_obj_get_child(tab, 0);
+        lv_obj_set_style_text_font(tab_text, &han_font_phonetics, 0);
         if (i == category_) {
             lv_obj_set_style_border_width(tab, 3, 0);
             lv_obj_set_style_border_color(tab, lv_color_hex(0x8d6dd2), 0);
+            lv_obj_set_style_text_color(tab_text, lv_color_hex(0xffffff), 0);
         }
     }
-    auto panel = Card(body_, 0, 86, 465, 397, 0xeee6ff);
+    auto panel = Card(body_, 0, 86, 465, 506, 0xf0eaff);
     int shown = 0;
     for (int i = 0; i < static_cast<int>(std::size(han::kSounds)); ++i) {
         if (han::kSounds[i].category != category_)
@@ -1329,34 +1422,49 @@ void HanDisplay::Phonetics() {
         if (offset < sound_page_ * 6 || offset >= (sound_page_ + 1) * 6)
             continue;
         const int cell = offset % 6;
-        auto btn = Button(panel, han::kSounds[i].ipa, 14 + cell % 3 * 148, 18 + cell / 3 * 122, 137,
-                          112, i == sound_ ? 0xc3a5f4 : 0xffffff, 200 + i);
-        lv_obj_set_style_text_font(lv_obj_get_child(btn, 0), &han_font_40, 0);
+        auto btn = Button(panel, han::kSounds[i].ipa, 14 + cell % 3 * 148, 18 + cell / 3 * 135, 137,
+                          122, i == sound_ ? 0xd7c7ff : 0xffffff, 200 + i);
+        lv_obj_set_style_text_font(lv_obj_get_child(btn, 0), &han_font_phonetics_ipa, 0);
+        if (i == sound_) {
+            lv_obj_set_style_border_width(btn, 3, 0);
+            lv_obj_set_style_border_color(btn, lv_color_hex(0x8e6ce4), 0);
+        }
     }
-    Button(panel, "上一页", 14, 271, 137, 58, kBlue, 120);
+    auto previous = Button(panel, "上一页", 14, 355, 137, 72, 0xffffff, 120);
+    lv_obj_set_style_text_font(lv_obj_get_child(previous, 0), &han_font_phonetics, 0);
     const auto page = std::to_string(sound_page_ + 1) + " / " + std::to_string((shown + 5) / 6);
-    Label(panel, page.c_str(), 190, 282, 130);
-    Button(panel, "下一页", 310, 271, 137, 58, kBlue, 121);
-    Label(panel, "英式音标 · 44 音学习卡", 18, 353, 430);
-    auto detail = Card(body_, 490, 86, 742, 397, 0xffffff);
-    auto headphones = Image(detail, &han_icon_phonetics, 650, 14);
-    lv_image_set_scale(headphones, 104);
-    lv_image_set_pivot(headphones, 0, 0);
+    auto page_label = Label(panel, page.c_str(), 168, 373, 130, &han_font_phonetics);
+    lv_obj_set_style_text_align(page_label, LV_TEXT_ALIGN_CENTER, 0);
+    auto next = Button(panel, "下一页", 310, 355, 137, 72, 0xded1ff, 121);
+    lv_obj_set_style_text_font(lv_obj_get_child(next, 0), &han_font_phonetics, 0);
+
+    auto detail = Card(body_, 490, 86, 742, 506, 0xffffff);
     auto& sound = han::kSounds[sound_];
     auto ipa = "/" + std::string(sound.ipa) + "/";
-    auto current = Box(detail, 24, 20, 170, 38, kPurple);
-    lv_obj_set_style_radius(current, 19, 0);
-    auto current_text = Label(current, "当前音标", 6, 1, 158);
-    lv_obj_set_style_text_align(current_text, LV_TEXT_ALIGN_CENTER, 0);
-    auto big = Label(detail, ipa.c_str(), 20, 45, 700, &han_font_large);
+    auto big = Label(detail, ipa.c_str(), 20, 20, 700, &han_font_phonetics_ipa);
     lv_obj_set_style_text_align(big, LV_TEXT_ALIGN_CENTER, 0);
-    Button(detail, "听示范", 155, 158, 430, 62, kPurple, 110);
-    for (int i = 0; i < 3; ++i)
-        Button(detail, sound.words[i], 20 + i * 237, 238, 220, 68, kGreen, 111 + i);
-    auto record = Button(detail, "录音跟读（后续）", 20, 323, 340, 56, kBlue, 114);
-    lv_obj_add_state(record, LV_STATE_DISABLED);
-    auto audio_hint = Label(detail, "音频需放入 SD 卡", 384, 334, 330);
-    lv_obj_set_style_text_color(audio_hint, lv_color_hex(kMuted), 0);
+    auto play = Button(detail, "▶  听示范", 142, 91, 458, 78, 0xa282f2, 110);
+    lv_obj_set_style_text_font(lv_obj_get_child(play, 0), &han_font_phonetics, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(play, 0), lv_color_hex(0xffffff), 0);
+
+    constexpr uint32_t word_colors[] = {0xfff3cc, 0xe8f7df, 0xe1f2ff};
+    for (int i = 0; i < 3; ++i) {
+        auto word_card =
+            Button(detail, sound.words[i], 20 + i * 237, 190, 220, 282, word_colors[i], 111 + i);
+        auto word_label = lv_obj_get_child(word_card, 0);
+        lv_obj_set_width(word_label, 204);
+        lv_obj_set_style_text_font(word_label, &han_font_phonetics, 0);
+        lv_obj_set_style_text_align(word_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(word_label, LV_ALIGN_TOP_MID, 0, 225);
+        const auto icon_path = "S:/sdcard/handict/ui/graphics/phonetics-page/words/" +
+                               std::string(sound.words[i]) + ".png";
+        Image(word_card, icon_path.c_str(), 39, 53);
+        auto play_badge = Box(word_card, 168, 18, 38, 38, 0xf2ecff);
+        lv_obj_set_style_radius(play_badge, LV_RADIUS_CIRCLE, 0);
+        auto play_icon = Label(play_badge, "▶", 5, 2, 28, &han_font_phonetics);
+        lv_obj_set_style_text_align(play_icon, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(play_icon, lv_color_hex(0x8062df), 0);
+    }
 }
 
 void HanDisplay::Timetable() {
@@ -1463,26 +1571,6 @@ void HanDisplay::SetWeatherTextForTest(std::string text) {
 }
 #endif
 
-void HanDisplay::ApplyWeatherArt(std::string id, std::string data) {
-    if (!IsPng192(data)) {
-        id.clear();
-        data.clear();
-    }
-    if (!weather_art_data_.empty())
-        lv_image_cache_drop(&weather_art_dsc_);
-    weather_art_id_ = std::move(id);
-    weather_art_data_ = std::move(data);
-    weather_art_dsc_ = {};
-    if (!weather_art_data_.empty()) {
-        weather_art_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
-        weather_art_dsc_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
-        weather_art_dsc_.header.w = 192;
-        weather_art_dsc_.header.h = 192;
-        weather_art_dsc_.data_size = static_cast<uint32_t>(weather_art_data_.size());
-        weather_art_dsc_.data = reinterpret_cast<const uint8_t*>(weather_art_data_.data());
-    }
-}
-
 void HanDisplay::Timer() {
     auto left = Card(body_, 0, 0, 724, 480, 0xffffff);
     const uint32_t subject_colors[] = {0xffddd6, 0xd9edfc, 0xe9dffc};
@@ -1536,20 +1624,47 @@ void HanDisplay::UpdateTimer() {
 }
 
 void HanDisplay::Alarm() {
-    auto picker = Card(body_, 0, 0, 760, 480, 0xffffff);
-    Label(picker, "设置提醒时间", 28, 22, 520, &han_font_40);
-    auto repeat = Box(picker, 574, 24, 150, 44, kPurple);
-    lv_obj_set_style_radius(repeat, 22, 0);
-    auto repeat_text = Label(repeat, "每天", 8, 4, 134);
-    lv_obj_set_style_text_align(repeat_text, LV_TEXT_ALIGN_CENTER, 0);
-    Label(picker, "小时", 116, 98, 190);
-    Label(picker, "分钟", 430, 98, 190);
-    alarm_hour_ = lv_roller_create(picker);
+    auto panel = Card(body_, 0, 0, 1232, 592, 0xffffff);
+    lv_obj_set_style_radius(panel, 30, 0);
+
+    // Keep a small embedded fallback behind the SD illustration. On the device the transparent
+    // high-resolution artwork covers it; a missing SD asset still leaves the page usable.
+    auto fallback_art = Image(panel, &han_art_alarm, 49, 52);
+    lv_image_set_scale(fallback_art, 500);
+    lv_image_set_pivot(fallback_art, 0, 0);
+#ifndef HAN_UI_HOST_SIM
+    auto alarm_art =
+        Image(panel, "S:/sdcard/handict/ui/graphics/alarm-page/alarm-sunrise.png", 17, 20);
+    lv_image_set_scale(alarm_art, 210);
+    lv_image_set_pivot(alarm_art, 0, 0);
+#endif
+
+    auto status = Box(panel, 68, 476, 320, 58, 0xffffff);
+    lv_obj_set_style_radius(status, 29, 0);
+    lv_obj_set_style_border_width(status, 2, 0);
+    lv_obj_set_style_border_color(status, lv_color_hex(alarm_enabled_ ? 0xb6e9c9 : 0xdce3ea), 0);
+    lv_obj_set_style_shadow_color(status, lv_color_hex(alarm_enabled_ ? 0xa2dfb7 : 0xcbd3dc), 0);
+    lv_obj_set_style_shadow_width(status, 10, 0);
+    lv_obj_set_style_shadow_opa(status, LV_OPA_30, 0);
+    auto status_icon = Box(status, 15, 10, 38, 38, alarm_enabled_ ? 0x28c978 : 0xb3bdca);
+    lv_obj_set_style_radius(status_icon, LV_RADIUS_CIRCLE, 0);
+    auto check = Label(status_icon, alarm_enabled_ ? "✓" : "—", 2, 0, 34, &han_font_weather);
+    lv_obj_set_style_text_align(check, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(check, lv_color_hex(0xffffff), 0);
+    auto status_text = Label(status,
+                             alarm_ringing_   ? "正在响铃"
+                             : alarm_enabled_ ? "闹钟已开启"
+                                              : "闹钟未开启",
+                             61, 9, 240, &han_font_weather);
+    lv_obj_set_style_text_align(status_text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(status_text, lv_color_hex(alarm_enabled_ ? 0x128349 : 0x77849a), 0);
+
+    alarm_hour_ = lv_roller_create(panel);
     lv_roller_set_options(alarm_hour_,
                           "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n13\n14\n15\n16\n17\n"
                           "18\n19\n20\n21\n22\n23",
-                          LV_ROLLER_MODE_NORMAL);
-    alarm_minute_ = lv_roller_create(picker);
+                          LV_ROLLER_MODE_INFINITE);
+    alarm_minute_ = lv_roller_create(panel);
     std::string minutes;
     for (int i = 0; i < 60; ++i) {
         char s[5];
@@ -1558,123 +1673,264 @@ void HanDisplay::Alarm() {
             minutes += '\n';
         minutes += s;
     }
-    lv_roller_set_options(alarm_minute_, minutes.c_str(), LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_options(alarm_minute_, minutes.c_str(), LV_ROLLER_MODE_INFINITE);
     lv_roller_set_selected(alarm_hour_, alarm_minutes_ / 60, LV_ANIM_OFF);
     lv_roller_set_selected(alarm_minute_, alarm_minutes_ % 60, LV_ANIM_OFF);
-    int x = 90;
+    int x = 492;
     for (auto roller : {alarm_hour_, alarm_minute_}) {
-        lv_obj_set_pos(roller, x, 145);
-        lv_obj_set_width(roller, 240);
-        lv_obj_set_style_text_font(roller, &han_font_40, 0);
-        lv_obj_set_style_radius(roller, 20, 0);
-        lv_obj_set_style_border_width(roller, 0, 0);
-        lv_obj_set_style_bg_color(roller, lv_color_hex(0xf6f3ee), 0);
-        lv_obj_set_style_bg_color(roller, lv_color_hex(0x8fc9fb), LV_PART_SELECTED);
+        lv_obj_set_pos(roller, x, 46);
+        lv_obj_set_width(roller, 270);
+        lv_obj_set_style_text_font(roller, &han_font_weather_hero, 0);
+        lv_obj_set_style_text_font(roller, &han_font_weather_hero, LV_PART_SELECTED);
+        lv_obj_set_style_text_line_space(roller, 15, 0);
+        lv_obj_set_style_text_line_space(roller, 15, LV_PART_SELECTED);
+        lv_obj_set_style_text_color(roller, lv_color_hex(0x8c9ab2), 0);
+        lv_obj_set_style_radius(roller, 26, 0);
+        lv_obj_set_style_border_width(roller, 2, 0);
+        lv_obj_set_style_border_color(roller, lv_color_hex(0xc9def1), 0);
+        lv_obj_set_style_bg_color(roller, lv_color_hex(0xf2f8fd), 0);
+        lv_obj_set_style_bg_color(roller, lv_color_hex(0xccecff), LV_PART_SELECTED);
+        lv_obj_set_style_bg_grad_color(roller, lv_color_hex(0xaedbff), LV_PART_SELECTED);
+        lv_obj_set_style_bg_grad_dir(roller, LV_GRAD_DIR_VER, LV_PART_SELECTED);
         lv_obj_set_style_text_color(roller, lv_color_hex(kInk), LV_PART_SELECTED);
+        lv_obj_set_style_radius(roller, 18, LV_PART_SELECTED);
+        lv_obj_set_style_border_width(roller, 1, LV_PART_SELECTED);
+        lv_obj_set_style_border_color(roller, lv_color_hex(0x94cdf6), LV_PART_SELECTED);
+        lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_MOMENTUM);
         lv_roller_set_visible_row_count(roller, 3);
-        x += 314;
+        x += 350;
     }
-    Label(picker, ":", 353, 227, 54, &han_font_40);
-    auto hint = Label(picker, "上下滑动数字，选择每天提醒的时间", 120, 416, 520);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(hint, lv_color_hex(kMuted), 0);
+    auto separator = Label(panel, ":", 778, 114, 48, &han_font_weather_hero);
+    lv_obj_set_style_text_align(separator, LV_TEXT_ALIGN_CENTER, 0);
 
-    auto summary = Card(body_, 784, 0, 448, 480, alarm_ringing_ ? 0xffe0e2 : 0xfff3d7);
-    auto alarm_icon = Image(summary, &han_icon_alarm, 344, 16);
-    lv_image_set_scale(alarm_icon, 120);
-    lv_image_set_pivot(alarm_icon, 0, 0);
-    auto status = Box(summary, 24, 24, 176, 44, alarm_enabled_ ? kGreen : 0xf1eee8);
-    lv_obj_set_style_radius(status, 22, 0);
-    auto status_text = Label(status,
-                             alarm_ringing_   ? "正在响铃"
-                             : alarm_enabled_ ? "提醒已开启"
-                                              : "提醒未开启",
-                             8, 4, 160);
-    lv_obj_set_style_text_align(status_text, LV_TEXT_ALIGN_CENTER, 0);
-    char time_text[16];
-    snprintf(time_text, sizeof(time_text), "%02d:%02d", alarm_minutes_ / 60, alarm_minutes_ % 60);
-    auto time = Label(summary, time_text, 24, 92, 400, &han_font_large);
-    lv_obj_set_style_text_align(time, LV_TEXT_ALIGN_CENTER, 0);
-    Label(summary, "每天到点提醒", 112, 214, 260, &han_font_40);
-    Button(summary, alarm_enabled_ ? "保存并保持开启" : "保存并开启", 24, 272, 400, 72, kGreen,
-           400);
-    Button(summary, alarm_ringing_ ? "停止铃声" : "关闭提醒", 24, 365, 400, 72, kPink, 401);
+    for (int day = 0; day < 7; ++day) {
+        const bool selected = (alarm_days_ & (1U << day)) != 0;
+        auto button = Button(panel, kWeekdays[day], 488 + day * 101, 332, 90, 60,
+                             selected ? 0xd2f8df : 0xf1f3f6, 410 + day);
+        lv_obj_set_style_border_width(button, selected ? 2 : 1, 0);
+        lv_obj_set_style_border_color(button, lv_color_hex(selected ? 0x8bdfaa : 0xdce3ea), 0);
+        auto day_label = lv_obj_get_child(button, 0);
+        lv_obj_set_style_text_font(day_label, &han_font_weather, 0);
+        lv_obj_set_style_text_color(day_label, lv_color_hex(selected ? 0x078447 : 0x7b879d), 0);
+    }
+
+    auto save = Button(panel, "保存并开启", 488, 438, 330, 86, 0x28cf7d, 400);
+    auto disable =
+        Button(panel, alarm_ringing_ ? "停止铃声" : "关闭闹钟", 850, 438, 330, 86, 0xffabc5, 401);
+    lv_obj_set_style_bg_grad_color(save, lv_color_hex(0x08b966), 0);
+    lv_obj_set_style_bg_grad_dir(save, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_border_width(save, 2, 0);
+    lv_obj_set_style_border_color(save, lv_color_hex(0x70e4a8), 0);
+    lv_obj_set_style_shadow_color(save, lv_color_hex(0x28c978), 0);
+    lv_obj_set_style_shadow_width(save, 14, 0);
+    lv_obj_set_style_shadow_opa(save, LV_OPA_30, 0);
+    lv_obj_set_style_bg_grad_color(disable, lv_color_hex(0xff8fb3), 0);
+    lv_obj_set_style_bg_grad_dir(disable, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_border_width(disable, 2, 0);
+    lv_obj_set_style_border_color(disable, lv_color_hex(0xffc7d8), 0);
+    lv_obj_set_style_shadow_color(disable, lv_color_hex(0xff99b9), 0);
+    lv_obj_set_style_shadow_width(disable, 14, 0);
+    lv_obj_set_style_shadow_opa(disable, LV_OPA_30, 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(save, 0), &han_font_weather, 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(disable, 0), &han_font_weather, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(save, 0), lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(disable, 0), lv_color_hex(0xb8003b), 0);
 }
 
 void HanDisplay::Weather() {
     const auto weather = DecodeWeather(weather_text_);
-    auto hero = Card(body_, 0, 0, 492, 480, 0xd9edfc);
-    lv_obj_set_style_bg_grad_color(hero, lv_color_hex(0xf1f9ff), 0);
-    lv_obj_set_style_bg_grad_dir(hero, LV_GRAD_DIR_VER, 0);
-    if (!weather_art_data_.empty()) {
-        auto art = Image(hero, &weather_art_dsc_, 20, 20);
-        lv_obj_set_style_shadow_width(art, 18, 0);
-        lv_obj_set_style_shadow_opa(art, LV_OPA_20, 0);
-    } else {
-        auto icon_circle = Box(hero, 28, 28, 144, 144, 0xffffff);
-        lv_obj_set_style_radius(icon_circle, LV_RADIUS_CIRCLE, 0);
-        auto img = Image(icon_circle, &han_icon_weather, 8, 8);
-        lv_image_set_scale(img, 220);
-        lv_image_set_pivot(img, 0, 0);
+    weather_index_detail_.clear();
+    if (!weather.index_text.empty()) {
+        if (!weather.index_name.empty())
+            weather_index_detail_ += weather.index_name + "\n";
+        if (!weather.index_category.empty())
+            weather_index_detail_ += weather.index_category + "\n\n";
+        weather_index_detail_ += weather.index_text;
     }
+    auto hero = Card(body_, 0, 0, 760, 344, 0xd9edfc);
+    lv_obj_set_style_radius(hero, 28, 0);
+#ifdef HAN_UI_HOST_SIM
+    Image(hero, &han_weather_qingdao_hero, 0, 0);
+#else
+    Image(hero, "S:/sdcard/handict/ui/graphics/weather-page/qingdao-hero.png", 0, 0);
+#endif
+
     if (weather_text_.empty()) {
-        Label(hero, "还没有天气", 196, 48, 260, &han_font_40);
+        auto empty = Box(hero, 24, 24, 390, 250, 0xffffff);
+        lv_obj_set_style_bg_opa(empty, LV_OPA_80, 0);
+        Label(empty, "还没有天气", 24, 20, 340, &han_font_40);
         auto intro =
-            Label(hero, "先把和风天气配置放进 SD 卡，\n再点右侧的刷新按钮。", 36, 212, 420);
+            Label(empty, "请把和风天气配置放进 SD 卡，\n进入本页后会自动刷新。", 24, 92, 340);
         ApplyDynamicTextFont(intro);
-        auto path = Label(hero, "SD:/handict/qweather.json", 36, 335, 420);
+        auto path = Label(empty, "SD:/handict/qweather.json", 24, 184, 340);
         lv_obj_set_style_text_color(path, lv_color_hex(0x3976a8), 0);
     } else {
-        auto city = Label(hero, weather.city.c_str(), 226, 35, 230, &han_font_40);
-        ApplyDynamicTextFont(city);
+        auto veil = Box(hero, 18, 18, 360, 292, 0xffffff);
+        lv_obj_set_style_bg_opa(veil, LV_OPA_70, 0);
+        // Centre the three headline rows on an even 68 px rhythm.  The fonts have
+        // different line heights, so equal top coordinates would not look evenly spaced.
+        constexpr int kHeroHeadlineCenters[] = {48, 116, 184};
+        Label(hero, weather.city.c_str(), 42,
+              kHeroHeadlineCenters[0] - han_font_weather_title.line_height / 2, 310,
+              &han_font_weather_title);
         if (weather.cached) {
-            auto badge = Box(hero, 228, 86, 126, 38, 0xffe7bd);
-            lv_obj_set_style_radius(badge, 19, 0);
-            auto badge_text = Label(badge, "缓存天气", 6, 1, 114);
+            auto badge = Box(hero, 230, 35, 120, 34, 0xffe7bd);
+            lv_obj_set_style_radius(badge, 17, 0);
+            auto badge_text = Label(badge, "缓存", 6, -1, 108, &han_font_weather);
             lv_obj_set_style_text_align(badge_text, LV_TEXT_ALIGN_CENTER, 0);
         }
-        const auto separator = weather.current.rfind(' ');
-        const auto condition =
-            separator == std::string::npos ? weather.current : weather.current.substr(0, separator);
-        const auto temperature =
-            separator == std::string::npos ? std::string() : weather.current.substr(separator + 1);
-        auto condition_text = Label(hero, condition.c_str(), 226, 135, 230, &han_font_40);
-        ApplyDynamicTextFont(condition_text);
-        auto temperature_text = Label(hero, temperature.c_str(), 34, 219, 424, &han_font_large);
-        lv_obj_set_style_text_align(temperature_text, LV_TEXT_ALIGN_LEFT, 0);
-        auto feels_box = Box(hero, 28, 327, 436, 50, 0xffffff);
-        auto wind_box = Box(hero, 28, 386, 436, 50, 0xffffff);
-        auto feels = Label(feels_box, weather.feels.c_str(), 18, 5, 400);
-        auto wind = Label(wind_box, weather.wind.c_str(), 18, 5, 400);
-        ApplyDynamicTextFont(feels);
-        ApplyDynamicTextFont(wind);
+        char temperature[24];
+        snprintf(temperature, sizeof(temperature), "%d℃", weather.temperature);
+        Label(hero, temperature, 38,
+              kHeroHeadlineCenters[1] - han_font_weather_hero.line_height / 2, 320,
+              &han_font_weather_hero);
+        Label(hero, weather.condition.c_str(), 44,
+              kHeroHeadlineCenters[2] - han_font_weather.line_height / 2, 300, &han_font_weather);
+        char details[96];
+        snprintf(details, sizeof(details), "体感 %d℃ · 湿度 %s", weather.feels_like,
+                 weather.humidity >= 0 ? (std::to_string(weather.humidity) + "%").c_str() : "--");
+        Label(hero, details, 44, 214, 310, &han_font_weather);
+        std::string wind = weather.wind.empty() ? "风力 --" : weather.wind;
+        if (weather.wind_scale >= 0)
+            wind += " " + std::to_string(weather.wind_scale) + "级";
+        Label(hero, wind.c_str(), 44, 252, 310, &han_font_weather);
+        const auto condition_id = WeatherConditionId(weather.condition, weather.condition_code);
+#ifdef HAN_UI_HOST_SIM
+        const auto* current_art = han_weather_icon_find(LegacyWeatherGraphicId(condition_id));
+        if (current_art) {
+            auto art = Image(hero, current_art, 486, 45);
+            lv_image_set_scale(art, 420);
+            lv_image_set_pivot(art, 0, 0);
+        }
+#else
+        const auto current_path =
+            "S:/sdcard/handict/ui/graphics/weather-page/condition-" + condition_id + ".png";
+        auto art = Image(hero, current_path.c_str(), 474, 43);
+        lv_image_set_scale(art, 250);
+        lv_image_set_pivot(art, 0, 0);
+#endif
         if (!weather.updated.empty()) {
-            auto update = Label(hero, ("更新于 " + weather.updated).c_str(), 34, 443, 420);
+            auto update = Label(hero, ("和风天气 · " + weather.updated).c_str(), 492, 298, 242);
             lv_obj_set_style_text_color(update, lv_color_hex(kMuted), 0);
+            lv_obj_set_style_text_align(update, LV_TEXT_ALIGN_RIGHT, 0);
         }
     }
 
-    auto guide = Card(body_, 516, 0, 716, 480, 0xffffff);
-    Label(guide, "今天怎么准备？", 28, 24, 430, &han_font_40);
-    const auto advice = WeatherAdvice(weather);
-    auto advice_card = Box(guide, 28, 92, 660, 154, weather_text_.empty() ? 0xf4f1ec : kOrange);
-    Label(advice_card, weather_text_.empty() ? "完成天气配置" : advice.first, 24, 21, 610,
-          &han_font_40);
-    auto advice_text =
-        Label(advice_card, weather_text_.empty() ? "API KEY 只保存在你的 SD 卡中。" : advice.second,
-              24, 78, 610);
-    ApplyDynamicTextFont(advice_text);
-    auto source = Box(guide, 28, 275, 386, 70, 0xf4f7fb);
-    Label(source, "数据来源", 18, 8, 150);
-    Label(source, "和风天气", 172, 8, 195);
-    auto refresh = Button(guide, "刷新天气", 434, 275, 254, 70, kGreen, 900);
-    ApplyDynamicTextFont(lv_obj_get_child(refresh, 0));
-    auto note = Label(guide,
-                      weather.cached ? "当前显示上次缓存，联网后可刷新。"
-                                     : "天气变化很快，出门前可以再刷新一次。",
-                      28, 382, 660);
-    ApplyDynamicTextFont(note);
-    lv_obj_set_style_text_color(note, lv_color_hex(kMuted), 0);
+    const uint32_t forecast_colors[] = {0xfffdf8, 0xf7fbff, 0xfff9ef, 0xf6fbf7};
+    const char* day_names[] = {"今天", "明天", "后天", "第四天"};
+    constexpr int kForecastTitleY = 13;
+    constexpr int kForecastRangeY = 170;
+    const int forecast_title_center = kForecastTitleY + han_font_weather.line_height / 2;
+    const int forecast_range_center = kForecastRangeY + han_font_weather.line_height / 2;
+    const int forecast_icon_center = (forecast_title_center + forecast_range_center + 1) / 2;
+    for (int index = 0; index < 4; ++index) {
+        auto card = Card(body_, index * 190, 360, 181, 232, forecast_colors[index]);
+        const auto& day = index < static_cast<int>(weather.days.size()) ? weather.days[index]
+                                                                        : WeatherView::Day{};
+        std::string heading = day_names[index];
+        if (index == 3 && day.date.size() >= 10) {
+            struct tm parsed{};
+            if (sscanf(day.date.c_str(), "%d-%d-%d", &parsed.tm_year, &parsed.tm_mon,
+                       &parsed.tm_mday) == 3) {
+                parsed.tm_year -= 1900;
+                parsed.tm_mon -= 1;
+                mktime(&parsed);
+                static const char* names[] = {"周日", "周一", "周二", "周三",
+                                              "周四", "周五", "周六"};
+                heading = names[parsed.tm_wday];
+            }
+        }
+        auto heading_label =
+            Label(card, heading.c_str(), 8, kForecastTitleY, 165, &han_font_weather);
+        lv_obj_set_style_text_align(heading_label, LV_TEXT_ALIGN_CENTER, 0);
+        const auto condition_id = WeatherConditionId(day.condition, day.condition_code);
+#ifdef HAN_UI_HOST_SIM
+        const auto* art = han_weather_icon_find(LegacyWeatherGraphicId(condition_id));
+        if (art) {
+            constexpr int kForecastIconScale = 216;
+            const int scaled_height = (art->header.h * kForecastIconScale + 255) / 256;
+            auto image = Image(card, art, 50, forecast_icon_center - scaled_height / 2);
+            lv_image_set_scale(image, kForecastIconScale);
+            lv_image_set_pivot(image, 0, 0);
+        }
+#else
+        const auto path =
+            "S:/sdcard/handict/ui/graphics/weather-page/condition-" + condition_id + ".png";
+        constexpr int kForecastIconSourceHeight = 192;
+        constexpr int kForecastIconScale = 120;
+        constexpr int kForecastIconHeight =
+            (kForecastIconSourceHeight * kForecastIconScale + 255) / 256;
+        auto image = Image(card, path.c_str(), 45, forecast_icon_center - kForecastIconHeight / 2);
+        lv_image_set_scale(image, kForecastIconScale);
+        lv_image_set_pivot(image, 0, 0);
+#endif
+        char range[32];
+        if (day.temperature_min == 1000 || day.temperature_max == 1000)
+            snprintf(range, sizeof(range), "--~--℃");
+        else
+            snprintf(range, sizeof(range), "%d~%d℃", day.temperature_min, day.temperature_max);
+        auto range_label = Label(card, range, 6, kForecastRangeY, 169, &han_font_weather);
+        lv_obj_set_style_text_align(range_label, LV_TEXT_ALIGN_CENTER, 0);
+    }
+
+    struct Metric {
+        const char* title;
+#ifdef HAN_UI_HOST_SIM
+        const lv_image_dsc_t* icon;
+#else
+        const char* icon;
+#endif
+        uint32_t color;
+    };
+#ifdef HAN_UI_HOST_SIM
+    const Metric metrics[] = {{"空气质量", &han_weather_air_quality, 0xe5f8dc},
+                              {"降水概率", &han_weather_precipitation, 0xe4f3ff},
+                              {"日出日落", &han_weather_sunrise_sunset, 0xfff1ce},
+                              {"生活指数", &han_weather_lifestyle_index, 0xffe5e7}};
+#else
+    const Metric metrics[] = {
+        {"空气质量", "S:/sdcard/handict/ui/graphics/weather-page/air-quality.png", 0xe5f8dc},
+        {"降水概率", "S:/sdcard/handict/ui/graphics/weather-page/precipitation.png", 0xe4f3ff},
+        {"日出日落", "S:/sdcard/handict/ui/graphics/weather-page/sunrise-sunset.png", 0xfff1ce},
+        {"生活指数", "S:/sdcard/handict/ui/graphics/weather-page/lifestyle-index.png", 0xffe5e7},
+    };
+#endif
+    const int metric_y[] = {0, 147, 294, 441};
+    const int metric_h[] = {137, 137, 137, 151};
+    for (int index = 0; index < 4; ++index) {
+        auto card = Card(body_, 780, metric_y[index], 452, metric_h[index], metrics[index].color);
+        Image(card, metrics[index].icon, 22, (metric_h[index] - 76) / 2);
+        std::string value = "暂无数据";
+        if (index == 0 && (!weather.air_category.empty() || !weather.air_aqi.empty())) {
+            value = weather.air_category.empty() ? "AQI " + weather.air_aqi : weather.air_category;
+            if (!weather.air_aqi.empty() && !weather.air_category.empty())
+                value += " · AQI " + weather.air_aqi;
+        } else if (index == 1 && !weather.days.empty() &&
+                   weather.days[0].precipitation_probability >= 0) {
+            value = std::to_string(weather.days[0].precipitation_probability) + "%";
+        } else if (index == 2 && !weather.days.empty() &&
+                   (!weather.days[0].sunrise.empty() || !weather.days[0].sunset.empty())) {
+            value = (weather.days[0].sunrise.empty() ? "--:--" : weather.days[0].sunrise) + " — " +
+                    (weather.days[0].sunset.empty() ? "--:--" : weather.days[0].sunset);
+        } else if (index == 3 && !weather.index_text.empty()) {
+            value = weather.index_category.empty() ? weather.index_name : weather.index_category;
+        }
+        // Keep the title/value pair centred as one block alongside the icon.  The
+        // lifestyle card is taller, so calculate its offset independently too.
+        constexpr int kMetricLineGap = 2;
+        const int metric_text_height = han_font_weather.line_height * 2 + kMetricLineGap;
+        const int metric_text_y = (metric_h[index] - metric_text_height) / 2;
+        Label(card, metrics[index].title, 116, metric_text_y, 306, &han_font_weather);
+        Label(card, value.c_str(), 116,
+              metric_text_y + han_font_weather.line_height + kMetricLineGap, 310,
+              &han_font_weather);
+        if (index == 3 && !weather_index_detail_.empty()) {
+            lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_user_data(card, this);
+            lv_obj_add_event_cb(card, OnClick, LV_EVENT_CLICKED,
+                                reinterpret_cast<void*>(static_cast<intptr_t>(918)));
+        }
+    }
 }
 
 void HanDisplay::Network() {
@@ -1810,8 +2066,8 @@ void HanDisplay::InstallScalableDictionaryFonts(const std::string& path) {
     dictionary_hero_font_ = hero;
     dictionary_font_is_ttf_ = true;
     ESP_LOGI("HanDisplay", "SD scalable dictionary font loaded: %s", path.c_str());
-    if (page_ == Page::Dictionary)
-        Render(Page::Dictionary);
+    if (page_ == Page::Dictionary || page_ == Page::Weather)
+        Render(page_);
 #else
     (void)path;
 #endif
@@ -1822,6 +2078,52 @@ void HanDisplay::CloseBatteryPopup() {
         lv_obj_delete(battery_popup_);
         battery_popup_ = nullptr;
     }
+}
+
+void HanDisplay::CloseWeatherIndexPopup() {
+    if (weather_index_popup_ != nullptr) {
+        lv_obj_delete(weather_index_popup_);
+        weather_index_popup_ = nullptr;
+    }
+}
+
+void HanDisplay::ShowWeatherIndexPopup() {
+    CloseWeatherIndexPopup();
+    if (weather_index_detail_.empty())
+        return;
+
+    weather_index_popup_ = Box(root_, 0, 0, 1280, 720, 0x142b57);
+    lv_obj_set_style_radius(weather_index_popup_, 0, 0);
+    lv_obj_set_style_bg_opa(weather_index_popup_, LV_OPA_40, 0);
+    lv_obj_add_flag(weather_index_popup_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(weather_index_popup_, this);
+    lv_obj_add_event_cb(weather_index_popup_, OnClick, LV_EVENT_CLICKED,
+                        reinterpret_cast<void*>(static_cast<intptr_t>(917)));
+
+    auto panel = Card(weather_index_popup_, 112, 70, 1056, 580, 0xfffbf7);
+    lv_obj_set_style_radius(panel, 30, 0);
+    Label(panel, "生活指数完整建议", 34, 24, 650, &han_font_weather_title);
+    auto close = Button(panel, "关闭", 850, 18, 170, 64, kPink, 917);
+    lv_obj_set_style_radius(close, 22, 0);
+
+    auto content = Card(panel, 28, 104, 1000, 438, 0xffffff);
+    lv_obj_add_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(content, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scroll_dir(content, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_style_width(content, 10, LV_PART_SCROLLBAR);
+    lv_obj_set_style_radius(content, 5, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_color(content, lv_color_hex(0xf09aa6), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(content, LV_OPA_80, LV_PART_SCROLLBAR);
+    lv_obj_set_style_pad_bottom(content, 26, 0);
+    auto detail = Label(content, weather_index_detail_.c_str(), 28, 24, 924);
+    ApplyDictionaryTextFont(detail);
+    lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(detail, LV_SIZE_CONTENT);
+    lv_obj_set_style_text_line_space(detail, 12, 0);
+
+    lv_obj_move_foreground(weather_index_popup_);
+    lv_obj_invalidate(weather_index_popup_);
 }
 
 void HanDisplay::ShowBatteryPopup() {
@@ -1999,6 +2301,14 @@ void HanDisplay::Action(int a) {
         CloseBatteryPopup();
         return;
     }
+    if (a == 917) {
+        CloseWeatherIndexPopup();
+        return;
+    }
+    if (a == 918) {
+        ShowWeatherIndexPopup();
+        return;
+    }
     if (a >= 1100 && a < 1126) {
         if (pinyin_query_.size() < 7) {
             pinyin_query_.push_back(static_cast<char>('a' + a - 1100));
@@ -2129,6 +2439,8 @@ void HanDisplay::Action(int a) {
     if (a >= 200 && a < 200 + static_cast<int>(std::size(han::kSounds))) {
         sound_ = a - 200;
         Render(Page::Phonetics);
+        const auto& sound = han::kSounds[sound_];
+        Queue(1, "phonetics/en-GB/" + std::string(sound.id) + "/sound.ogg");
         return;
     }
     if (a >= 110 && a <= 113) {
@@ -2180,21 +2492,37 @@ void HanDisplay::Action(int a) {
         Render(Page::Timer);
         return;
     }
+    if (a >= 410 && a <= 416) {
+        // Rebuilding the seven day chips must not discard a time the user has already scrolled to.
+        if (alarm_hour_ && alarm_minute_)
+            alarm_minutes_ =
+                lv_roller_get_selected(alarm_hour_) * 60 + lv_roller_get_selected(alarm_minute_);
+        alarm_days_ ^= static_cast<uint8_t>(1U << (a - 410));
+        Render(Page::Alarm);
+        return;
+    }
     if (a == 400 || a == 401) {
+        if (a == 400 && alarm_days_ == 0) {
+            Toast("请至少选择一天");
+            return;
+        }
         alarm_enabled_ = a == 400;
         if (a == 400)
             alarm_minutes_ =
                 lv_roller_get_selected(alarm_hour_) * 60 + lv_roller_get_selected(alarm_minute_);
         alarm_ringing_ = false;
         const auto minutes = alarm_minutes_;
+        const auto days = alarm_days_;
         const auto enabled = alarm_enabled_;
-        Application::GetInstance().Schedule([minutes, enabled] {
+        Application::GetInstance().Schedule([minutes, days, enabled] {
             Settings s("han_alarm", true);
             s.SetInt("minutes", minutes);
+            s.SetInt("days", days);
             s.SetBool("enabled", enabled);
         });
         Render(Page::Alarm);
-        Toast(a == 400 ? "每日提醒已保存" : "提醒已关闭");
+        Toast(a == 400 ? "闹钟已保存" : "闹钟已关闭");
+        return;
     }
 }
 
@@ -2305,10 +2633,12 @@ void HanDisplay::UpdateStatusBar(bool) {
     }
     if (network_info_)
         SetTextIfChanged(network_info_, network.c_str());
-    // Daily alarm is based on synchronized system time; RTC wake-up is not implied.
+    // The alarm is based on synchronized system time; RTC wake-up is not implied. tm_wday starts
+    // on Sunday, while the persisted weekday mask starts on Monday.
     const int64_t day = static_cast<int64_t>(tm.tm_year) * 366 + tm.tm_yday;
+    const int weekday = (tm.tm_wday + 6) % 7;
     if (valid_time && alarm_enabled_ && alarm_last_day_ != day &&
-        tm.tm_hour * 60 + tm.tm_min == alarm_minutes_) {
+        (alarm_days_ & (1U << weekday)) != 0 && tm.tm_hour * 60 + tm.tm_min == alarm_minutes_) {
         alarm_last_day_ = day;
         alarm_ringing_ = true;
         Render(Page::Alarm);
@@ -2327,6 +2657,8 @@ void HanDisplay::LoadPreferences() {
     }
     Settings a("han_alarm");
     alarm_minutes_ = std::clamp(static_cast<int>(a.GetInt("minutes", 405)), 0, 1439);
+    alarm_days_ =
+        static_cast<uint8_t>(std::clamp(static_cast<int>(a.GetInt("days", 0x1f)), 0, 0x7f));
     alarm_enabled_ = a.GetBool("enabled", false);
     Settings display("display");
     brightness_setting_ = std::clamp(static_cast<int>(display.GetInt("brightness", 75)), 10, 100);
@@ -2418,18 +2750,8 @@ void HanDisplay::Worker(void* ptr) {
 #endif
             }
             auto weather = han::QWeatherService::LoadCache(store);
-            std::string art_id, art_data;
-            if (!weather.empty()) {
-                art_id = WeatherGraphicId(weather);
-                store.Read("ui/graphics/" + art_id + "/192.png", art_data, 256 * 1024);
-                if (art_data.empty() && art_id != "weather-unknown") {
-                    art_id = "weather-unknown";
-                    store.Read("ui/graphics/weather-unknown/192.png", art_data, 256 * 1024);
-                }
-            }
             DisplayLockGuard guard(self);
             self->weather_text_ = weather;
-            self->ApplyWeatherArt(std::move(art_id), std::move(art_data));
             if (self->page_ == Page::Timetable || self->page_ == Page::Weather)
                 self->Render(self->page_);
         } else if (job.type == 4) {
@@ -2439,19 +2761,9 @@ void HanDisplay::Worker(void* ptr) {
                     weather = han::QWeatherService::LoadCache(store);
                 self->Toast(error.c_str());
             }
-            std::string art_id, art_data;
-            if (!weather.empty()) {
-                art_id = WeatherGraphicId(weather);
-                store.Read("ui/graphics/" + art_id + "/192.png", art_data, 256 * 1024);
-                if (art_data.empty() && art_id != "weather-unknown") {
-                    art_id = "weather-unknown";
-                    store.Read("ui/graphics/weather-unknown/192.png", art_data, 256 * 1024);
-                }
-            }
             DisplayLockGuard guard(self);
             if (!weather.empty())
                 self->weather_text_ = weather;
-            self->ApplyWeatherArt(std::move(art_id), std::move(art_data));
             if (self->page_ == Page::Weather)
                 self->Render(self->page_);
         } else if (job.type == 3) {

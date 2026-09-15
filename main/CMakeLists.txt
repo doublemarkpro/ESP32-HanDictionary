@@ -60,7 +60,12 @@ if(CONFIG_HAN_DICTIONARY)
         "han_dictionary/assets/han_font_brand.c"
         "han_dictionary/assets/han_font_clock.c"
         "han_dictionary/assets/timetable_assets.c" "han_dictionary/assets/han_font_schedule.c"
-        "han_dictionary/assets/han_font_schedule_small.c")
+        "han_dictionary/assets/han_font_schedule_small.c"
+        "han_dictionary/assets/han_font_weather.c"
+        "han_dictionary/assets/han_font_weather_title.c"
+        "han_dictionary/assets/han_font_weather_hero.c"
+        "han_dictionary/assets/han_font_phonetics.c"
+        "han_dictionary/assets/han_font_phonetics_ipa.c")
     list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
 endif()
 

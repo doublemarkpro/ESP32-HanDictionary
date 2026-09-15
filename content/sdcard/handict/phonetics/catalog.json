@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "accent": "en-GB",
+  "accent": "mixed-offline-teaching-pack",
   "inventory": "traditional-44",
-  "audio_included": false,
-  "note": "Teaching convention; accent variants exist, especially /ʊə/. r is the conventional teaching symbol. Audio must be independently licensed and reviewed.",
+  "audio_included": true,
+  "note": "Teaching convention; accent variants exist. Isolated sounds and synthesized example words are documented in AUDIO_SOURCES.json.",
   "sounds": [
     {
       "id": "i-long",

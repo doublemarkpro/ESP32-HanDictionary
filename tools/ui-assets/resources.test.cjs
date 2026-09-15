@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {sounds, paths, options} = require('./prepare-resources.cjs');
+const {wordIcons, wordsFromSource} = require('./phonetics-page-assets.cjs');
+const root = path.resolve(__dirname, '..', '..');
 
 test('44 unique cards, consistent categories, 176 audio destinations', () => {
   const rows = sounds();
@@ -10,6 +14,26 @@ test('44 unique cards, consistent categories, 176 audio destinations', () => {
   assert.equal(new Set(audio).size,176);
   assert.ok(rows.some(x=>x.ipa==='θ'));
   assert.ok(rows.some(x=>x.ipa==='ʊə'));
+});
+test('every phonetics example word has a stable illustration mapping',()=>{
+  const words=wordsFromSource();
+  assert.equal(words.length,102);
+  assert.deepEqual(words.filter(word=>!wordIcons[word]),[]);
+});
+test('every phonetics control has a bounded device-compatible audio file',()=>{
+  const rows=sounds();
+  const folder=path.join(root,'content','sdcard','handict','phonetics');
+  const manifest=JSON.parse(fs.readFileSync(path.join(folder,'AUDIO_SOURCES.json'),'utf8'));
+  const expected=rows.flatMap(sound=>['sound',...sound.words]
+    .map(name=>`en-GB/${sound.id}/${name}.ogg`));
+  assert.equal(expected.length,176);
+  assert.deepEqual([...manifest.files].sort(),[...expected].sort());
+  for(const relative of expected) {
+    const audio=fs.readFileSync(path.join(folder,...relative.split('/')));
+    assert.equal(audio.subarray(0,4).toString(),'OggS',relative);
+    assert.ok(audio.subarray(0,128).includes(Buffer.from('OpusHead')),relative);
+    assert.ok(audio.length>100 && audio.length<=256*1024,relative);
+  }
 });
 test('stroke paths reject markup and excessive allocation', () => {
   assert.deepEqual(paths({strokes:['M 0 0 L 10 10 Z']}),['M 0 0 L 10 10 Z']);

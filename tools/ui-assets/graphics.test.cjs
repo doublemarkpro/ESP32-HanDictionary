@@ -70,3 +70,68 @@ test('small optional C pack matches PNG exports and stays below 128 KiB payload'
   const cmake=fs.readFileSync(path.join(root,'main/CMakeLists.txt'),'utf8');
   assert.ok(!cmake.includes('han_graphics_small'),'not automatically included in firmware');
 });
+
+test('weather page art is a complete bounded SD-only pack', async()=>{
+  const weatherFolder=path.join(folder,'weather-page');
+  const expected={
+    'qingdao-hero.png':[760,344],
+    'qingdao-hero-original.png':[1997,787],
+    'air-quality.png':[76,76],
+    'precipitation.png':[76,76],
+    'sunrise-sunset.png':[76,76],
+    'lifestyle-index.png':[76,76],
+  };
+  for(const name of ['sunny','partly-cloudy','cloudy','rain','thunderstorm','snow','fog','wind'])
+    expected[`condition-${name}.png`]=[192,192];
+  assert.deepEqual(fs.readdirSync(weatherFolder).sort(),Object.keys(expected).sort());
+  let bytes=0;
+  for(const [name,size] of Object.entries(expected)) {
+    const png=fs.readFileSync(path.join(weatherFolder,name));
+    const metadata=await sharp(png).metadata();
+    assert.deepEqual([metadata.width,metadata.height],size,name);
+    assert.ok(png.length<2*1024*1024,name);
+    bytes+=png.length;
+  }
+  assert.ok(bytes<3*1024*1024,'weather page SD budget');
+  const cmake=fs.readFileSync(path.join(root,'main/CMakeLists.txt'),'utf8');
+  assert.ok(!cmake.includes('weather_page_assets.c'),'weather images stay off firmware');
+  assert.ok(!cmake.includes('weather_icon_pack.c'),'weather icons stay off firmware');
+});
+
+test('alarm page illustration is full-colour SD-only art', async()=>{
+  const alarmFolder=path.join(folder,'alarm-page');
+  assert.deepEqual(fs.readdirSync(alarmFolder).sort(),['alarm-sunrise.png']);
+  const png=fs.readFileSync(path.join(alarmFolder,'alarm-sunrise.png'));
+  const metadata=await sharp(png).metadata();
+  assert.deepEqual([metadata.width,metadata.height,metadata.hasAlpha],[512,512,true]);
+  assert.ok(png.length<2*1024*1024,'alarm page SD budget');
+  const cmake=fs.readFileSync(path.join(root,'main/CMakeLists.txt'),'utf8');
+  assert.ok(!cmake.includes('alarm-sunrise.png'),'alarm illustration stays off firmware');
+});
+
+test('phonetics word illustrations are complete, traceable and SD-only', async()=>{
+  const phoneticsFolder=path.join(folder,'phonetics-page');
+  const wordFolder=path.join(phoneticsFolder,'words');
+  const phonetics=fs.readFileSync(path.join(root,'main/han_dictionary/phonetics.h'),'utf8');
+  const words=new Set();
+  const row=/\{"[^"]+",\s*"[^"]+",\s*\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}/g;
+  for(const match of phonetics.matchAll(row)) for(const word of match.slice(1)) words.add(word);
+  const files=fs.readdirSync(wordFolder).sort();
+  assert.equal(words.size,102);
+  assert.deepEqual(files,[...words].sort().map(word=>`${word}.png`));
+  let bytes=0;
+  for(const file of files) {
+    const png=fs.readFileSync(path.join(wordFolder,file));
+    const metadata=await sharp(png).metadata();
+    assert.deepEqual([metadata.width,metadata.height,metadata.hasAlpha],[142,102,true],file);
+    bytes+=png.length;
+  }
+  assert.ok(bytes<512*1024,'complete word art stays small enough for SD distribution');
+  const provenance=JSON.parse(fs.readFileSync(path.join(phoneticsFolder,'provenance.json')));
+  assert.equal(provenance.repository,'https://github.com/microsoft/fluentui-emoji');
+  assert.equal(provenance.license,'MIT');
+  assert.equal(provenance.words.length,102);
+  assert.match(fs.readFileSync(path.join(phoneticsFolder,'LICENSE-MICROSOFT-FLUENT-EMOJI.txt'),'utf8'),/MIT License/);
+  const cmake=fs.readFileSync(path.join(root,'main/CMakeLists.txt'),'utf8');
+  assert.ok(!cmake.includes('phonetics-page/words'),'word art stays off firmware');
+});
