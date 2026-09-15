@@ -5,20 +5,21 @@ const root=path.resolve(__dirname,'../..'),out=path.join(root,'main/han_dictiona
 const folder=path.join(root,'assets/graphics/timetable');fs.mkdirSync(folder,{recursive:true});
 (async()=>{
  let c='#include "timetable_assets.h"\n',bytes=0;
- const subjectPaths={
-  computer:'M6 8h36v27H6ZM17 43h14M24 35v8M11 13h26v17H11Z',
-  music:'M18 35V13l21-5v22M18 19l21-5M18 35a6 5 0 1 1-12 0a6 5 0 1 1 12 0M39 30a6 5 0 1 1-12 0a6 5 0 1 1 12 0',
-  martial:'M24 5a4 4 0 1 1 0 8a4 4 0 1 1 0-8M11 23l12-8 10 8 9-5M22 18l-5 13-10 8M17 31l13 6 11 6',
-  labor:'M17 7h14M24 7v23M15 29h18l-3 14H18ZM9 13l8 8M39 13l-8 8',
-  flute:'M8 36L36 8M13 41L41 13M17 32l-4-4M23 26l-4-4M29 20l-4-4M35 14l-4-4'
- };
- for(const [id,color] of [['book','#ef7768'],['calculator','#2487dc'],['science','#31af89'],['art','#ed9b43'],['sport','#129f9d'],['computer','#2d91b8'],['music','#df6da5'],['martial','#d58a32'],['labor','#6c9b48'],['flute','#c56e50'],['star','#8d70c9'],['backpack','#efa134'],['bottle','#35a98a']]) {
-  const shared=vectorAssets().find(a=>a.id==='control-'+id);
-  const svg=shared ? shared.svg.replaceAll('#142b57',color) :
-   `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path d="${subjectPaths[id]}" fill="none" stroke="${color}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const png=await sharp(Buffer.from(svg)).resize(40,40).png().toBuffer();bytes+=png.length;
+ const subjectSource=path.join(root,'assets/graphics/source/raster/timetable-subjects');
+ for(const [id,file] of [
+  ['book','chinese_book.png'],['calculator','math_calculator.png'],
+  ['english','english_blocks.png'],['science','science_flask.png'],
+  ['art','art_palette.png'],['sport','sports_runner.png'],['computer','computer.png'],
+  ['music','music_notes.png'],['martial','martial_arts.png'],['labor','labor_tools.png'],
+  ['flute','recorder_flute.png'],['star','elective_star.png'],['club','club_group.png']
+ ]) {
+  const png=await sharp(path.join(subjectSource,file))
+   .trim({background:'#00000000',threshold:12})
+   .resize(48,48,{fit:'contain',background:'#00000000'})
+   .png({palette:true,colours:128})
+   .toBuffer();bytes+=png.length;
   fs.writeFileSync(path.join(folder,id+'.png'),png);
-  c+=`static const uint8_t ${id}_png[]={${Array.from(png).join(',')}};\nconst lv_image_dsc_t han_subject_${id}={.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RAW_ALPHA,.w=40,.h=40},.data_size=sizeof(${id}_png),.data=${id}_png};\n`;
+  c+=`static const uint8_t ${id}_png[]={${Array.from(png).join(',')}};\nconst lv_image_dsc_t han_subject_${id}={.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RAW_ALPHA,.w=48,.h=48},.data_size=sizeof(${id}_png),.data=${id}_png};\n`;
  }
  const controls=[['back',48,48],['calendar',48,48],['chevron-down',32,32]];
  for(const [id,w,h] of controls) {
@@ -56,11 +57,11 @@ const folder=path.join(root,'assets/graphics/timetable');fs.mkdirSync(folder,{re
  const timetableSymbols=[...(timetable.days||[]).flat(),...(timetable.supplies||[]).flat()].join('');
  const fontTool=require.resolve('lv_font_conv/lv_font_conv.js');
  for(const [name,size,symbols] of [
-  ['han_font_schedule',32,'周一二三四五六日第12345678节语文数学英语科学美术体育音乐劳动阅读班会明天要带本下周末已备课表好好学习天天向上问程ABCT?—'+timetableSymbols],
+  ['han_font_schedule',34,'周一二三四五六日第12345678节语文数学英语科学美术体育信息音乐武术劳动竖笛选修阅读班会社团民乐团本下周末课表ABCT?—'+timetableSymbols],
   ['han_font_schedule_small',24,'ABC问问明天上什么课美术本跳绳水杯请先同步日期导入课程表未填写需带物品更多正在聆听小智回答…']
  ]) {
   execFileSync(process.execPath,[fontTool,'--font',font,'--symbols',symbols,'--size',String(size),'--bpp','4','--format','lvgl','--no-kerning','--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')]);
   const p=path.join(out,name+'.c');fs.writeFileSync(p,fs.readFileSync(p,'utf8').trimEnd()+'\n');
  }
- console.log('Timetable icons: '+bytes+' bytes; rounded 32px font is a subset.');
+ console.log('Timetable icons: '+bytes+' bytes; rounded 34px font is a subset.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -435,9 +435,9 @@ int main(int argc, char** argv) {
             if (i == 2) {
                 Check(FindLabel(lv_screen_active(), "还没有课程，请导入课表"),
                       "empty template does not invent lessons");
-                Click("问问明天上什么课");
-                Check(FindLabel(lv_screen_active(), "请先联网，再询问课程"),
-                      "offline timetable voice is guarded");
+                Check(!FindLabel(lv_screen_active(), "明天要带") &&
+                          !FindLabel(lv_screen_active(), "问问明天上什么课"),
+                      "timetable keeps the full canvas for lessons");
                 std::ifstream fixture(std::string(HAN_SOURCE_ROOT) +
                                       "/content/sdcard/handict/timetable.json");
                 const std::string example((std::istreambuf_iterator<char>(fixture)), {});
@@ -451,6 +451,7 @@ int main(int argc, char** argv) {
                           FindLabel(lv_screen_active(), "武术") &&
                           FindLabel(lv_screen_active(), "劳动") &&
                           FindLabel(lv_screen_active(), "竖笛") &&
+                          FindLabel(lv_screen_active(), "社团") &&
                           FindLabel(lv_screen_active(), "第7节"),
                       "all seven lessons and custom subjects fit on one screen");
                 Click("本周");
@@ -461,10 +462,6 @@ int main(int argc, char** argv) {
                     "weekend reachable");
                 Shot(folder, "timetable-weekend");
                 Click("周末");
-                Click("美术本");
-                Check(HasCheck(lv_obj_get_parent(FindLabel(lv_screen_active(), "美术本"))),
-                      "supplies can be checked");
-                Shot(folder, "timetable-checked");
                 Check(!ui.ApplyTimetable("{}"), "invalid import returns failure");
                 Check(FindLabel(lv_screen_active(), "课表未加载或格式错误"),
                       "invalid import clears stale courses");

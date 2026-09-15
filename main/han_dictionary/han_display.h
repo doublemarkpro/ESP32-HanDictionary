@@ -120,9 +120,6 @@ private:
     lv_obj_t* role_label_ = nullptr;
     lv_obj_t* message_ = nullptr;
     lv_obj_t* status_box_ = nullptr;
-    lv_obj_t* timetable_voice_label_ = nullptr;
-    lv_obj_t* timetable_reply_card_ = nullptr;
-    lv_obj_t* timetable_message_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
     lv_obj_t* brightness_value_ = nullptr;
     lv_obj_t* volume_value_ = nullptr;
@@ -191,9 +188,8 @@ private:
     int64_t last_checkpoint_ms_ = 0;
     han::TimetableData timetable_;
     int timetable_week_ = 0, timetable_day_group_ = 0;
-    int timetable_today_ = -1, supplies_page_ = 0;
+    int timetable_today_ = -1;
     int64_t timetable_date_key_ = -1;
-    std::array<bool, 8> supplies_checked_{};
     std::string weather_text_;
     std::string weather_art_id_;
     std::string weather_art_data_;
