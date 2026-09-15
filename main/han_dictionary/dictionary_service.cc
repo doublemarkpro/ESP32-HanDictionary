@@ -88,10 +88,15 @@ void DictionaryService::RegisterMcpTools() {
     McpServer::GetInstance().AddTool(
         "self.dictionary.lookup",
         "查本机汉字数据并打开查字页。query优先传目标单字，也可传规矩的规。"
+        "用户问某字怎么写、笔顺或书写顺序时，必须设置auto_play=true；设备会自动打开字典并播放"
+        "笔顺，工具调用已经完成该请求，不要复述具体笔画，只需简短确认正在播放。"
         "释义来源以data_source为准；这是离线汉字学习资料，不得称为纸质字典官方原文。",
-        PropertyList({Property("query", kPropertyTypeString)}),
+        PropertyList({Property("query", kPropertyTypeString),
+                      Property("auto_play", kPropertyTypeBoolean, false)}),
         [this](const PropertyList& properties) -> ReturnValue {
             const auto query = properties["query"].value<std::string>();
+            const bool play_strokes = properties["auto_play"].value<bool>() ||
+                                      IsStrokePlaybackQuery(query);
             han::Entry entry;
             const bool found = store_.Lookup(query, entry);
             auto result = cJSON_CreateObject();
@@ -103,6 +108,15 @@ void DictionaryService::RegisterMcpTools() {
                 return result;
             }
             cJSON_AddStringToObject(result, "character", entry.character.c_str());
+            cJSON_AddBoolToObject(result, "stroke_animation_started", play_strokes);
+            if (play_strokes) {
+                cJSON_AddStringToObject(
+                    result, "message",
+                    "设备已打开字典并自动播放笔顺。请勿复述笔画、笔顺或释义，只简短确认“正在播放”。");
+                if (result_callback_)
+                    result_callback_(entry, true);
+                return result;
+            }
             cJSON_AddStringToObject(result, "pinyin", entry.pinyin.c_str());
             cJSON_AddStringToObject(result, "radical", entry.radical.c_str());
             cJSON_AddStringToObject(result, "structure", entry.structure.c_str());
@@ -116,7 +130,7 @@ void DictionaryService::RegisterMcpTools() {
             for (auto& stroke : entry.strokes)
                 cJSON_AddItemToArray(strokes, cJSON_CreateString(stroke.c_str()));
             if (result_callback_)
-                result_callback_(entry);
+                result_callback_(entry, false);
             return result;
         });
 }

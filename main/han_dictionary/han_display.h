@@ -8,6 +8,7 @@
 #include "display/lcd_display.h"
 #endif
 #include <atomic>
+#include <ctime>
 #include <functional>
 #include "study_timer.h"
 #include "timetable.h"
@@ -28,20 +29,29 @@ public:
     void SetChatMessage(const char* role, const char* content) override;
     void ClearChatMessages() override;
     void UpdateStatusBar(bool update_all = false) override;
-    void ShowEntry(const han::Entry& entry);
+    void ShowEntry(const han::Entry& entry, bool auto_play_strokes = false);
     bool OpenPage(const std::string& page);
     bool ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph glyph);
     bool ApplyMissingStrokeGlyph(const std::string& character);
     bool ApplyTimetable(const std::string& json);
 #ifdef HAN_UI_HOST_SIM
     void SetWeatherTextForTest(std::string text);
+    void SetClockTimeForTest(int year, int month, int day, int hour, int minute, int second);
     void SetPinyinResultsForTest(const std::string& query, std::vector<std::string> results) {
         ApplyPinyinResults(query, std::move(results));
     }
 #endif
 
 private:
-    enum class Page { Home, Dictionary, Phonetics, Timetable, Timer, Alarm, Weather, Network };
+    enum class Page { Home, Dictionary, Phonetics, Timetable, Timer, Alarm, Weather, Network, Clock };
+    struct FlipDigit {
+        lv_obj_t* card = nullptr;
+        lv_obj_t* steady_label = nullptr;
+        lv_obj_t* old_top = nullptr;
+        lv_obj_t* old_bottom = nullptr;
+        lv_obj_t* new_bottom = nullptr;
+        int value = -2;
+    };
     struct Job {
         int type;
         char value[128];
@@ -54,6 +64,11 @@ private:
     static void OnSettingSliderReleased(lv_event_t* event);
     static void Tick(lv_timer_t* timer);
     static void TimerTick(lv_timer_t* timer);
+    static void ClockTick(lv_timer_t* timer);
+    static void FlipTopExec(void* value, int32_t scale);
+    static void FlipTopCompleted(lv_anim_t* animation);
+    static void FlipBottomExec(void* value, int32_t scale);
+    static void FlipBottomCompleted(lv_anim_t* animation);
     static void OnRefresh(lv_event_t* event);
     static void Worker(void* self);
     void Action(int action);
@@ -66,6 +81,10 @@ private:
     void Alarm();
     void Weather();
     void Network();
+    void FlipClock();
+    void UpdateFlipClock(const struct tm& local, bool valid_time, bool animate);
+    void AnimateFlipDigit(FlipDigit& digit, int value);
+    void ResetFlipAnimation(FlipDigit& digit);
     void SetScreenOff(bool off);
     void ShowLockScreen();
     void ShowLockScreenLocked();
@@ -90,6 +109,9 @@ private:
     std::array<int64_t, 3> TimerDaySeconds(int day, int64_t now_ms) const;
     void SaveTimer();
     void LoadPreferences();
+    void ShowAssistantDialog();
+    void HideAssistantDialog();
+    void StartPendingStrokePlayback();
     bool Queue(int type, const std::string& value);
     void Toast(const char* text);
     lv_obj_t* Box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t color);
@@ -133,6 +155,18 @@ private:
     lv_obj_t* role_label_ = nullptr;
     lv_obj_t* message_ = nullptr;
     lv_obj_t* status_box_ = nullptr;
+    lv_obj_t* status_mic_badge_ = nullptr;
+    lv_obj_t* assistant_dialog_scrim_ = nullptr;
+    lv_obj_t* assistant_dialog_ = nullptr;
+    lv_obj_t* assistant_dialog_status_box_ = nullptr;
+    lv_obj_t* assistant_dialog_status_ = nullptr;
+    lv_obj_t* assistant_dialog_mic_badge_ = nullptr;
+    lv_obj_t* assistant_dialog_user_ = nullptr;
+    lv_obj_t* assistant_dialog_recognition_ = nullptr;
+    lv_obj_t* assistant_dialog_reply_ = nullptr;
+    lv_obj_t* assistant_dialog_navigation_ = nullptr;
+    lv_obj_t* assistant_dialog_navigation_title_ = nullptr;
+    lv_obj_t* assistant_dialog_navigation_detail_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
     lv_obj_t* brightness_value_ = nullptr;
     lv_obj_t* volume_value_ = nullptr;
@@ -171,8 +205,14 @@ private:
     int pinyin_tone_ = -1;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
+    std::array<FlipDigit, 6> flip_digits_{};
+    lv_obj_t* flip_date_ = nullptr;
+    lv_obj_t* flip_lunar_ = nullptr;
+    int64_t flip_date_key_ = -1;
+    bool flip_clock_initialized_ = false;
     lv_timer_t* tick_ = nullptr;
     lv_timer_t* timer_tick_ = nullptr;
+    lv_timer_t* clock_tick_ = nullptr;
     bool page_refresh_pending_ = false;
     bool page_refresh_active_ = false;
     int64_t page_render_started_ms_ = 0;
@@ -207,6 +247,10 @@ private:
     // -1: untouched preview, [0, count): active stroke, count: playback complete.
     int stroke_ = -1;
     bool stroke_playing_ = false;
+    bool auto_play_stroke_pending_ = false;
+    bool assistant_dialog_active_ = false;
+    bool assistant_navigation_pending_ = false;
+    int64_t assistant_dialog_hide_at_ms_ = 0;
     int alarm_minutes_ = 405;
     // Bit 0 is Monday and bit 6 is Sunday. A school-week alarm is the default.
     uint8_t alarm_days_ = 0x1f;

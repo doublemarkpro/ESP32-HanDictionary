@@ -15,7 +15,9 @@ Tab5AudioCodec::Tab5AudioCodec(void* i2c_master_handle, int input_sample_rate,
     input_channels_ = input_reference_ ? 2 : 1;  // 输入通道数
     input_sample_rate_ = input_sample_rate;
     output_sample_rate_ = output_sample_rate;
-    input_gain_ = 30;
+    // The Tab5 BSP microphone example uses 42 dB. Stay below that level for headroom while
+    // lifting quiet child voices above the previous 30 dB setting.
+    input_gain_ = 36;
 
     CreateDuplexChannels(mclk, bclk, ws, dout, din);
 

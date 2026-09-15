@@ -10,6 +10,7 @@
 #include "assets/ui_assets.h"
 #include "dictionary_service.h"
 #include "han_display.h"
+#include "lunar_calendar.h"
 #include "phonetics.h"
 
 DictionaryService& DictionaryService::GetInstance() {
@@ -100,7 +101,8 @@ void Shot(const std::filesystem::path& folder, const char* name) {
             if (pixels[i] < 60 && pixels[i + 1] < 80 && pixels[i + 2] < 120)
                 ++title_ink;
         }
-    Check(title_ink > 100, "screenshot must contain visibly rendered title text");
+    if (std::string(name) != "clock")
+        Check(title_ink > 100, "screenshot must contain visibly rendered title text");
     std::ofstream f(folder / (std::string(name) + ".ppm"), std::ios::binary);
     f << "P6\n1280 720\n255\n";
     f.write(reinterpret_cast<const char*>(pixels.data()), pixels.size());
@@ -122,8 +124,26 @@ int main(int argc, char** argv) {
         Check(han::ContentStore::TargetCharacter("规矩的规怎么写") == "规", "target extraction");
         Check(han::ContentStore::TargetCharacter("规矩的矩怎么写") == "矩", "no false gui match");
         Check(han::ContentStore::TargetCharacter("随便说一段话").empty(), "ambiguous query");
+        Check(DictionaryService::IsStrokePlaybackQuery("智能的智怎么写"),
+              "writing query requests automatic stroke playback");
+        Check(DictionaryService::IsStrokePlaybackQuery("请播放智的笔顺"),
+              "explicit stroke-order query requests automatic playback");
+        Check(!DictionaryService::IsStrokePlaybackQuery("智能的智是什么意思"),
+              "definition lookup does not start stroke playback");
         Check(han::ContentStore::NormalizePinyin(" Han4 ") == "han4", "pinyin tone normalization");
         Check(han::ContentStore::NormalizePinyin(" ma5 ") == "ma0", "neutral tone normalization");
+        han::LunarDate lunar;
+        Check(han::LunarFromGregorian(2026, 9, 15, lunar) && lunar.year == 2026 &&
+                  lunar.month == 8 && lunar.day == 5 && !lunar.leap_month,
+              "concept date converts to lunar date");
+        Check(han::FormatLunarDate(lunar) == "农历丙午年 · 八月初五",
+              "lunar date has the approved compact wording");
+        Check(han::LunarFromGregorian(2024, 2, 10, lunar) &&
+                  han::FormatLunarDate(lunar) == "农历甲辰年 · 正月初一",
+              "lunar new year boundary");
+        Check(han::LunarFromGregorian(2023, 3, 22, lunar) && lunar.leap_month &&
+                  han::FormatLunarDate(lunar) == "农历癸卯年 · 闰二月初一",
+              "leap lunar month boundary");
         han::Entry entry;
         Check(han::ContentStore().Lookup("规", entry), "embedded sample");
         han::ContentStore card(std::string(HAN_SOURCE_ROOT) + "/content/sdcard/handict");
@@ -177,6 +197,36 @@ int main(int argc, char** argv) {
         Check(ui.ApplyTimetable(empty_schedule), "load genuine empty template");
         ui.UpdateStatusBar();
         Shot(folder, "home");
+        auto home_clock = FindLabelAt(lv_screen_active(), 970, 41);
+        Check(home_clock != nullptr && lv_obj_has_flag(home_clock, LV_OBJ_FLAG_CLICKABLE),
+              "home time is a clock-page entry");
+        lv_obj_send_event(home_clock, LV_EVENT_CLICKED, nullptr);
+        ui.SetClockTimeForTest(2026, 9, 15, 8, 26, 47);
+        Check(FindLabel(lv_screen_active(), "2026年9月15日    星期二") &&
+                  FindLabel(lv_screen_active(), "农历丙午年 · 八月初五"),
+              "clock page shows synchronized Gregorian and lunar dates");
+        Check(lv_obj_has_flag(FindLabel(lv_screen_active(), "小小助手"), LV_OBJ_FLAG_HIDDEN) &&
+                  lv_obj_has_flag(FindImage(lv_screen_active(), &han_status_wifi_off),
+                                  LV_OBJ_FLAG_HIDDEN),
+              "clock page removes distracting shared chrome");
+        Shot(folder, "clock");
+        Click("<");
+        Check(FindLabel(lv_screen_active(), "小小助手"), "clock back returns home");
+        Click("查字典");
+        ui.SetStatus("连接中...");
+        ui.SetStatus("正在聆听");
+        ui.SetChatMessage("user", "智能的智怎么写");
+        ui.SetChatMessage("assistant", "好，我帮你打开字典并播放笔顺。");
+        Check(FindLabel(lv_screen_active(), "智能的智怎么写") &&
+                  FindLabel(lv_screen_active(), "✓  文字识别成功"),
+              "feature-page conversation shows recognized speech");
+        Shot(folder, "assistant-dialog");
+        ui.ShowEntry(entry, true);
+        Check(FindLabel(lv_screen_active(), "正在打开“小小字典”"),
+              "stroke query shows its navigation handoff");
+        Shot(folder, "assistant-dialog-navigation");
+        Click("关闭");
+        Click("<");
         Check(!FindLabel(lv_screen_active(), "按住说话"), "press-to-talk control removed");
         ui.SetStatus("正在初始化");
         ui.SetChatMessage("system", "xiaozhi/2.4.2 esp32p4");
@@ -267,6 +317,17 @@ int main(int argc, char** argv) {
                 Check(!FindLabel(lv_screen_active(), "离线字库"),
                       "redundant dictionary status button removed");
                 const auto demo = han::ContentStore::Demo();
+                han::StrokeGlyph automatic_glyph;
+                Check(card.ReadStrokeGlyph(demo.character, automatic_glyph),
+                      "automatic playback test glyph loaded");
+                ui.ShowEntry(demo, true);
+                Check(ui.ApplyStrokeGlyph(demo.character, std::move(automatic_glyph)),
+                      "voice lookup glyph accepted");
+                lv_tick_inc(800);
+                lv_timer_handler();
+                Check(FindLabel(lv_screen_active(), "1/8"),
+                      "voice writing query automatically starts stroke playback");
+                ui.ShowEntry(demo);
                 auto definition_text = FindLabel(lv_screen_active(), demo.definition.c_str());
                 auto word_text = FindLabel(lv_screen_active(), demo.words.front().c_str());
                 Check(definition_text && word_text, "dictionary definition and words are present");

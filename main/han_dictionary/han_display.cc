@@ -25,6 +25,7 @@
 #include <memory>
 #include <new>
 #include <vector>
+#include "assets/flip_clock_assets.h"
 #include "assets/home_skin.h"
 #include "assets/timetable_assets.h"
 #include "assets/ui_assets.h"
@@ -33,6 +34,7 @@
 #endif
 #include "assets/weather_page_assets.h"
 #include "dictionary_service.h"
+#include "lunar_calendar.h"
 #include "phonetics.h"
 #include "qweather_service.h"
 
@@ -631,6 +633,11 @@ void HanDisplay::SetupUI() {
     title_ = Label(root_, "小小助手", 212, 24, 470, &han_font_brand);
     date_ = Label(root_, "日期待同步", 747, 37, 208);
     clock_ = Label(root_, "—:—", 970, 41, 132, &han_font_clock);
+    lv_obj_set_height(clock_, 48);
+    lv_obj_add_flag(clock_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(clock_, this);
+    lv_obj_add_event_cb(clock_, OnClick, LV_EVENT_CLICKED,
+                        reinterpret_cast<void*>(static_cast<intptr_t>(13)));
     top_divider_left_ = Box(root_, 952, 36, 1, 40, 0xd7d5d0);
     top_divider_right_ = Box(root_, 1101, 36, 1, 40, 0xd7d5d0);
     wifi_button_ = Button(root_, "", 1115, 20, 72, 72, kBg, 7);
@@ -651,23 +658,57 @@ void HanDisplay::SetupUI() {
 
     // Keep assistant activity and conversation in one calm, persistent card. Voice activation is
     // wake-word based; a full-width press-to-talk control would compete with learning content.
-    assistant_card_ = Card(root_, 24, 606, 1232, 90, 0xffffff);
-    assistant_badge_ = Box(assistant_card_, 12, 10, 70, 70, 0xe8f4ff);
-    lv_obj_set_style_radius(assistant_badge_, 20, 0);
-    auto assistant_icon = Image(assistant_badge_, &han_icon_dictionary, 7, 7);
-    lv_image_set_scale(assistant_icon, 112);
+    assistant_card_ = Card(root_, 24, 606, 1232, 90, 0xf4fbff);
+    lv_obj_set_style_radius(assistant_card_, 30, 0);
+    lv_obj_set_style_border_width(assistant_card_, 2, 0);
+    lv_obj_set_style_border_color(assistant_card_, lv_color_hex(0xc9e8df), 0);
+    lv_obj_set_style_bg_grad_color(assistant_card_, lv_color_hex(0xfffbef), 0);
+    lv_obj_set_style_bg_grad_dir(assistant_card_, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_shadow_color(assistant_card_, lv_color_hex(0x8fbcb2), 0);
+    lv_obj_set_style_shadow_width(assistant_card_, 18, 0);
+    lv_obj_set_style_shadow_opa(assistant_card_, LV_OPA_20, 0);
+    lv_obj_set_style_shadow_ofs_y(assistant_card_, 5, 0);
+    assistant_badge_ = Box(assistant_card_, 12, 7, 76, 76, 0xdff6ee);
+    lv_obj_set_style_radius(assistant_badge_, 24, 0);
+    lv_obj_set_style_border_width(assistant_badge_, 3, 0);
+    lv_obj_set_style_border_color(assistant_badge_, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_grad_color(assistant_badge_, lv_color_hex(0xddeeff), 0);
+    lv_obj_set_style_bg_grad_dir(assistant_badge_, LV_GRAD_DIR_VER, 0);
+    auto assistant_icon = Image(assistant_badge_, &han_art_book, 2, 11);
+    lv_image_set_scale(assistant_icon, 96);
     lv_image_set_pivot(assistant_icon, 0, 0);
-    role_box_ = Box(assistant_card_, 98, 9, 118, 31, kPurple);
-    lv_obj_set_style_radius(role_box_, 16, 0);
-    role_label_ = Label(role_box_, "小智", 4, -1, 110);
+    role_box_ = Box(assistant_card_, 104, 9, 128, 34, 0xc8e9ff);
+    lv_obj_set_style_radius(role_box_, 17, 0);
+    lv_obj_set_style_bg_grad_color(role_box_, lv_color_hex(0xe3d8ff), 0);
+    lv_obj_set_style_bg_grad_dir(role_box_, LV_GRAD_DIR_HOR, 0);
+    role_label_ = Label(role_box_, "小智", 0, 0, 128);
     lv_obj_set_style_text_align(role_label_, LV_TEXT_ALIGN_CENTER, 0);
-    message_ = Label(assistant_card_, "说“你好小智”，一起开始今天的学习吧", 98, 43, 870);
+    // Center against the label's real font metrics. A fixed y-position makes the Han glyphs look
+    // low inside the capsule even when the bounding boxes are mathematically centered.
+    lv_obj_align(role_label_, LV_ALIGN_CENTER, 0, -1);
+    message_ = Label(assistant_card_, "说“你好小智”，我来帮你学习", 104, 44, 842);
     lv_obj_set_height(message_, 39);
     lv_label_set_long_mode(message_, LV_LABEL_LONG_DOT);
-    status_box_ = Box(assistant_card_, 990, 14, 222, 62, 0xf1f6fb);
-    lv_obj_set_style_radius(status_box_, 20, 0);
-    status_label_ = Label(status_box_, "准备中", 8, 13, 206);
-    notification_label_ = Label(status_box_, "", 8, 13, 206);
+    status_box_ = Box(assistant_card_, 964, 12, 248, 66, 0xe9f4ff);
+    lv_obj_set_style_radius(status_box_, 25, 0);
+    lv_obj_set_style_border_width(status_box_, 1, 0);
+    lv_obj_set_style_border_color(status_box_, lv_color_hex(0xc9ddf3), 0);
+    lv_obj_set_style_bg_grad_color(status_box_, lv_color_hex(0xe4f8ef), 0);
+    lv_obj_set_style_bg_grad_dir(status_box_, LV_GRAD_DIR_HOR, 0);
+    status_label_ = Label(status_box_, "准备中", 12, 14, 178);
+    notification_label_ = Label(status_box_, "", 12, 14, 178);
+    // The microphone artwork is white, so keep it on a saturated circular chip instead of relying
+    // on the pale status gradient for contrast.
+    status_mic_badge_ = Box(status_box_, 198, 8, 50, 50, 0x477da8);
+    lv_obj_set_style_radius(status_mic_badge_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(status_mic_badge_, 2, 0);
+    lv_obj_set_style_border_color(status_mic_badge_, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_shadow_color(status_mic_badge_, lv_color_hex(0x4a7796), 0);
+    lv_obj_set_style_shadow_width(status_mic_badge_, 7, 0);
+    lv_obj_set_style_shadow_opa(status_mic_badge_, LV_OPA_20, 0);
+    auto status_mic = Image(status_mic_badge_, &han_status_mic, 1, 1);
+    lv_image_set_scale(status_mic, 250);
+    lv_image_set_pivot(status_mic, 0, 0);
     lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
     lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_DOT);
     lv_obj_set_height(status_label_, 38);
@@ -687,9 +728,115 @@ void HanDisplay::SetupUI() {
     lv_image_set_pivot(page_icon_, 0, 0);
     lv_obj_add_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(page_icon_, LV_OBJ_FLAG_CLICKABLE);
+
+    // A wake-up on a feature page uses a modal conversation surface. It is a root child so page
+    // rebuilds cannot delete it, while the translucent scrim keeps the current learning context
+    // visible. All compact labels and icons are aligned by their parent containers rather than
+    // by hand-tuned baselines.
+    assistant_dialog_scrim_ = Box(root_, 0, 0, 1280, 720, 0x173d51);
+    lv_obj_set_style_radius(assistant_dialog_scrim_, 0, 0);
+    lv_obj_set_style_bg_opa(assistant_dialog_scrim_, LV_OPA_30, 0);
+    lv_obj_add_flag(assistant_dialog_scrim_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(assistant_dialog_scrim_, this);
+
+    assistant_dialog_ = Card(assistant_dialog_scrim_, 172, 94, 936, 532, 0xfafcff);
+    lv_obj_set_style_radius(assistant_dialog_, 34, 0);
+    lv_obj_set_style_border_width(assistant_dialog_, 3, 0);
+    lv_obj_set_style_border_color(assistant_dialog_, lv_color_hex(0xb8dfe0), 0);
+    lv_obj_set_style_bg_grad_color(assistant_dialog_, lv_color_hex(0xfffdf5), 0);
+    lv_obj_set_style_bg_grad_dir(assistant_dialog_, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_shadow_color(assistant_dialog_, lv_color_hex(0x315d72), 0);
+    lv_obj_set_style_shadow_width(assistant_dialog_, 28, 0);
+    lv_obj_set_style_shadow_opa(assistant_dialog_, LV_OPA_30, 0);
+    lv_obj_add_flag(assistant_dialog_, LV_OBJ_FLAG_CLICKABLE);
+
+    auto dialog_header = Box(assistant_dialog_, 0, 0, 936, 96, 0xe6f8f3);
+    lv_obj_set_style_radius(dialog_header, 31, 0);
+    lv_obj_set_style_bg_grad_color(dialog_header, lv_color_hex(0xeaf2ff), 0);
+    lv_obj_set_style_bg_grad_dir(dialog_header, LV_GRAD_DIR_HOR, 0);
+    auto dialog_avatar = Box(dialog_header, 22, 14, 68, 68, 0xd8f4ea);
+    lv_obj_set_style_radius(dialog_avatar, 22, 0);
+    lv_obj_set_style_border_width(dialog_avatar, 2, 0);
+    lv_obj_set_style_border_color(dialog_avatar, lv_color_hex(0xffffff), 0);
+    auto dialog_avatar_image = Image(dialog_avatar, &han_art_book, 0, 0);
+    lv_image_set_scale(dialog_avatar_image, 88);
+    lv_image_set_pivot(dialog_avatar_image, 0, 0);
+    lv_obj_align(dialog_avatar_image, LV_ALIGN_CENTER, 0, 2);
+    auto dialog_title = Label(dialog_header, "小智对话", 108, 10, 310, &han_font_40);
+    lv_obj_set_height(dialog_title, 48);
+    auto dialog_subtitle = Label(dialog_header, "我在听，请继续说", 108, 52, 370);
+    lv_obj_set_height(dialog_subtitle, 36);
+    assistant_dialog_status_box_ = Box(dialog_header, 622, 22, 172, 52, 0xccefe0);
+    lv_obj_set_style_radius(assistant_dialog_status_box_, 26, 0);
+    assistant_dialog_status_ = Label(assistant_dialog_status_box_, "聆听中", 0, 0, 172);
+    lv_obj_set_style_text_align(assistant_dialog_status_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(assistant_dialog_status_, LV_ALIGN_CENTER, 0, -1);
+    assistant_dialog_mic_badge_ = Box(dialog_header, 820, 17, 62, 62, 0x237b5c);
+    lv_obj_set_style_radius(assistant_dialog_mic_badge_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(assistant_dialog_mic_badge_, 3, 0);
+    lv_obj_set_style_border_color(assistant_dialog_mic_badge_, lv_color_hex(0xffffff), 0);
+    auto dialog_mic = Image(assistant_dialog_mic_badge_, &han_status_mic, 0, 0);
+    lv_image_set_scale(dialog_mic, 250);
+    lv_image_set_pivot(dialog_mic, 0, 0);
+    lv_obj_align(dialog_mic, LV_ALIGN_CENTER, 0, 0);
+
+    auto user_role = Box(assistant_dialog_, 774, 119, 116, 44, 0xc8eddb);
+    lv_obj_set_style_radius(user_role, 22, 0);
+    auto user_role_label = Label(user_role, "我说", 0, 0, 116);
+    lv_obj_set_style_text_align(user_role_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(user_role_label, LV_ALIGN_CENTER, 0, -1);
+    auto user_bubble = Box(assistant_dialog_, 230, 112, 520, 112, 0xe8f8f0);
+    lv_obj_set_style_radius(user_bubble, 25, 0);
+    lv_obj_set_style_border_width(user_bubble, 2, 0);
+    lv_obj_set_style_border_color(user_bubble, lv_color_hex(0xc1e6d5), 0);
+    assistant_dialog_user_ = Label(user_bubble, "请告诉我你的问题", 24, 12, 472);
+    lv_obj_set_height(assistant_dialog_user_, 48);
+    lv_label_set_long_mode(assistant_dialog_user_, LV_LABEL_LONG_DOT);
+    assistant_dialog_recognition_ = Label(user_bubble, "✓  文字识别成功", 24, 65, 472);
+    lv_obj_set_height(assistant_dialog_recognition_, 36);
+    lv_obj_set_style_text_color(assistant_dialog_recognition_, lv_color_hex(0x167552), 0);
+    lv_obj_add_flag(assistant_dialog_recognition_, LV_OBJ_FLAG_HIDDEN);
+
+    auto assistant_role = Box(assistant_dialog_, 48, 252, 116, 44, 0xcde8ff);
+    lv_obj_set_style_radius(assistant_role, 22, 0);
+    auto assistant_role_label = Label(assistant_role, "小智", 0, 0, 116);
+    lv_obj_set_style_text_align(assistant_role_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(assistant_role_label, LV_ALIGN_CENTER, 0, -1);
+    auto reply_bubble = Box(assistant_dialog_, 188, 238, 654, 112, 0xf0f6ff);
+    lv_obj_set_style_radius(reply_bubble, 25, 0);
+    lv_obj_set_style_border_width(reply_bubble, 2, 0);
+    lv_obj_set_style_border_color(reply_bubble, lv_color_hex(0xcbdff2), 0);
+    assistant_dialog_reply_ = Label(reply_bubble, "我听见啦，正在想…", 24, 19, 606);
+    lv_obj_set_height(assistant_dialog_reply_, 76);
+    lv_label_set_long_mode(assistant_dialog_reply_, LV_LABEL_LONG_WRAP);
+
+    assistant_dialog_navigation_ = Box(assistant_dialog_, 48, 372, 840, 88, 0xfff2d8);
+    lv_obj_set_style_radius(assistant_dialog_navigation_, 23, 0);
+    lv_obj_set_style_border_width(assistant_dialog_navigation_, 2, 0);
+    lv_obj_set_style_border_color(assistant_dialog_navigation_, lv_color_hex(0xf0d49a), 0);
+    assistant_dialog_navigation_title_ =
+        Label(assistant_dialog_navigation_, "正在打开“小小字典”", 24, 9, 792);
+    lv_obj_set_height(assistant_dialog_navigation_title_, 38);
+    assistant_dialog_navigation_detail_ =
+        Label(assistant_dialog_navigation_, "打开汉字并自动播放笔顺", 24, 46, 792);
+    lv_obj_set_height(assistant_dialog_navigation_detail_, 36);
+    lv_obj_set_style_text_color(assistant_dialog_navigation_detail_, lv_color_hex(0x735829), 0);
+    lv_obj_add_flag(assistant_dialog_navigation_, LV_OBJ_FLAG_HIDDEN);
+
+    auto dialog_close = Button(assistant_dialog_, "关闭", 360, 474, 216, 44, 0xe6f0f3, 14);
+    lv_obj_set_style_radius(dialog_close, 22, 0);
+    ApplyDynamicTextFont(assistant_dialog_user_);
+    ApplyDynamicTextFont(assistant_dialog_recognition_);
+    ApplyDynamicTextFont(assistant_dialog_reply_);
+    ApplyDynamicTextFont(assistant_dialog_navigation_title_);
+    ApplyDynamicTextFont(assistant_dialog_navigation_detail_);
+    lv_obj_add_flag(assistant_dialog_scrim_, LV_OBJ_FLAG_HIDDEN);
     tick_ = lv_timer_create(Tick, 800, this);
     // This timer is re-aligned to the next monotonic second boundary after every callback.
     timer_tick_ = lv_timer_create(TimerTick, 1000, this);
+    // Poll the wall clock without accumulating timer error. The callback is intentionally cheap
+    // while the full-screen clock is not visible.
+    clock_tick_ = lv_timer_create(ClockTick, 100, this);
     Render(Page::Home);
     Queue(2, "");  // Read optional timetable/weather content off the LVGL/main tasks.
     Queue(6, "");  // Load the optional indexed-dictionary font on the worker task.
@@ -702,6 +849,11 @@ void HanDisplay::SetTheme(Theme* theme) {
     current_theme_ = theme;
     lv_obj_set_style_text_font(status_label_, &han_font_28, 0);
     lv_obj_set_style_text_font(notification_label_, &han_font_28, 0);
+    ApplyDynamicTextFont(assistant_dialog_user_);
+    ApplyDynamicTextFont(assistant_dialog_recognition_);
+    ApplyDynamicTextFont(assistant_dialog_reply_);
+    ApplyDynamicTextFont(assistant_dialog_navigation_title_);
+    ApplyDynamicTextFont(assistant_dialog_navigation_detail_);
 #ifndef HAN_UI_HOST_SIM
     if (dictionary_font_ != nullptr) {
         dictionary_font_->fallback = &han_font_28;
@@ -716,22 +868,56 @@ void HanDisplay::SetTheme(Theme* theme) {
 void HanDisplay::SetStatus(const char* status) {
     const char* shown = status ? status : "";
 #ifndef HAN_UI_HOST_SIM
+    const bool connecting = status && strcmp(status, Lang::Strings::CONNECTING) == 0;
+    const bool standby = status && strcmp(status, Lang::Strings::STANDBY) == 0;
     if (strcmp(shown, Lang::Strings::STANDBY) == 0)
         shown = "等待唤醒";
     LvglDisplay::SetStatus(shown);
 #else
+    const bool connecting = strstr(shown, "连接") != nullptr;
+    const bool standby = strstr(shown, "唤醒") != nullptr;
     if (!shown[0])
         shown = "等待唤醒";
     MipiLcdDisplay::SetStatus(shown);
 #endif
     DisplayLockGuard guard(this);
-    if (status_box_)
+    const bool listening = strstr(shown, "听") != nullptr;
+    const bool speaking = strstr(shown, "说") || strstr(shown, "回答");
+    if (status_box_) {
         lv_obj_set_style_bg_color(
-            status_box_,
-            lv_color_hex(strstr(shown, "听")                            ? 0xd9f4df
-                         : strstr(shown, "说") || strstr(shown, "回答") ? 0xffe8d6
-                                                                        : 0xf1f6fb),
-            0);
+            status_box_, lv_color_hex(listening ? 0xd8f5e5 : speaking ? 0xffecd9 : 0xe9f4ff), 0);
+        lv_obj_set_style_bg_grad_color(
+            status_box_, lv_color_hex(listening ? 0xbfead6 : speaking ? 0xffddcf : 0xe4f8ef), 0);
+        if (status_mic_badge_) {
+            lv_obj_set_style_bg_color(status_mic_badge_,
+                                      lv_color_hex(listening ? 0x237b5c
+                                                             : speaking ? 0xb95635 : 0x477da8),
+                                      0);
+        }
+    }
+    if (page_ != Page::Home && (connecting || listening || speaking)) {
+        if (!assistant_dialog_active_) {
+            lv_label_set_text(assistant_dialog_user_, "请告诉我你的问题");
+            lv_label_set_text(assistant_dialog_reply_,
+                              connecting ? "正在连接小智…" : "我听见啦，正在想…");
+            lv_obj_add_flag(assistant_dialog_recognition_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(assistant_dialog_navigation_, LV_OBJ_FLAG_HIDDEN);
+            assistant_navigation_pending_ = false;
+            assistant_dialog_hide_at_ms_ = 0;
+        }
+        ShowAssistantDialog();
+        const char* dialog_status =
+            listening ? "聆听中" : speaking ? "正在回答" : "连接中";
+        lv_label_set_text(assistant_dialog_status_, dialog_status);
+        const uint32_t dialog_color =
+            listening ? 0x237b5c : speaking ? 0xb95635 : 0x477da8;
+        const uint32_t dialog_pill =
+            listening ? 0xccefe0 : speaking ? 0xffdfcf : 0xd9eaf8;
+        lv_obj_set_style_bg_color(assistant_dialog_mic_badge_, lv_color_hex(dialog_color), 0);
+        lv_obj_set_style_bg_color(assistant_dialog_status_box_, lv_color_hex(dialog_pill), 0);
+    } else if (standby && !assistant_navigation_pending_) {
+        HideAssistantDialog();
+    }
 }
 
 void HanDisplay::SetChatMessage(const char* role, const char* text) {
@@ -740,15 +926,24 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
         return;
     const char* shown = text ? text : "";
     const char* who = "小智";
-    uint32_t color = 0xffffff;
+    uint32_t color = 0xf4fbff;
+    uint32_t gradient = 0xfffbef;
+    uint32_t role_color = 0xc8e9ff;
+    uint32_t role_gradient = 0xe3d8ff;
     if (!shown[0]) {
-        shown = "说“你好小智”，一起开始今天的学习吧";
+        shown = "说“你好小智”，我来帮你学习";
     } else if (role && strcmp(role, "user") == 0) {
         who = "我说";
-        color = 0xf1fbf5;
+        color = 0xeefaf4;
+        gradient = 0xf9fff4;
+        role_color = 0xbfead6;
+        role_gradient = 0xdff6ee;
     } else if (role && strcmp(role, "system") == 0) {
         who = "系统";
         color = 0xfff8e9;
+        gradient = 0xfffdf5;
+        role_color = 0xffdfad;
+        role_gradient = 0xffefcc;
         if (initial_banner_pending_) {
             shown = "正在准备屏幕、声音和网络，请稍候…";
             who = "准备中";
@@ -758,11 +953,65 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
     lv_obj_set_style_text_font(
         message_, role && strcmp(role, "assistant") == 0 ? DynamicTextFont() : &han_font_28, 0);
     lv_label_set_text(role_label_, who);
+    lv_obj_align(role_label_, LV_ALIGN_CENTER, 0, -1);
     lv_label_set_text(message_, shown);
     lv_obj_set_style_bg_color(assistant_card_, lv_color_hex(color), 0);
+    lv_obj_set_style_bg_grad_color(assistant_card_, lv_color_hex(gradient), 0);
+    lv_obj_set_style_bg_color(role_box_, lv_color_hex(role_color), 0);
+    lv_obj_set_style_bg_grad_color(role_box_, lv_color_hex(role_gradient), 0);
+
+    if (page_ == Page::Home || !assistant_dialog_)
+        return;
+    const bool has_text = text && text[0];
+    if (role && strcmp(role, "user") == 0 && has_text) {
+        ShowAssistantDialog();
+        ApplyDynamicTextFont(assistant_dialog_user_);
+        lv_label_set_text(assistant_dialog_user_, text);
+        lv_obj_remove_flag(assistant_dialog_recognition_, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(assistant_dialog_status_, "识别成功");
+        lv_obj_set_style_bg_color(assistant_dialog_status_box_, lv_color_hex(0xccefe0), 0);
+        lv_obj_set_style_bg_color(assistant_dialog_mic_badge_, lv_color_hex(0x237b5c), 0);
+        lv_label_set_text(assistant_dialog_reply_, "我听见啦，正在想…");
+    } else if (role && strcmp(role, "assistant") == 0 && has_text) {
+        ShowAssistantDialog();
+        ApplyDynamicTextFont(assistant_dialog_reply_);
+        lv_label_set_text(assistant_dialog_reply_, text);
+        lv_label_set_text(assistant_dialog_status_, "正在回答");
+        lv_obj_set_style_bg_color(assistant_dialog_status_box_, lv_color_hex(0xffdfcf), 0);
+        lv_obj_set_style_bg_color(assistant_dialog_mic_badge_, lv_color_hex(0xb95635), 0);
+    } else if (role && strcmp(role, "system") == 0) {
+        ShowAssistantDialog();
+        lv_label_set_text(assistant_dialog_reply_, "正在连接小智…");
+    } else if (!has_text && !assistant_navigation_pending_) {
+        HideAssistantDialog();
+    }
 }
 void HanDisplay::ClearChatMessages() { SetChatMessage("", ""); }
 void HanDisplay::Toast(const char* text) { ShowNotification(text, 4500); }
+
+void HanDisplay::ShowAssistantDialog() {
+    if (!assistant_dialog_scrim_ || page_ == Page::Home)
+        return;
+    assistant_dialog_active_ = true;
+    lv_obj_remove_flag(assistant_dialog_scrim_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(assistant_dialog_scrim_);
+    lv_obj_invalidate(assistant_dialog_scrim_);
+}
+
+void HanDisplay::HideAssistantDialog() {
+    assistant_dialog_active_ = false;
+    if (assistant_dialog_scrim_)
+        lv_obj_add_flag(assistant_dialog_scrim_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void HanDisplay::StartPendingStrokePlayback() {
+    if (!auto_play_stroke_pending_ || stroke_glyph_.character != entry_.character ||
+        stroke_glyph_.strokes.empty())
+        return;
+    stroke_ = -1;
+    stroke_playing_ = true;
+    auto_play_stroke_pending_ = false;
+}
 
 #ifndef HAN_UI_HOST_SIM
 void HanDisplay::OnRefresh(lv_event_t* event) {
@@ -824,7 +1073,19 @@ void HanDisplay::Render(Page page) {
     page_render_started_ms_ = NowMs();
 #endif
     const bool entering_dictionary = page == Page::Dictionary && page_ != Page::Dictionary;
+    for (auto& digit : flip_digits_)
+        ResetFlipAnimation(digit);
+    flip_date_ = flip_lunar_ = nullptr;
+    flip_date_key_ = -1;
+    flip_clock_initialized_ = false;
     page_ = page;
+    if (page == Page::Home) {
+        assistant_navigation_pending_ = false;
+        assistant_dialog_hide_at_ms_ = 0;
+        HideAssistantDialog();
+    }
+    if (page != Page::Dictionary)
+        auto_play_stroke_pending_ = false;
     if (entering_dictionary)
         stroke_ = -1;
     CloseBatteryPopup();
@@ -857,11 +1118,12 @@ void HanDisplay::Render(Page page) {
     stroke_placeholder_ = nullptr;
     expected_stroke_character_.clear();
     stroke_glyph_ = {};
-    const char* titles[] = {"小小助手", "小小字典", "英语音标", "课程表",
-                            "作业计时", "闹钟",     "天气",     "设置"};
+    const char* titles[] = {"小小助手", "小小字典", "英语音标", "课程表", "作业计时",
+                            "闹钟",     "天气",     "设置",     "时钟"};
     const lv_image_dsc_t* page_icons[] = {
         nullptr,         &han_icon_dictionary, &han_icon_phonetics, &han_icon_timetable,
-        &han_icon_timer, &han_icon_alarm,      &han_icon_weather,   &han_icon_settings};
+        &han_icon_timer, &han_icon_alarm,      &han_icon_weather,   &han_icon_settings,
+        nullptr};
     lv_label_set_text(title_, titles[static_cast<int>(page)]);
 
     // Reset the shared chrome before applying a page-specific composition.
@@ -873,6 +1135,7 @@ void HanDisplay::Render(Page page) {
     lv_obj_remove_flag(battery_button_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(footer_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(title_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_pos(back_, 24, 20);
     lv_obj_set_size(back_, 72, 72);
     lv_obj_set_style_radius(back_, 24, 0);
@@ -881,6 +1144,8 @@ void HanDisplay::Render(Page page) {
     lv_obj_set_width(date_, 208);
     lv_obj_set_style_text_font(date_, &han_font_28, 0);
     lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_grad_dir(body_, LV_GRAD_DIR_NONE, 0);
 
     if (page == Page::Home) {
         lv_obj_add_flag(back_, LV_OBJ_FLAG_HIDDEN);
@@ -911,6 +1176,25 @@ void HanDisplay::Render(Page page) {
         lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_pos(body_, 0, 0);
         lv_obj_set_size(body_, 1280, 720);
+    } else if (page == Page::Clock) {
+        lv_obj_remove_flag(back_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(title_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_icon_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(mascot_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(date_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(clock_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(top_divider_left_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(top_divider_right_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(wifi_button_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(battery_button_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(assistant_card_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(back_, 28, 24);
+        lv_obj_set_size(back_, 78, 78);
+        lv_obj_set_style_radius(back_, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_pos(back_image_, 15, 15);
+        lv_obj_set_pos(body_, 0, 0);
+        lv_obj_set_size(body_, 1280, 720);
     } else {
         lv_obj_remove_flag(back_, LV_OBJ_FLAG_HIDDEN);
         lv_image_set_src(page_icon_, page_icons[static_cast<int>(page)]);
@@ -935,22 +1219,23 @@ void HanDisplay::Render(Page page) {
     if (page != Page::Timetable) {
         lv_obj_set_pos(assistant_card_, 24, page == Page::Home ? 584 : 606);
         lv_obj_set_size(assistant_card_, 1232, page == Page::Home ? 112 : 90);
-        lv_obj_set_pos(assistant_badge_, 14, page == Page::Home ? 20 : 10);
-        lv_obj_set_size(assistant_badge_, 70, 70);
+        lv_obj_set_pos(assistant_badge_, 14, page == Page::Home ? 16 : 7);
+        lv_obj_set_size(assistant_badge_, page == Page::Home ? 80 : 76,
+                        page == Page::Home ? 80 : 76);
         auto icon = lv_obj_get_child(assistant_badge_, 0);
-        lv_obj_set_pos(icon, 8, 8);
-        lv_image_set_scale(icon, 108);
-        lv_obj_set_pos(role_box_, 100, page == Page::Home ? 20 : 11);
-        lv_obj_set_size(role_box_, 116, 34);
-        lv_obj_set_pos(message_, 100, page == Page::Home ? 58 : 48);
-        lv_obj_set_size(message_, 850, page == Page::Home ? 42 : 34);
+        lv_obj_set_pos(icon, page == Page::Home ? 3 : 2, page == Page::Home ? 12 : 11);
+        lv_image_set_scale(icon, page == Page::Home ? 100 : 96);
+        lv_obj_set_pos(role_box_, 112, page == Page::Home ? 17 : 9);
+        lv_obj_set_size(role_box_, 128, 34);
+        lv_obj_set_pos(message_, 112, page == Page::Home ? 57 : 46);
+        lv_obj_set_size(message_, 820, page == Page::Home ? 42 : 34);
         lv_label_set_long_mode(message_, LV_LABEL_LONG_DOT);
-        lv_obj_set_pos(status_box_, 974, page == Page::Home ? 25 : 14);
-        lv_obj_set_size(status_box_, 240, 62);
-        lv_obj_set_pos(status_label_, 8, 14);
-        lv_obj_set_pos(notification_label_, 8, 14);
-        lv_obj_set_width(status_label_, 224);
-        lv_obj_set_width(notification_label_, 224);
+        lv_obj_set_pos(status_box_, 958, page == Page::Home ? 22 : 12);
+        lv_obj_set_size(status_box_, 256, 68);
+        lv_obj_set_pos(status_label_, 12, 15);
+        lv_obj_set_pos(notification_label_, 12, 15);
+        lv_obj_set_width(status_label_, 178);
+        lv_obj_set_width(notification_label_, 178);
     }
     switch (page) {
         case Page::Home:
@@ -977,6 +1262,9 @@ void HanDisplay::Render(Page page) {
         case Page::Network:
             Network();
             break;
+        case Page::Clock:
+            FlipClock();
+            break;
     }
     if (page == Page::Timetable) {
         // body_ covers the full screen for this design, so keep the live root labels/buttons above
@@ -984,7 +1272,11 @@ void HanDisplay::Render(Page page) {
         lv_obj_move_foreground(back_);
         lv_obj_move_foreground(title_);
         lv_obj_move_foreground(date_);
+    } else if (page == Page::Clock) {
+        lv_obj_move_foreground(back_);
     }
+    if (assistant_dialog_active_ || assistant_navigation_pending_)
+        ShowAssistantDialog();
     // Every page transition uses a full-screen framebuffer. Merge the changed header and body
     // into one invalid area so the top-left chrome cannot reach the panel a frame early.
     lv_obj_invalidate(root_);
@@ -1034,6 +1326,246 @@ void HanDisplay::Home() {
         auto label = Label(card, titles[i], 34, 17, 350, &han_font_home);
         lv_obj_set_style_text_color(label, lv_color_hex(colors[i]), 0);
     }
+}
+
+void HanDisplay::ResetFlipAnimation(FlipDigit& digit) {
+    lv_anim_delete(&digit, nullptr);
+    for (auto** overlay : {&digit.old_top, &digit.old_bottom, &digit.new_bottom}) {
+        if (*overlay) {
+            lv_obj_delete(*overlay);
+            *overlay = nullptr;
+        }
+    }
+    digit.card = nullptr;
+    digit.steady_label = nullptr;
+    digit.value = -2;
+}
+
+void HanDisplay::FlipTopExec(void* value, int32_t scale) {
+    auto digit = static_cast<FlipDigit*>(value);
+    if (digit->old_top)
+        lv_obj_set_style_transform_scale_y(digit->old_top, scale, 0);
+}
+
+void HanDisplay::FlipBottomExec(void* value, int32_t scale) {
+    auto digit = static_cast<FlipDigit*>(value);
+    if (digit->new_bottom)
+        lv_obj_set_style_transform_scale_y(digit->new_bottom, scale, 0);
+}
+
+void HanDisplay::FlipTopCompleted(lv_anim_t* animation) {
+    auto digit = static_cast<FlipDigit*>(lv_anim_get_user_data(animation));
+    if (!digit || !digit->card || !digit->new_bottom)
+        return;
+    if (digit->old_top) {
+        lv_obj_delete(digit->old_top);
+        digit->old_top = nullptr;
+    }
+    lv_obj_remove_flag(digit->new_bottom, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_t lower;
+    lv_anim_init(&lower);
+    lv_anim_set_var(&lower, digit);
+    lv_anim_set_user_data(&lower, digit);
+    lv_anim_set_exec_cb(&lower, FlipBottomExec);
+    lv_anim_set_values(&lower, 20, 256);
+    lv_anim_set_duration(&lower, 150);
+    lv_anim_set_path_cb(&lower, lv_anim_path_ease_out);
+    lv_anim_set_completed_cb(&lower, FlipBottomCompleted);
+    lv_anim_start(&lower);
+}
+
+void HanDisplay::FlipBottomCompleted(lv_anim_t* animation) {
+    auto digit = static_cast<FlipDigit*>(lv_anim_get_user_data(animation));
+    if (!digit)
+        return;
+    if (digit->old_bottom) {
+        lv_obj_delete(digit->old_bottom);
+        digit->old_bottom = nullptr;
+    }
+    if (digit->new_bottom) {
+        lv_obj_delete(digit->new_bottom);
+        digit->new_bottom = nullptr;
+    }
+}
+
+void HanDisplay::AnimateFlipDigit(FlipDigit& digit, int value) {
+    if (!digit.card || !digit.steady_label)
+        return;
+    const int old_value = digit.value;
+    lv_anim_delete(&digit, nullptr);
+    for (auto** overlay : {&digit.old_top, &digit.old_bottom, &digit.new_bottom}) {
+        if (*overlay) {
+            lv_obj_delete(*overlay);
+            *overlay = nullptr;
+        }
+    }
+    auto text_for = [](int number, char (&text)[4]) -> const char* {
+        if (number >= 0 && number <= 9) {
+            text[0] = static_cast<char>('0' + number);
+            text[1] = '\0';
+            return text;
+        }
+        return "—";
+    };
+    char old_text[4]{};
+    char new_text[4]{};
+    SetTextIfChanged(digit.steady_label, text_for(value, new_text));
+    digit.value = value;
+    if (old_value < -1) {
+        return;
+    }
+
+    constexpr int kCardWidth = 156;
+    constexpr int kCardHeight = 280;
+    constexpr int kHalfHeight = kCardHeight / 2;
+    const int label_y = (kCardHeight - han_font_flip_digits.line_height) / 2;
+    auto half = [&](bool bottom, const char* text, uint32_t color) {
+        auto clip = Box(digit.card, 0, bottom ? kHalfHeight : 0, kCardWidth, kHalfHeight, color);
+        lv_obj_set_style_radius(clip, 0, 0);
+        auto label = Label(clip, text, 0, label_y - (bottom ? kHalfHeight : 0), kCardWidth,
+                           &han_font_flip_digits);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xfff8e8), 0);
+        return clip;
+    };
+    digit.old_top = half(false, text_for(old_value, old_text), 0x244a7e);
+    digit.old_bottom = half(true, text_for(old_value, old_text), 0x193964);
+    digit.new_bottom = half(true, text_for(value, new_text), 0x1d416f);
+    lv_obj_add_flag(digit.new_bottom, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_transform_pivot_x(digit.old_top, kCardWidth / 2, 0);
+    lv_obj_set_style_transform_pivot_y(digit.old_top, kHalfHeight, 0);
+    lv_obj_set_style_transform_pivot_x(digit.new_bottom, kCardWidth / 2, 0);
+    lv_obj_set_style_transform_pivot_y(digit.new_bottom, 0, 0);
+
+    lv_anim_t upper;
+    lv_anim_init(&upper);
+    lv_anim_set_var(&upper, &digit);
+    lv_anim_set_user_data(&upper, &digit);
+    lv_anim_set_exec_cb(&upper, FlipTopExec);
+    lv_anim_set_values(&upper, 256, 20);
+    lv_anim_set_duration(&upper, 150);
+    lv_anim_set_path_cb(&upper, lv_anim_path_ease_in);
+    lv_anim_set_completed_cb(&upper, FlipTopCompleted);
+    lv_anim_start(&upper);
+}
+
+void HanDisplay::UpdateFlipClock(const struct tm& local, bool valid_time, bool animate) {
+    if (page_ != Page::Clock || !flip_date_ || !flip_lunar_)
+        return;
+    int values[6] = {-1, -1, -1, -1, -1, -1};
+    if (valid_time) {
+        values[0] = local.tm_hour / 10;
+        values[1] = local.tm_hour % 10;
+        values[2] = local.tm_min / 10;
+        values[3] = local.tm_min % 10;
+        values[4] = local.tm_sec / 10;
+        values[5] = local.tm_sec % 10;
+    }
+    for (int index = 0; index < 6; ++index) {
+        if (flip_digits_[index].value == values[index])
+            continue;
+        if (animate && flip_clock_initialized_)
+            AnimateFlipDigit(flip_digits_[index], values[index]);
+        else {
+            char text[2] = {static_cast<char>('0' + std::max(values[index], 0)), '\0'};
+            SetTextIfChanged(flip_digits_[index].steady_label,
+                             values[index] < 0 ? "—" : text);
+            flip_digits_[index].value = values[index];
+        }
+    }
+    flip_clock_initialized_ = true;
+
+    const int64_t date_key = valid_time
+                                 ? static_cast<int64_t>(local.tm_year + 1900) * 10000 +
+                                       (local.tm_mon + 1) * 100 + local.tm_mday
+                                 : -1;
+    if (date_key == flip_date_key_)
+        return;
+    flip_date_key_ = date_key;
+    if (!valid_time) {
+        SetTextIfChanged(flip_date_, "日期待同步");
+        SetTextIfChanged(flip_lunar_, "时间同步后显示农历");
+        return;
+    }
+    constexpr const char* kFullWeekdays[] = {"星期日", "星期一", "星期二", "星期三",
+                                              "星期四", "星期五", "星期六"};
+    char date[64];
+    snprintf(date, sizeof(date), "%d年%d月%d日    %s", local.tm_year + 1900, local.tm_mon + 1,
+             local.tm_mday, kFullWeekdays[local.tm_wday]);
+    SetTextIfChanged(flip_date_, date);
+    han::LunarDate lunar;
+    if (han::LunarFromGregorian(local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, lunar)) {
+        const auto text = han::FormatLunarDate(lunar);
+        SetTextIfChanged(flip_lunar_, text.c_str());
+    } else {
+        SetTextIfChanged(flip_lunar_, "农历日期暂不可用");
+    }
+}
+
+void HanDisplay::FlipClock() {
+    lv_obj_set_style_bg_color(body_, lv_color_hex(0xfff8eb), 0);
+    lv_obj_set_style_bg_opa(body_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_grad_color(body_, lv_color_hex(0xdff4ff), 0);
+    lv_obj_set_style_bg_grad_dir(body_, LV_GRAD_DIR_HOR, 0);
+
+    // Soft, code-native cloud shapes keep the page light without adding another bitmap payload.
+    for (const auto& cloud : {std::array<int, 4>{150, 92, 250, 64},
+                              std::array<int, 4>{916, 62, 286, 72},
+                              std::array<int, 4>{-80, 642, 300, 86},
+                              std::array<int, 4>{1060, 640, 300, 92}}) {
+        auto shape = Box(body_, cloud[0], cloud[1], cloud[2], cloud[3], 0xffffff);
+        lv_obj_set_style_radius(shape, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(shape, LV_OPA_70, 0);
+        lv_obj_set_style_shadow_color(shape, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_shadow_width(shape, 34, 0);
+        lv_obj_set_style_shadow_opa(shape, LV_OPA_50, 0);
+    }
+
+    constexpr int kCardWidth = 156;
+    constexpr int kCardHeight = 280;
+    constexpr int kCardY = 170;
+    constexpr int kPositions[] = {98, 262, 510, 674, 922, 1086};
+    for (int index = 0; index < 6; ++index) {
+        auto& digit = flip_digits_[index];
+        digit.card = Card(body_, kPositions[index], kCardY, kCardWidth, kCardHeight, 0x193964);
+        lv_obj_set_style_radius(digit.card, 27, 0);
+        lv_obj_set_style_clip_corner(digit.card, true, 0);
+        lv_obj_set_style_border_width(digit.card, 2, 0);
+        lv_obj_set_style_border_color(digit.card, lv_color_hex(0x486d9e), 0);
+        lv_obj_set_style_bg_grad_color(digit.card, lv_color_hex(0x2c5488), 0);
+        lv_obj_set_style_bg_grad_dir(digit.card, LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_shadow_color(digit.card, lv_color_hex(0x62738d), 0);
+        lv_obj_set_style_shadow_width(digit.card, 18, 0);
+        lv_obj_set_style_shadow_opa(digit.card, LV_OPA_30, 0);
+        const int label_y = (kCardHeight - han_font_flip_digits.line_height) / 2;
+        digit.steady_label =
+            Label(digit.card, "—", 0, label_y, kCardWidth, &han_font_flip_digits);
+        lv_obj_set_style_text_align(digit.steady_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(digit.steady_label, lv_color_hex(0xfff8e8), 0);
+        digit.value = -2;
+    }
+    for (int x : {442, 854}) {
+        auto top = Box(body_, x + 11, 253, 22, 22, 0x7195f5);
+        auto bottom = Box(body_, x + 11, 341, 22, 22, 0x7195f5);
+        lv_obj_set_style_radius(top, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(bottom, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_grad_color(top, lv_color_hex(0xa9c0ff), 0);
+        lv_obj_set_style_bg_grad_color(bottom, lv_color_hex(0xa9c0ff), 0);
+        lv_obj_set_style_bg_grad_dir(top, LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_bg_grad_dir(bottom, LV_GRAD_DIR_VER, 0);
+    }
+
+    flip_date_ = Label(body_, "日期待同步", 240, 493, 800, &han_font_flip_date);
+    lv_obj_set_style_text_align(flip_date_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(flip_date_, lv_color_hex(0x173d72), 0);
+    flip_lunar_ = Label(body_, "时间同步后显示农历", 240, 558, 800, &han_font_flip_date);
+    lv_obj_set_style_text_align(flip_lunar_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(flip_lunar_, lv_color_hex(0x6684a9), 0);
+
+    const auto now = time(nullptr);
+    struct tm local {};
+    localtime_r(&now, &local);
+    UpdateFlipClock(local, local.tm_year >= 125, false);
 }
 
 void HanDisplay::Dictionary() {
@@ -1378,6 +1910,7 @@ void HanDisplay::UpdateStroke() {
     if (!stroke_value_)
         return;
     if (entry_.strokes.empty()) {
+        auto_play_stroke_pending_ = false;
         lv_label_set_text(stroke_value_, "无动画");
         HideStrokeArtwork();
         return;
@@ -1410,6 +1943,7 @@ bool HanDisplay::ApplyMissingStrokeGlyph(const std::string& character) {
     if (page_ != Page::Dictionary || character.empty() || character != expected_stroke_character_ ||
         character != entry_.character)
         return false;
+    auto_play_stroke_pending_ = false;
     HideStrokeArtwork();
     return true;
 }
@@ -1421,6 +1955,8 @@ bool HanDisplay::ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph
         glyph.character != character || glyph.strokes.empty())
         return false;
     stroke_glyph_ = std::move(glyph);
+    if (auto_play_stroke_pending_ && assistant_dialog_hide_at_ms_ == 0)
+        StartPendingStrokePlayback();
     RenderStroke();
     return true;
 }
@@ -1616,6 +2152,20 @@ void HanDisplay::SetWeatherTextForTest(std::string text) {
     weather_text_ = std::move(text);
     if (setup_ui_called_)
         Render(Page::Weather);
+}
+
+void HanDisplay::SetClockTimeForTest(int year, int month, int day, int hour, int minute,
+                                     int second) {
+    struct tm local {};
+    local.tm_year = year - 1900;
+    local.tm_mon = month - 1;
+    local.tm_mday = day;
+    local.tm_hour = hour;
+    local.tm_min = minute;
+    local.tm_sec = second;
+    local.tm_wday = 0;
+    mktime(&local);
+    UpdateFlipClock(local, year >= 1900, false);
 }
 #endif
 
@@ -2675,6 +3225,17 @@ void HanDisplay::Action(int a) {
         ShowBatteryPopup();
         return;
     }
+    if (a == 13) {
+        Render(Page::Clock);
+        return;
+    }
+    if (a == 14) {
+        assistant_dialog_hide_at_ms_ = 0;
+        assistant_navigation_pending_ = false;
+        HideAssistantDialog();
+        StartPendingStrokePlayback();
+        return;
+    }
     if (a == 8) {
         if (local_audio_) {
             Toast("请听完当前发音再说话");
@@ -2823,6 +3384,7 @@ void HanDisplay::Action(int a) {
         return;
     }
     if (a == 20 || a == 22) {
+        auto_play_stroke_pending_ = false;
         stroke_playing_ = false;
         const int stroke_count = static_cast<int>(entry_.strokes.size());
         stroke_ = std::clamp(stroke_ + (a == 20 ? -1 : 1), -1, stroke_count);
@@ -2830,6 +3392,7 @@ void HanDisplay::Action(int a) {
         return;
     }
     if (a == 21) {
+        auto_play_stroke_pending_ = false;
         if (entry_.strokes.empty())
             return;
         if (stroke_playing_) {
@@ -2980,6 +3543,13 @@ void HanDisplay::Action(int a) {
 
 void HanDisplay::Tick(lv_timer_t* timer) {
     auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    if (self->assistant_dialog_hide_at_ms_ > 0 &&
+        NowMs() >= self->assistant_dialog_hide_at_ms_) {
+        self->assistant_dialog_hide_at_ms_ = 0;
+        self->assistant_navigation_pending_ = false;
+        self->HideAssistantDialog();
+        self->StartPendingStrokePlayback();
+    }
     if (self->stroke_playing_) {
         const int stroke_count = static_cast<int>(self->entry_.strokes.size());
         if (stroke_count <= 0) {
@@ -3029,20 +3599,47 @@ void HanDisplay::TimerTick(lv_timer_t* timer) {
     lv_timer_set_period(timer, std::max<uint32_t>(20, next_second));
 }
 
-void HanDisplay::ShowEntry(const han::Entry& entry) {
+void HanDisplay::ClockTick(lv_timer_t* timer) {
+    auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    if (self->page_ != Page::Clock)
+        return;
+    const auto now = time(nullptr);
+    struct tm local {};
+    localtime_r(&now, &local);
+    self->UpdateFlipClock(local, local.tm_year >= 125, true);
+}
+
+void HanDisplay::ShowEntry(const han::Entry& entry, bool auto_play_strokes) {
     DisplayLockGuard guard(this);
     entry_ = entry;
     stroke_ = -1;
-    if (setup_ui_called_)
+    stroke_playing_ = false;
+    auto_play_stroke_pending_ = auto_play_strokes && !entry.strokes.empty();
+    if (auto_play_strokes) {
+        assistant_navigation_pending_ = true;
+        assistant_dialog_hide_at_ms_ = NowMs() + 2400;
+    }
+    if (setup_ui_called_) {
         Render(Page::Dictionary);
+        if (auto_play_strokes) {
+            auto detail = std::string("打开“") + entry.character + "”字并自动播放笔顺";
+            ApplyDynamicTextFont(assistant_dialog_navigation_title_);
+            ApplyDynamicTextFont(assistant_dialog_navigation_detail_);
+            lv_label_set_text(assistant_dialog_navigation_title_, "正在打开“小小字典”");
+            lv_label_set_text(assistant_dialog_navigation_detail_, detail.c_str());
+            lv_obj_remove_flag(assistant_dialog_navigation_, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(assistant_dialog_status_, "识别成功");
+            ShowAssistantDialog();
+        }
+    }
 }
 
 bool HanDisplay::OpenPage(const std::string& page) {
     if (usb_storage_active_ || usb_storage_requested_)
         return false;
-    const char* names[] = {"home",  "dictionary", "phonetics", "timetable",
-                           "timer", "alarm",      "weather",   "network"};
-    for (int i = 0; i < 8; ++i)
+    const char* names[] = {"home",  "dictionary", "phonetics", "timetable", "timer",
+                           "alarm", "weather",    "network",    "clock"};
+    for (int i = 0; i < 9; ++i)
         if (page == names[i]) {
             DisplayLockGuard guard(this);
             if (!setup_ui_called_)
@@ -3086,6 +3683,7 @@ void HanDisplay::UpdateStatusBar(bool) {
         return;
     SetTextIfChanged(clock_, clock);
     SetTextIfChanged(date_, date);
+    UpdateFlipClock(tm, valid_time, true);
     SetImageIfChanged(wifi_image_, !wifi.IsConnected() ? &han_status_wifi_off
                                    : rssi >= -65       ? &han_status_wifi_3
                                    : rssi >= -75       ? &han_status_wifi_2

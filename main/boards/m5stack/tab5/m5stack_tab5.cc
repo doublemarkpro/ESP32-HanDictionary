@@ -717,7 +717,11 @@ public:
         product->SetUsbStorageAction([this] { return StartUsbStorageMode(); });
         InitializeContentCard();
         DictionaryService::GetInstance().SetResultCallback(
-            [product](const han::Entry& entry) { product->ShowEntry(entry); });
+            [product](const han::Entry& entry, bool auto_play_strokes) {
+                Application::GetInstance().Schedule([product, entry, auto_play_strokes] {
+                    product->ShowEntry(entry, auto_play_strokes);
+                });
+            });
         McpServer::GetInstance().AddTool(
             "self.study.open",
             "打开学习界面。page可选home、dictionary、phonetics、timetable、timer、alarm、weather、n"

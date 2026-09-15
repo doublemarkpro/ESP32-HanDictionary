@@ -49,6 +49,7 @@ set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg"
 if(CONFIG_HAN_DICTIONARY)
     list(APPEND SOURCES "han_dictionary/dictionary_service.cc"
         "han_dictionary/content_store.cc" "han_dictionary/han_display.cc"
+        "han_dictionary/lunar_calendar.cc"
         "han_dictionary/qweather_service.cc"
         "han_dictionary/assets/han_icons.c"
         "han_dictionary/assets/dictionary_action_icons.c"
@@ -59,6 +60,8 @@ if(CONFIG_HAN_DICTIONARY)
         "han_dictionary/assets/home_skin.c" "han_dictionary/assets/han_font_home.c"
         "han_dictionary/assets/han_font_brand.c"
         "han_dictionary/assets/han_font_clock.c"
+        "han_dictionary/assets/han_font_flip_digits.c"
+        "han_dictionary/assets/han_font_flip_date.c"
         "han_dictionary/assets/timetable_assets.c" "han_dictionary/assets/han_font_schedule.c"
         "han_dictionary/assets/han_font_schedule_small.c"
         "han_dictionary/assets/han_font_weather.c"
@@ -1278,7 +1281,7 @@ function(build_default_assets_bin)
     # Create custom command to build assets
     add_custom_command(
         OUTPUT ${GENERATED_ASSETS_BIN}
-        COMMAND python ${PROJECT_DIR}/scripts/build_default_assets.py ${BUILD_ARGS}
+        COMMAND "${PYTHON}" ${PROJECT_DIR}/scripts/build_default_assets.py ${BUILD_ARGS}
         DEPENDS ${DEFAULT_ASSETS_DEPENDENCIES}
         COMMENT "Building default assets.bin based on configuration"
         VERBATIM
