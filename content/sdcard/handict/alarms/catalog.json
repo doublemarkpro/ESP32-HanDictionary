@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "format": "Ogg Opus, mono, 24000 Hz",
+  "ringtones": [
+    { "id": "morning-glow", "name": "晨光", "file": "morning-glow.ogg" },
+    { "id": "light-steps", "name": "轻步", "file": "light-steps.ogg" },
+    { "id": "tiny-bells", "name": "小铃", "file": "tiny-bells.ogg" },
+    { "id": "ready-go", "name": "启程", "file": "ready-go.ogg" }
+  ]
+}

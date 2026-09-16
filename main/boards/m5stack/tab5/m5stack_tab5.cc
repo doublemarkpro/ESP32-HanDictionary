@@ -199,7 +199,7 @@ int Tab5BatteryLevelFromVoltage(uint16_t pack_mv) {
         int level;
     };
     static constexpr Point curve[] = {
-        {3000, 0}, {3400, 5},  {3600, 15}, {3700, 30}, {3800, 50},
+        {3000, 0},  {3400, 5},  {3600, 15}, {3700, 30},  {3800, 50},
         {3900, 70}, {4000, 85}, {4100, 97}, {4150, 100},
     };
     const int cell_mv = pack_mv / 2;
@@ -232,6 +232,7 @@ private:
     bool sd_bus_initialized_ = false;
     bool sd_card_mounted_ = false;
     tinyusb_msc_storage_handle_t usb_storage_ = nullptr;
+    bool tinyusb_driver_started_ = false;
 #endif
 
     void InitializeI2c() {
@@ -715,6 +716,7 @@ public:
                 EnterWifiConfigMode();
         });
         product->SetUsbStorageAction([this] { return StartUsbStorageMode(); });
+        product->SetUsbStorageRestoreAction([this] { return StopUsbStorageMode(); });
         InitializeContentCard();
         DictionaryService::GetInstance().SetResultCallback(
             [product](const han::Entry& entry, bool auto_play_strokes) {
@@ -934,12 +936,49 @@ public:
             usb_storage_ = nullptr;
             return std::string("USB 设备启动失败：") + esp_err_to_name(err);
         }
+        tinyusb_driver_started_ = true;
         tud_disconnect();
         vTaskDelay(pdMS_TO_TICKS(100));
         usb_wrap_ll_phy_select(&USB_WRAP, 0);
         vTaskDelay(pdMS_TO_TICKS(50));
         tud_connect();
         ESP_LOGI(TAG, "microSD is now exported as a USB mass-storage device");
+        return {};
+#endif
+    }
+
+    std::string StopUsbStorageMode() {
+#if !CONFIG_TINYUSB_MSC_ENABLED
+        return "当前固件未启用 USB 读卡器";
+#else
+        if (!usb_storage_) {
+            usb_wrap_ll_phy_select(&USB_WRAP, 1);
+            return {};
+        }
+
+        // The USB-C connector was handed from USB-Serial/JTAG to TinyUSB when MSC started.
+        // Tear TinyUSB down completely before restoring that routing. A plain esp_restart()
+        // does not reset the LP USB PHY selection register on ESP32-P4, leaving Windows with an
+        // unresponsive device until a physical reset.
+        if (tinyusb_driver_started_) {
+            tud_disconnect();
+            vTaskDelay(pdMS_TO_TICKS(250));
+            const auto err = tinyusb_driver_uninstall();
+            if (err != ESP_OK)
+                return std::string("无法停止 USB 设备：") + esp_err_to_name(err);
+            tinyusb_driver_started_ = false;
+        }
+
+        const auto err = tinyusb_msc_delete_storage(usb_storage_);
+        if (err != ESP_OK)
+            return std::string("请先在电脑安全弹出：") + esp_err_to_name(err);
+        usb_storage_ = nullptr;
+
+        // PHY 0 is the external USB-C port. Mapping USB_WRAP back to PHY 1 gives PHY 0 to
+        // USB-Serial/JTAG again before the scheduled software restart.
+        usb_wrap_ll_phy_select(&USB_WRAP, 1);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        ESP_LOGI(TAG, "USB mass storage stopped; USB-C returned to USB-Serial/JTAG");
         return {};
 #endif
     }

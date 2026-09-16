@@ -74,6 +74,21 @@ lv_obj_t* FindArc(lv_obj_t* obj) {
             return arc;
     return nullptr;
 }
+int CountArcs(lv_obj_t* obj) {
+    int count = lv_obj_check_type(obj, &lv_arc_class) ? 1 : 0;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        count += CountArcs(lv_obj_get_child(obj, i));
+    return count;
+}
+lv_obj_t* FindArcBySize(lv_obj_t* obj, int size) {
+    if (lv_obj_check_type(obj, &lv_arc_class) && lv_obj_get_width(obj) == size &&
+        lv_obj_get_height(obj) == size)
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto arc = FindArcBySize(lv_obj_get_child(obj, i), size))
+            return arc;
+    return nullptr;
+}
 void ClickImage(const lv_image_dsc_t* source) {
     auto image = FindImage(lv_screen_active(), source);
     Check(image != nullptr, "image button exists");
@@ -95,14 +110,20 @@ void Click(const char* label) {
 void Shot(const std::filesystem::path& folder, const char* name) {
     lv_refr_now(nullptr);
     size_t title_ink = 0;
+    size_t title_light = 0;
     for (int y = 20; y < 90; ++y)
         for (int x = 110; x < 600; ++x) {
             const auto i = (y * 1280 + x) * 3;
             if (pixels[i] < 60 && pixels[i + 1] < 80 && pixels[i + 2] < 120)
                 ++title_ink;
+            if (pixels[i] > 205 && pixels[i + 1] > 205 && pixels[i + 2] > 205)
+                ++title_light;
         }
-    if (std::string(name) != "clock")
+    const std::string shot_name(name);
+    if (shot_name != "clock" && shot_name.find("dark-") != 0)
         Check(title_ink > 100, "screenshot must contain visibly rendered title text");
+    if (shot_name.find("dark-") == 0 && shot_name != "dark-clock")
+        Check(title_light > 100, "dark screenshot must contain a visible light title");
     std::ofstream f(folder / (std::string(name) + ".ppm"), std::ios::binary);
     f << "P6\n1280 720\n255\n";
     f.write(reinterpret_cast<const char*>(pixels.data()), pixels.size());
@@ -176,8 +197,70 @@ int main(int argc, char** argv) {
         lv_display_set_buffers(display, buffer, nullptr, sizeof(buffer),
                                LV_DISPLAY_RENDER_MODE_PARTIAL);
         lv_display_set_flush_cb(display, Flush);
+        const bool dark_smoke = std::getenv("HAN_UI_DARK_SMOKE") != nullptr;
+        const bool timer_plan_smoke = std::getenv("HAN_UI_TIMER_PLAN_SMOKE") != nullptr;
+        if (dark_smoke) {
+            Settings::values["displaytheme_mode"] = 1;
+            Settings::values["displaydark_active"] = 1;
+        }
         HanDisplay ui(nullptr, nullptr, 1280, 720, 0, 0, false, false, false);
         ui.SetupUI();
+        if (timer_plan_smoke) {
+            Check(ui.OpenPage("timer"), "timer page opens");
+            Check(FindLabel(lv_screen_active(), "计划时间"), "timer plan entry exists");
+            Shot(folder, dark_smoke ? "dark-timer-plan-entry" : "timer-plan-entry");
+            Click("计划时间");
+            Check(FindLabel(lv_screen_active(), "计划完成时间") &&
+                      FindLabel(lv_screen_active(), "45") && FindLabel(lv_screen_active(), "60") &&
+                      FindLabel(lv_screen_active(), "40") && CountArcs(lv_screen_active()) == 4,
+                  "timer plan popup has three rotary controls");
+            Check(!FindLabel(lv_screen_active(), "可设置 30~99 分钟"),
+                  "timer plan popup omits the redundant range hint");
+            Shot(folder, dark_smoke ? "dark-timer-plan" : "timer-plan");
+            auto first_plan_arc = FindArcBySize(lv_screen_active(), 220);
+            Check(first_plan_arc != nullptr, "first timer plan arc exists");
+            Check(lv_obj_get_y(first_plan_arc) * 2 + lv_obj_get_height(first_plan_arc) ==
+                      136 + 438,
+                  "timer plan rings are vertically centred between subjects and actions");
+            lv_arc_set_value(first_plan_arc, 75);
+            lv_obj_send_event(first_plan_arc, LV_EVENT_VALUE_CHANGED, nullptr);
+            Check(FindLabel(lv_screen_active(), "75"), "rotary control updates its minute value");
+            Click("保存");
+            Click("计划时间");
+            Check(FindLabel(lv_screen_active(), "75"), "saved plan is retained when reopened");
+            std::cout << "PASS: timer plan popup rendered.\n";
+            return 0;
+        }
+        if (dark_smoke) {
+            ui.UpdateStatusBar();
+            Shot(folder, "dark-home");
+            const char* pages[] = {"dictionary", "phonetics", "timetable", "timer", "alarm",
+                                   "weather", "network", "clock"};
+            for (const auto* page : pages) {
+                Check(ui.OpenPage(page), "dark page opens");
+                Shot(folder, (std::string("dark-") + page).c_str());
+                if (std::string(page) == "timer") {
+                    Click("计划时间");
+                    Check(FindLabel(lv_screen_active(), "计划完成时间") &&
+                              CountArcs(lv_screen_active()) == 4,
+                          "dark timer plan popup has three rotary controls");
+                    Shot(folder, "dark-timer-plan");
+                    Click("取消");
+                }
+                if (std::string(page) == "network") {
+                    Click("深色模式");
+                    Check(FindLabel(lv_screen_active(), "浅色") &&
+                              FindLabel(lv_screen_active(), "自动") &&
+                              FindLabel(lv_screen_active(), "夜间开启") &&
+                              FindLabel(lv_screen_active(), "保存并应用"),
+                          "appearance popup exposes manual and scheduled modes");
+                    Shot(folder, "dark-appearance");
+                    Click("取消");
+                }
+            }
+            std::cout << "PASS: all dark-theme pages rendered.\n";
+            return 0;
+        }
         const std::string empty_schedule = R"({"days":[[],[],[],[],[]]})";
         han::TimetableData schedule;
         Check(han::TimetableData::Parse(empty_schedule, schedule) && schedule.empty(),
@@ -217,15 +300,22 @@ int main(int argc, char** argv) {
         ui.SetStatus("正在聆听");
         ui.SetChatMessage("user", "智能的智怎么写");
         ui.SetChatMessage("assistant", "好，我帮你打开字典并播放笔顺。");
-        Check(FindLabel(lv_screen_active(), "智能的智怎么写") &&
-                  FindLabel(lv_screen_active(), "✓  文字识别成功"),
-              "feature-page conversation shows recognized speech");
+        ui.SetChatMessage("user", "它可以组成什么词？");
+        ui.SetChatMessage("assistant", "可以组成“智慧”，表示聪明和见识。");
+        ui.SetChatMessage("user", "再告诉我一句例句吧");
+        ui.SetChatMessage("assistant", "我们要用智慧解决学习中遇到的问题。");
+        auto history_message = FindLabel(lv_screen_active(), "智能的智怎么写");
+        auto history_scroller =
+            history_message ? lv_obj_get_parent(lv_obj_get_parent(history_message)) : nullptr;
+        Check(history_message && FindLabel(lv_screen_active(), "停止对话") && history_scroller &&
+                  lv_obj_has_flag(history_scroller, LV_OBJ_FLAG_SCROLLABLE),
+              "feature-page conversation keeps a scrollable chat history and stop action");
         Shot(folder, "assistant-dialog");
         ui.ShowEntry(entry, true);
         Check(FindLabel(lv_screen_active(), "正在打开“小小字典”"),
               "stroke query shows its navigation handoff");
         Shot(folder, "assistant-dialog-navigation");
-        Click("关闭");
+        Click("停止对话");
         Click("<");
         Check(!FindLabel(lv_screen_active(), "按住说话"), "press-to-talk control removed");
         ui.SetStatus("正在初始化");
@@ -556,6 +646,17 @@ int main(int argc, char** argv) {
                       "timer ring and value share the exact card centre");
                 Check(!FindLabel(lv_screen_active(), "六") && !FindLabel(lv_screen_active(), "日"),
                       "weekly chart keeps school days only");
+                Check(FindLabel(lv_screen_active(), "计划时间"),
+                      "timer exposes a discoverable plan-time entry");
+                Click("计划时间");
+                Check(FindLabel(lv_screen_active(), "计划完成时间") &&
+                          FindLabel(lv_screen_active(), "45") && FindLabel(lv_screen_active(), "60") &&
+                          FindLabel(lv_screen_active(), "40") && CountArcs(lv_screen_active()) == 4,
+                      "timer plan popup has three aligned per-subject rotary controls");
+                Shot(folder, "timer-plan");
+                Click("取消");
+                Check(!FindLabel(lv_screen_active(), "计划完成时间"),
+                      "timer plan popup closes without changing values");
                 lv_font_glyph_dsc_t timer_glyph{};
                 Check(lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x8bb0, 0) &&
                           lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x5f55, 0) &&
@@ -671,13 +772,23 @@ int main(int argc, char** argv) {
                   FindLabel(lv_screen_active(), "显示与声音") &&
                   FindLabel(lv_screen_active(), "自动锁屏") &&
                   FindLabel(lv_screen_active(), "10 分钟") &&
-                  FindLabel(lv_screen_active(), "立即关屏"),
+                  FindLabel(lv_screen_active(), "立即关屏") &&
+                  !FindLabel(lv_screen_active(), "+") && !FindLabel(lv_screen_active(), "-"),
               "settings page exposes storage, sliders, auto lock and screen-off controls");
         auto settings_assistant = FindLabel(lv_screen_active(), "小智");
         Check(settings_assistant &&
                   lv_obj_has_flag(lv_obj_get_parent(lv_obj_get_parent(settings_assistant)),
                                   LV_OBJ_FLAG_HIDDEN),
               "settings page uses the full content height without the assistant footer");
+        ui.SetUsbStorageActiveForTest(true);
+        Check(FindLabel(lv_screen_active(), "USB 读卡器已开启") &&
+                  FindLabel(lv_screen_active(), "电脑可以访问 microSD 卡") &&
+                  FindLabel(lv_screen_active(), "重启并恢复"),
+              "USB storage mode provides safe-eject guidance and a recovery action");
+        Shot(folder, "network-usb-storage");
+        Click("重启并恢复");
+        Check(FindLabel(lv_screen_active(), "网络与存储"),
+              "USB recovery returns to normal settings in the host simulator");
         Click("<");
         ui.ShowEntry(han::ContentStore::Demo());
         Check(FindLabel(lv_screen_active(), "小小字典"), "MCP result opens dictionary");

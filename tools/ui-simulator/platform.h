@@ -85,6 +85,7 @@ struct AudioService {
     bool IsPlaybackIdle() { return true; }
     bool IsWakeWordRunning() { return false; }
     void EnableWakeWordDetection(bool) {}
+    void ResetDecoder() {}
 };
 struct Application {
     bool defer = false;

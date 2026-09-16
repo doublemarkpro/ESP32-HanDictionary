@@ -14,12 +14,14 @@
 | 联网 | [network.png](rendered/network.png) | 复用手机热点配网；屏上 Wi-Fi 列表/键盘待做 |
 | 课程 | [timetable.png](rendered/timetable.png) | 读取 SD 周课表；编辑与今日高亮待做 |
 | 计时 | [timer.png](rendered/timer.png) | 分科计时、暂停/完成/恢复；本次记录而非周统计 |
-| 闹钟 | [alarm.png](rendered/alarm.png) | 单个每日提醒；须开机且系统时间已同步，无 RTC 唤醒 |
+| 闹钟 | [alarm.png](rendered/alarm.png) | 单个重复提醒、四款 SD 铃声及试听；须开机且系统时间已同步，无 RTC 唤醒 |
 | 天气 | [weather.png](rendered/weather.png) | 可读取明确标记的缓存；尚无在线天气 API |
 
 首轮采用可复现的字体、轻量图标和 LVGL 控件，尚未做到概念稿的全部插画细节。下列设计规范仍包含后续目标，不能作为已实现功能清单。完整状态见 [实施计划](../IMPLEMENTATION_PLAN.md)。
 
 第二轮新增实际截图：[θ 点读页](rendered/phonetics-theta.png)、[最后一页辅音](rendered/phonetics-last.png)、[SD 矩字笔顺](rendered/dictionary-ju.png)。容量与完整状态见 [DEVELOPMENT_STATUS](../DEVELOPMENT_STATUS.md)。
+
+功能页上的语音交互已增加可滚动的聊天式历史、连接/聆听/回答状态和“停止对话”操作；设计与内存边界见 [小智对话界面](ASSISTANT_CHAT_UI.md)。
 
 ## 页面总览
 
@@ -123,8 +125,10 @@
 
 ![Tab5 闹钟](tab5-alarm-screen.png)
 
-- 第一版支持时间、名称、重复周期和启用开关。
-- RTC 负责断网提醒；天气播报等联网内容不能阻塞基础铃声。
+- 当前版支持时间、重复周期、启用开关，以及四款 microSD Ogg/Opus 铃声的选择和试听。
+- 铃声位于 `handict/alarms/`，只在主动试听或闹钟到点时按需读取；缺少文件会给出提示，
+  不把约 300 KiB 的铃声资源打进固件 Flash。
+- 当前提醒依赖设备保持开机且系统时间已同步；尚未把下一次提醒写入 RTC 做深睡唤醒。
 
 ## 天气
 

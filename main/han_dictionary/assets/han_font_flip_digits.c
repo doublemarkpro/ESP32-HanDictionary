@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 176 px
  * Bpp: 4
- * Opts: --font D:\ESP32-handdict\assets\source\fonts\ResourceHanRoundedCN-Heavy.ttf --symbols 0123456789:— --size 176 --bpp 4 --format lvgl --no-kerning --lv-font-name han_font_flip_digits --lv-include lvgl.h -o D:\ESP32-handdict\main\han_dictionary\assets\han_font_flip_digits.c
+ * Opts: --font D:\ESP32Projects\ESP32-HanDictionary\assets\source\fonts\ResourceHanRoundedCN-Heavy.ttf --symbols 0123456789:— --size 176 --bpp 4 --format lvgl --no-kerning --lv-font-name han_font_flip_digits --lv-include lvgl.h -o D:\ESP32Projects\ESP32-HanDictionary\main\han_dictionary\assets\han_font_flip_digits.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

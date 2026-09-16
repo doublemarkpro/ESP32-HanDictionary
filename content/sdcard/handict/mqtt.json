@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "server": "mqtt.example.com",
+  "port": 1883,
+  "client_id": "xiaozhi-tab5-board",
+  "username": "",
+  "password": "",
+  "topic": "xiaozhi/message"
+}

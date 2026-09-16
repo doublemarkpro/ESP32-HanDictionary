@@ -127,6 +127,7 @@ test('settings and lock-screen illustrations are transparent SD-only assets', as
   const expected={
     'network-wifi.png':[144,144],
     'storage-usb.png':[160,160],
+    'usb-storage-mode.png':[220,184],
     'lock-screen.png':[220,220],
     'brightness-sun.png':[76,76],
     'volume-speaker.png':[76,76],

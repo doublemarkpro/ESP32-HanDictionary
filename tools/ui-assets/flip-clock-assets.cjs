@@ -9,7 +9,7 @@ const fontTool = require.resolve('lv_font_conv/lv_font_conv.js');
 const specs = [
   ['han_font_flip_digits', 176, '0123456789:—'],
   ['han_font_flip_date', 40,
-    ' 0123456789年月日星期一二三四五六农历甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥正冬腊闰初十廿时间同步待后显示暂不可用·—'],
+    ' 0123456789年月日星期一二三四五六七八九农历甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥正冬腊闰初十廿时间同步待后显示暂不可用·—'],
 ];
 
 for (const [name, size, symbols] of specs) {

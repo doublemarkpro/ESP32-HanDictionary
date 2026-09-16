@@ -22,6 +22,9 @@ public:
     void SetUsbStorageAction(std::function<std::string()> action) {
         usb_storage_action_ = std::move(action);
     }
+    void SetUsbStorageRestoreAction(std::function<std::string()> action) {
+        usb_storage_restore_action_ = std::move(action);
+    }
     void SetupUI() override;
     void SetTheme(Theme* theme) override;
     void SetStatus(const char* status) override;
@@ -37,13 +40,29 @@ public:
 #ifdef HAN_UI_HOST_SIM
     void SetWeatherTextForTest(std::string text);
     void SetClockTimeForTest(int year, int month, int day, int hour, int minute, int second);
+    void SetUsbStorageActiveForTest(bool active);
     void SetPinyinResultsForTest(const std::string& query, std::vector<std::string> results) {
         ApplyPinyinResults(query, std::move(results));
     }
 #endif
 
 private:
-    enum class Page { Home, Dictionary, Phonetics, Timetable, Timer, Alarm, Weather, Network, Clock };
+    enum class Page {
+        Home,
+        Dictionary,
+        Phonetics,
+        Timetable,
+        Timer,
+        Alarm,
+        Weather,
+        Network,
+        Clock
+    };
+    enum class ThemeMode {
+        Light = 0,
+        Dark = 1,
+        Auto = 2,
+    };
     struct FlipDigit {
         lv_obj_t* card = nullptr;
         lv_obj_t* steady_label = nullptr;
@@ -56,12 +75,22 @@ private:
         int type;
         char value[128];
     };
+    struct ChatHistoryItem {
+        bool user = false;
+        std::string text;
+    };
     static void OnClick(lv_event_t* event);
     static void OnScreenWake(lv_event_t* event);
+    static void ShowLockScreenAsync(void* user_data);
     static void OnPinyinGesture(lv_event_t* event);
+    static void OnSettingsGesture(lv_event_t* event);
     static void OnLockGesture(lv_event_t* event);
+    static void OnLockReleased(lv_event_t* event);
+    static void UnlockScreenAsync(void* user_data);
     static void OnSettingSliderChanged(lv_event_t* event);
     static void OnSettingSliderReleased(lv_event_t* event);
+    static void OnTimerPlanChanged(lv_event_t* event);
+    static void OnAlarmRingtoneChanged(lv_event_t* event);
     static void Tick(lv_timer_t* timer);
     static void TimerTick(lv_timer_t* timer);
     static void ClockTick(lv_timer_t* timer);
@@ -81,21 +110,38 @@ private:
     void Alarm();
     void Weather();
     void Network();
+    void NetworkSettingsPage();
+    void MqttMessageBoardPage();
+    void ShowMqttSettingsPopup();
+    void DrawSettingsPageNavigation(int selected_page);
     void FlipClock();
     void UpdateFlipClock(const struct tm& local, bool valid_time, bool animate);
     void AnimateFlipDigit(FlipDigit& digit, int value);
     void ResetFlipAnimation(FlipDigit& digit);
     void SetScreenOff(bool off);
+    void SetScreenOffLocked();
     void ShowLockScreen();
     void ShowLockScreenLocked();
     void UnlockScreen();
+    void UnlockScreenLocked();
     void SaveAutoLockSetting();
+    void ShowAppearancePopup();
+    void UpdateAppearancePopup();
+    void CloseAppearancePopup();
+    void SaveThemeSetting();
+    bool ResolveDarkTheme(const struct tm* local = nullptr) const;
+    void ApplyTheme(bool dark, bool rerender = true);
     void ShowBatteryPopup();
     void CloseBatteryPopup();
     void ShowWeatherIndexPopup();
     void CloseWeatherIndexPopup();
     void UpdateSettingLabels();
+    void CacheUsbStorageArtwork();
     void UpdateTimer();
+    void ShowTimerPlanPopup();
+    void UpdateTimerPlanPopup();
+    void CloseTimerPlanPopup();
+    void SaveTimerPlan();
     void UpdateStroke();
     void RenderStroke();
     void HideStrokeArtwork();
@@ -111,6 +157,8 @@ private:
     void LoadPreferences();
     void ShowAssistantDialog();
     void HideAssistantDialog();
+    void AppendAssistantHistory(const char* role, const char* text);
+    void RebuildAssistantHistory();
     void StartPendingStrokePlayback();
     bool Queue(int type, const std::string& value);
     void Toast(const char* text);
@@ -161,23 +209,33 @@ private:
     lv_obj_t* assistant_dialog_status_box_ = nullptr;
     lv_obj_t* assistant_dialog_status_ = nullptr;
     lv_obj_t* assistant_dialog_mic_badge_ = nullptr;
-    lv_obj_t* assistant_dialog_user_ = nullptr;
-    lv_obj_t* assistant_dialog_recognition_ = nullptr;
-    lv_obj_t* assistant_dialog_reply_ = nullptr;
+    lv_obj_t* assistant_dialog_history_ = nullptr;
+    lv_obj_t* assistant_dialog_hint_ = nullptr;
     lv_obj_t* assistant_dialog_navigation_ = nullptr;
     lv_obj_t* assistant_dialog_navigation_title_ = nullptr;
     lv_obj_t* assistant_dialog_navigation_detail_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
+    lv_obj_t* network_detail_ = nullptr;
+    lv_obj_t* mqtt_settings_popup_ = nullptr;
+    lv_obj_t* appearance_popup_ = nullptr;
+    std::array<lv_obj_t*, 3> appearance_mode_buttons_{};
+    lv_obj_t* appearance_start_value_ = nullptr;
+    lv_obj_t* appearance_end_value_ = nullptr;
     lv_obj_t* brightness_value_ = nullptr;
     lv_obj_t* volume_value_ = nullptr;
     lv_obj_t* auto_lock_value_ = nullptr;
     lv_obj_t* brightness_slider_ = nullptr;
     lv_obj_t* volume_slider_ = nullptr;
     lv_obj_t* auto_lock_slider_ = nullptr;
+    std::vector<uint8_t> usb_storage_art_data_;
+    lv_image_dsc_t usb_storage_art_{};
     lv_obj_t* screen_wake_overlay_ = nullptr;
     lv_obj_t* timer_value_ = nullptr;
     lv_obj_t* timer_progress_ = nullptr;
     lv_obj_t* timer_today_value_ = nullptr;
+    lv_obj_t* timer_plan_popup_ = nullptr;
+    std::array<lv_obj_t*, 3> timer_plan_arcs_{};
+    std::array<lv_obj_t*, 3> timer_plan_values_{};
     lv_obj_t* totals_[3]{};
     std::array<lv_obj_t*, 5> timer_week_bars_{};
     lv_obj_t* stroke_value_ = nullptr;
@@ -227,10 +285,16 @@ private:
     QueueHandle_t jobs_ = nullptr;
     std::function<void()> network_action_;
     std::function<std::string()> usb_storage_action_;
+    std::function<std::string()> usb_storage_restore_action_;
     std::atomic<bool> usb_storage_requested_{false};
+    std::atomic<bool> usb_storage_restore_requested_{false};
     std::atomic<bool> usb_storage_active_{false};
+    std::atomic<bool> mqtt_board_dirty_{false};
     std::atomic<bool> screen_off_{false};
     std::atomic<bool> lock_screen_visible_{false};
+    std::atomic<bool> lock_screen_transition_pending_{false};
+    std::atomic<bool> lock_screen_backlight_pending_{false};
+    bool lock_unlock_gesture_ = false;
     int64_t lock_screen_shown_ms_ = 0;
     han::Entry entry_ = han::ContentStore::Demo();
     han::StudyTimer study_;
@@ -240,7 +304,10 @@ private:
     int timer_today_index_ = -1;
     int timer_view_day_ = -1;
     int64_t timer_last_rendered_second_ = -1;
+    std::array<int, 3> timer_plan_minutes_{{45, 60, 40}};
+    std::array<int, 3> timer_plan_draft_{{45, 60, 40}};
     Page page_ = Page::Home;
+    int settings_page_ = 0;
     int sound_ = 0;
     int category_ = 0;
     int sound_page_ = 0;
@@ -251,12 +318,15 @@ private:
     bool assistant_dialog_active_ = false;
     bool assistant_navigation_pending_ = false;
     int64_t assistant_dialog_hide_at_ms_ = 0;
+    std::vector<ChatHistoryItem> assistant_history_;
     int alarm_minutes_ = 405;
     // Bit 0 is Monday and bit 6 is Sunday. A school-week alarm is the default.
     uint8_t alarm_days_ = 0x1f;
     bool alarm_enabled_ = false;
     int64_t alarm_last_day_ = -1;
-    bool alarm_ringing_ = false;
+    std::atomic<bool> alarm_ringing_{false};
+    std::atomic<bool> alarm_previewing_{false};
+    int alarm_ringtone_ = 0;
     std::atomic<bool> local_audio_{false};
     int64_t last_checkpoint_ms_ = 0;
     han::TimetableData timetable_;
@@ -274,6 +344,15 @@ private:
     int brightness_setting_ = 75;
     int volume_setting_ = 70;
     int auto_lock_minutes_ = 10;
+    ThemeMode theme_mode_ = ThemeMode::Light;
+    ThemeMode appearance_draft_mode_ = ThemeMode::Light;
+    bool dark_theme_ = false;
+    bool theme_render_pending_ = false;
+    int dark_start_minutes_ = 19 * 60;
+    int dark_end_minutes_ = 7 * 60;
+    int appearance_draft_start_ = 19 * 60;
+    int appearance_draft_end_ = 7 * 60;
+    int64_t theme_minute_key_ = -1;
     int battery_level_ = -1;
     int battery_voltage_mv_ = -1;
     int battery_current_ma_ = 0;

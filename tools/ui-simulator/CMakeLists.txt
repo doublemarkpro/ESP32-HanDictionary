@@ -32,7 +32,7 @@ target_compile_definitions(han_ui_sim PRIVATE HAN_UI_HOST_SIM=1 _CRT_SECURE_NO_W
     HAN_PLATFORM_HASH="${HAN_PLATFORM_HASH}" HAN_DISPLAY_HASH="${HAN_DISPLAY_HASH}" HAN_TIMETABLE_HASH="${HAN_TIMETABLE_HASH}" HAN_SERVICE_HASH="${HAN_SERVICE_HASH}")
 target_link_libraries(han_ui_sim PRIVATE lvgl)
 if(MSVC)
-  target_compile_options(han_ui_sim PRIVATE /utf-8 /Zc:__cplusplus)
+  target_compile_options(han_ui_sim PRIVATE /utf-8 /Zc:__cplusplus /EHsc)
 endif()
 add_executable(han_graphics_smoke graphics_smoke.cc "${ROOT}/assets/graphics/lvgl/han_graphics_small.c")
 target_include_directories(han_graphics_smoke PRIVATE "${ROOT}/assets/graphics/lvgl")
