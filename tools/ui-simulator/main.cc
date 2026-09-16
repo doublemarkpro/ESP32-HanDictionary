@@ -198,6 +198,7 @@ int main(int argc, char** argv) {
                                LV_DISPLAY_RENDER_MODE_PARTIAL);
         lv_display_set_flush_cb(display, Flush);
         const bool dark_smoke = std::getenv("HAN_UI_DARK_SMOKE") != nullptr;
+        const bool gallery_smoke = std::getenv("HAN_UI_GALLERY_SMOKE") != nullptr;
         const bool timer_plan_smoke = std::getenv("HAN_UI_TIMER_PLAN_SMOKE") != nullptr;
         if (dark_smoke) {
             Settings::values["displaytheme_mode"] = 1;
@@ -231,23 +232,24 @@ int main(int argc, char** argv) {
             std::cout << "PASS: timer plan popup rendered.\n";
             return 0;
         }
-        if (dark_smoke) {
+        if (dark_smoke || gallery_smoke) {
             ui.UpdateStatusBar();
-            Shot(folder, "dark-home");
+            const std::string prefix = dark_smoke ? "dark-" : "";
+            Shot(folder, (prefix + "home").c_str());
             const char* pages[] = {"dictionary", "phonetics", "timetable", "timer", "alarm",
                                    "weather", "network", "clock"};
             for (const auto* page : pages) {
-                Check(ui.OpenPage(page), "dark page opens");
-                Shot(folder, (std::string("dark-") + page).c_str());
+                Check(ui.OpenPage(page), "gallery page opens");
+                Shot(folder, (prefix + page).c_str());
                 if (std::string(page) == "timer") {
                     Click("计划时间");
                     Check(FindLabel(lv_screen_active(), "计划完成时间") &&
                               CountArcs(lv_screen_active()) == 4,
-                          "dark timer plan popup has three rotary controls");
-                    Shot(folder, "dark-timer-plan");
+                          "gallery timer plan popup has three rotary controls");
+                    Shot(folder, (prefix + "timer-plan").c_str());
                     Click("取消");
                 }
-                if (std::string(page) == "network") {
+                if (dark_smoke && std::string(page) == "network") {
                     Click("深色模式");
                     Check(FindLabel(lv_screen_active(), "浅色") &&
                               FindLabel(lv_screen_active(), "自动") &&
@@ -258,7 +260,7 @@ int main(int argc, char** argv) {
                     Click("取消");
                 }
             }
-            std::cout << "PASS: all dark-theme pages rendered.\n";
+            std::cout << "PASS: all gallery pages rendered.\n";
             return 0;
         }
         const std::string empty_schedule = R"({"days":[[],[],[],[],[]]})";
