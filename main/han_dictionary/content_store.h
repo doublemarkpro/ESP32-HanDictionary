@@ -47,6 +47,7 @@ public:
                       size_t limit = 20) const;
     bool Read(const std::string& relative, std::string& data, size_t limit) const;
     bool ReadDictionaryFont(std::string& data) const;
+    bool ReadCandidateDictionaryFont(std::string& data) const;
     std::string DictionaryScalableFontPath() const;
     bool ReadStrokeGlyph(const std::string& character, StrokeGlyph& glyph) const;
     bool ready() const {
@@ -79,6 +80,9 @@ private:
     uint32_t dictionary_font_size_ = 0;
     uint32_t dictionary_font_crc_ = 0;
     std::string dictionary_font_path_;
+    uint32_t dictionary_candidate_font_size_ = 0;
+    uint32_t dictionary_candidate_font_crc_ = 0;
+    std::string dictionary_candidate_font_path_;
     std::string dictionary_scalable_font_path_;
     bool stroke_index_ready_ = false;
     uint32_t stroke_records_ = 0;

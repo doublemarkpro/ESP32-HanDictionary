@@ -25,10 +25,10 @@ function panel(i) {
 async function main() {
  fs.mkdirSync(dir,{recursive:true});
  const assets=[];
- async function add(name,input,width,height) {
+ async function add(name,input,width,height,hostOnly=false) {
   const png=await sharp(input).resize(width,height,{fit:'contain',background:'#00000000'}).ensureAlpha().png({palette:true,colours:192,effort:10,dither:.25}).toBuffer();
   fs.writeFileSync(path.join(dir,name+'.png'),png);
-  assets.push({name,width,height,png});
+  assets.push({name,width,height,png,hostOnly});
  }
  for(let i=0;i<6;i++) {
   const source=panel(i);fs.writeFileSync(path.join(dir,'panel-'+specs[i][0]+'.svg'),source);
@@ -40,6 +40,13 @@ async function main() {
   const trimmed=await sharp(input).trim({background:'#00000000',threshold:20}).png().toBuffer();
   await add('art_'+id,trimmed,width,height);
  }
+ for(const [id,width,height] of [['robot',160,160],['child',72,72]]) {
+  const input=path.join(root,'assets/graphics/source/raster/assistant-'+id+'.png');
+  const trimmed=await sharp(input).trim({background:'#00000000',threshold:20}).png().toBuffer();
+  // The robot is a host-preview convenience only. Production reads the artwork exclusively from
+  // microSD, so no copy of the large PNG can enter internal flash.
+  await add('assistant_'+id,trimmed,width,height,id==='robot');
+ }
  const footer=svg(1280,146,`<defs>${grad('leaf','#b6dc80','#68bb83')}</defs><path d="M0 116Q188 25 403 80Q647 151 863 89Q1112 15 1280 99V146H0Z" fill="#fff0bb"/>${leaf(20,110,1.65)}${leaf(1190,114,1.7)}<path d="M0 137Q135 90 214 146H0ZM1120 146Q1203 102 1280 124V146Z" fill="#cfeaa5"/>`);
  fs.writeFileSync(path.join(dir,'footer.svg'),footer);await add('footer',footer,1280,146);
  for(const id of ['wifi-1','wifi-2','wifi-3','wifi-off','battery-empty','battery-low','battery-half','battery-full','battery-charging','battery-unknown','mic']) {
@@ -49,15 +56,18 @@ async function main() {
  }
  let c='#include "home_skin.h"\n';
  for(const a of assets) {
+  if(a.hostOnly)c+='#ifdef HAN_UI_HOST_SIM\n';
   c+=`static const uint8_t ${a.name}_png[] = {\n`;
   for(let j=0;j<a.png.length;j+=16)c+='    '+Array.from(a.png.subarray(j,j+16),n=>'0x'+n.toString(16).padStart(2,'0')).join(',')+',\n';
   c+=`};\nconst lv_image_dsc_t han_${a.name} = {.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RAW_ALPHA,.w=${a.width},.h=${a.height}},.data_size=sizeof(${a.name}_png),.data=${a.name}_png};\n`;
+  if(a.hostOnly)c+='#endif\n';
  }
  fs.writeFileSync(path.join(out,'home_skin.c'),c);
  const font=path.join(root,'assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf');
+ const normalFont=path.join(root,'managed_components/lvgl__lvgl/scripts/built_in_font/SourceHanSansSC-Normal.otf');
  const tool=require.resolve('lv_font_conv/lv_font_conv.js');
- for(const [name,size,text] of [['han_font_home',48,'查字典英语音标课程表作业计时闹钟天气'],['han_font_brand',62,'小小助手联网设置查字典英语音标课程表作业计时闹钟天气'],['han_font_clock',40,'0123456789:—']]) {
-  execFileSync(process.execPath,[tool,'--font',font,'--symbols',text,'--size',String(size),'--bpp','4','--format','lvgl','--no-kerning','--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')]);
+ for(const [name,size,text,sourceFont=font] of [['han_font_home',48,'查字典英语音标课程表作业计时闹钟天气'],['han_font_brand',62,'小小助手联网设置查字典英语音标课程表作业计时闹钟天气'],['han_font_clock',40,'0123456789:—'],['han_font_assistant',28,'可以继续问我',normalFont]]) {
+  execFileSync(process.execPath,[tool,'--font',sourceFont,'--symbols',text,'--size',String(size),'--bpp','4','--format','lvgl','--no-kerning','--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')]);
   const output=path.join(out,name+'.c');
   fs.writeFileSync(output,fs.readFileSync(output,'utf8').trimEnd()+'\n');
  }

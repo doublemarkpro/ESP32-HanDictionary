@@ -120,7 +120,8 @@ void Shot(const std::filesystem::path& folder, const char* name) {
                 ++title_light;
         }
     const std::string shot_name(name);
-    if (shot_name != "clock" && shot_name.find("dark-") != 0)
+    if (shot_name != "clock" && shot_name.find("dark-") != 0 &&
+        shot_name.find("assistant-dialog") == std::string::npos)
         Check(title_ink > 100, "screenshot must contain visibly rendered title text");
     if (shot_name.find("dark-") == 0 && shot_name != "dark-clock")
         Check(title_light > 100, "dark screenshot must contain a visible light title");
@@ -200,12 +201,76 @@ int main(int argc, char** argv) {
         const bool dark_smoke = std::getenv("HAN_UI_DARK_SMOKE") != nullptr;
         const bool gallery_smoke = std::getenv("HAN_UI_GALLERY_SMOKE") != nullptr;
         const bool timer_plan_smoke = std::getenv("HAN_UI_TIMER_PLAN_SMOKE") != nullptr;
+        const bool assistant_smoke = std::getenv("HAN_UI_ASSISTANT_SMOKE") != nullptr;
+        const bool keyboard_smoke = std::getenv("HAN_UI_KEYBOARD_SMOKE") != nullptr;
+        const bool keyboard_connect_smoke =
+            std::getenv("HAN_UI_KEYBOARD_CONNECT_SMOKE") != nullptr;
         if (dark_smoke) {
             Settings::values["displaytheme_mode"] = 1;
             Settings::values["displaydark_active"] = 1;
         }
         HanDisplay ui(nullptr, nullptr, 1280, 720, 0, 0, false, false, false);
         ui.SetupUI();
+        if (keyboard_connect_smoke) {
+            ui.ShowKeyboardConnected();
+            lv_tick_inc(600);
+            lv_timer_handler();
+            Check(FindLabel(lv_layer_top(), "键盘已连接") &&
+                      FindLabel(lv_layer_top(), "现在可以开始输入啦"),
+                  "keyboard insertion presents a global connection overlay");
+            Shot(folder, dark_smoke ? "keyboard-connect-dark" : "keyboard-connect");
+            std::cout << "PASS: keyboard connection overlay rendered.\n";
+            return 0;
+        }
+        if (assistant_smoke) {
+            Check(ui.OpenPage("timetable"), "assistant smoke page opens");
+            ui.SetStatus("正在聆听");
+            ui.SetChatMessage("assistant", "你好小智");
+            ui.SetChatMessage("user", "智能的智怎么写");
+            ui.SetChatMessage("assistant", "打开字典并播放笔顺");
+            ui.SetChatMessage("user", "可以组成什么词");
+            ui.SetChatMessage("assistant", "可以组成智能");
+            Check(FindImage(lv_screen_active(), &han_assistant_robot) &&
+                      FindImage(lv_screen_active(), &han_assistant_child),
+                  "assistant and child avatars are rendered");
+            Shot(folder, "assistant-dialog");
+            auto stop_label = FindLabel(lv_screen_active(), "停止对话");
+            auto dialog_scrim = stop_label;
+            for (int level = 0; level < 4; ++level)
+                dialog_scrim = lv_obj_get_parent(dialog_scrim);
+            auto& app = Application::GetInstance();
+            app.state = kDeviceStateSpeaking;
+            Click("停止对话");
+            Check(app.stops == 1 && app.state == kDeviceStateIdle && dialog_scrim &&
+                      lv_obj_has_flag(dialog_scrim, LV_OBJ_FLAG_HIDDEN),
+                  "one stop-dialog click ends a speaking conversation and hides the modal");
+            std::cout << "PASS: assistant dialog rendered and stopped with one click.\n";
+            return 0;
+        }
+        if (keyboard_smoke) {
+            ui.HandleKeyboardInput("\t");
+            Check(FindLabel(lv_screen_active(), "键盘查字") &&
+                      FindLabel(lv_screen_active(), "TAB5 在线"),
+                  "Tab shortcut opens the dedicated keyboard lookup page");
+            ui.HandleKeyboardInput("ke3\r");
+            ui.SetPinyinResultsForTest("ke3", {"可", "渴", "坷", "岢"});
+            auto first_candidate = FindLabel(lv_screen_active(), "可");
+            Check(FindLabel(lv_screen_active(), "ke3") && first_candidate &&
+                      FindLabel(lv_screen_active(), "岢"),
+                  "keyboard query filters a numeric tone and renders large candidates");
+            Check(!FindLabel(lv_screen_active(), "3声") &&
+                      !FindLabel(lv_screen_active(), "清空重输") &&
+                      !FindLabel(lv_screen_active(),
+                                 "提示：输入 ke3，只显示三声汉字；点击大字进入学习页"),
+                  "candidate cards omit tone annotations and redundant footer hints");
+            lv_obj_update_layout(first_candidate);
+            Check(lv_obj_get_height(first_candidate) >= 40 &&
+                      lv_obj_get_height(lv_obj_get_parent(first_candidate)) == 138,
+                  "candidate glyph has an explicit unclipped label and card height");
+            Shot(folder, dark_smoke ? "dark-keyboard-dictionary" : "keyboard-dictionary");
+            std::cout << "PASS: keyboard dictionary page accepts ke3 and renders candidates.\n";
+            return 0;
+        }
         if (timer_plan_smoke) {
             Check(ui.OpenPage("timer"), "timer page opens");
             Check(FindLabel(lv_screen_active(), "计划时间"), "timer plan entry exists");
@@ -220,8 +285,7 @@ int main(int argc, char** argv) {
             Shot(folder, dark_smoke ? "dark-timer-plan" : "timer-plan");
             auto first_plan_arc = FindArcBySize(lv_screen_active(), 220);
             Check(first_plan_arc != nullptr, "first timer plan arc exists");
-            Check(lv_obj_get_y(first_plan_arc) * 2 + lv_obj_get_height(first_plan_arc) ==
-                      136 + 438,
+            Check(lv_obj_get_y(first_plan_arc) * 2 + lv_obj_get_height(first_plan_arc) == 136 + 438,
                   "timer plan rings are vertically centred between subjects and actions");
             lv_arc_set_value(first_plan_arc, 75);
             lv_obj_send_event(first_plan_arc, LV_EVENT_VALUE_CHANGED, nullptr);
@@ -236,8 +300,8 @@ int main(int argc, char** argv) {
             ui.UpdateStatusBar();
             const std::string prefix = dark_smoke ? "dark-" : "";
             Shot(folder, (prefix + "home").c_str());
-            const char* pages[] = {"dictionary", "phonetics", "timetable", "timer", "alarm",
-                                   "weather", "network", "clock"};
+            const char* pages[] = {"dictionary", "phonetics", "timetable", "timer",
+                                   "alarm",      "weather",   "network",   "clock"};
             for (const auto* page : pages) {
                 Check(ui.OpenPage(page), "gallery page opens");
                 Shot(folder, (prefix + page).c_str());
@@ -317,7 +381,17 @@ int main(int argc, char** argv) {
         Check(FindLabel(lv_screen_active(), "正在打开“小小字典”"),
               "stroke query shows its navigation handoff");
         Shot(folder, "assistant-dialog-navigation");
+        auto stop_label = FindLabel(lv_screen_active(), "停止对话");
+        auto dialog_scrim = stop_label;
+        for (int level = 0; level < 4; ++level)
+            dialog_scrim = lv_obj_get_parent(dialog_scrim);
+        auto& app = Application::GetInstance();
+        app.state = kDeviceStateSpeaking;
+        const int stop_count = app.stops;
         Click("停止对话");
+        Check(app.stops == stop_count + 1 && app.state == kDeviceStateIdle && dialog_scrim &&
+                  lv_obj_has_flag(dialog_scrim, LV_OBJ_FLAG_HIDDEN),
+              "one stop-dialog click ends a speaking conversation and hides the modal");
         Click("<");
         Check(!FindLabel(lv_screen_active(), "按住说话"), "press-to-talk control removed");
         ui.SetStatus("正在初始化");
@@ -652,7 +726,8 @@ int main(int argc, char** argv) {
                       "timer exposes a discoverable plan-time entry");
                 Click("计划时间");
                 Check(FindLabel(lv_screen_active(), "计划完成时间") &&
-                          FindLabel(lv_screen_active(), "45") && FindLabel(lv_screen_active(), "60") &&
+                          FindLabel(lv_screen_active(), "45") &&
+                          FindLabel(lv_screen_active(), "60") &&
                           FindLabel(lv_screen_active(), "40") && CountArcs(lv_screen_active()) == 4,
                       "timer plan popup has three aligned per-subject rotary controls");
                 Shot(folder, "timer-plan");

@@ -33,6 +33,8 @@ public:
     void ClearChatMessages() override;
     void UpdateStatusBar(bool update_all = false) override;
     void ShowEntry(const han::Entry& entry, bool auto_play_strokes = false);
+    void HandleKeyboardInput(const std::string& input);
+    void ShowKeyboardConnected();
     bool OpenPage(const std::string& page);
     bool ApplyStrokeGlyph(const std::string& character, han::StrokeGlyph glyph);
     bool ApplyMissingStrokeGlyph(const std::string& character);
@@ -56,7 +58,8 @@ private:
         Alarm,
         Weather,
         Network,
-        Clock
+        Clock,
+        KeyboardLookup
     };
     enum class ThemeMode {
         Light = 0,
@@ -94,6 +97,7 @@ private:
     static void Tick(lv_timer_t* timer);
     static void TimerTick(lv_timer_t* timer);
     static void ClockTick(lv_timer_t* timer);
+    static void HideKeyboardOverlay(lv_timer_t* timer);
     static void FlipTopExec(void* value, int32_t scale);
     static void FlipTopCompleted(lv_anim_t* animation);
     static void FlipBottomExec(void* value, int32_t scale);
@@ -104,6 +108,7 @@ private:
     void Render(Page page);
     void Home();
     void Dictionary();
+    void KeyboardLookup();
     void Phonetics();
     void Timetable();
     void Timer();
@@ -150,6 +155,7 @@ private:
     void StartPinyinSearch();
     void UpdatePinyinToneButtons();
     void RenderPinyinResults(const char* status);
+    void RenderKeyboardPinyinResults(const char* status);
     void ApplyPinyinResults(const std::string& query, std::vector<std::string> results);
     void SyncTimerWeek();
     std::array<int64_t, 3> TimerDaySeconds(int day, int64_t now_ms) const;
@@ -159,6 +165,7 @@ private:
     void HideAssistantDialog();
     void AppendAssistantHistory(const char* role, const char* text);
     void RebuildAssistantHistory();
+    void ShowKeyboardConnectionOverlay();
     void StartPendingStrokePlayback();
     bool Queue(int type, const std::string& value);
     void Toast(const char* text);
@@ -170,10 +177,12 @@ private:
     const lv_font_t* DictionaryTextFont() const;
     const lv_font_t* DictionaryLargeFont() const;
     const lv_font_t* DictionaryHeroFont() const;
+    const lv_font_t* DictionaryCandidateFont() const;
     void ApplyDynamicTextFont(lv_obj_t* label);
     void ApplyDictionaryTextFont(lv_obj_t* label);
     void ApplyDictionaryLargeFont(lv_obj_t* label);
     void InstallDictionaryFont(std::string data);
+    void InstallDictionaryCandidateFont(std::string data);
     void InstallScalableDictionaryFonts(const std::string& path);
     void ReleaseDictionaryFonts();
     lv_obj_t* Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h, uint32_t color,
@@ -230,6 +239,8 @@ private:
     std::vector<uint8_t> usb_storage_art_data_;
     lv_image_dsc_t usb_storage_art_{};
     lv_obj_t* screen_wake_overlay_ = nullptr;
+    lv_obj_t* keyboard_connection_overlay_ = nullptr;
+    lv_timer_t* keyboard_connection_timer_ = nullptr;
     lv_obj_t* timer_value_ = nullptr;
     lv_obj_t* timer_progress_ = nullptr;
     lv_obj_t* timer_today_value_ = nullptr;
@@ -316,6 +327,7 @@ private:
     bool stroke_playing_ = false;
     bool auto_play_stroke_pending_ = false;
     bool assistant_dialog_active_ = false;
+    bool assistant_dialog_dismissed_ = false;
     bool assistant_navigation_pending_ = false;
     int64_t assistant_dialog_hide_at_ms_ = 0;
     std::vector<ChatHistoryItem> assistant_history_;
@@ -336,7 +348,9 @@ private:
     std::string weather_index_detail_;
 #ifndef HAN_UI_HOST_SIM
     std::string dictionary_font_data_;
+    std::string dictionary_candidate_font_data_;
     lv_font_t* dictionary_font_ = nullptr;
+    lv_font_t* dictionary_candidate_font_ = nullptr;
     lv_font_t* dictionary_large_font_ = nullptr;
     lv_font_t* dictionary_hero_font_ = nullptr;
     bool dictionary_font_is_ttf_ = false;
@@ -348,6 +362,7 @@ private:
     ThemeMode appearance_draft_mode_ = ThemeMode::Light;
     bool dark_theme_ = false;
     bool theme_render_pending_ = false;
+    bool keyboard_connection_pending_ = false;
     int dark_start_minutes_ = 19 * 60;
     int dark_end_minutes_ = 7 * 60;
     int appearance_draft_start_ = 19 * 60;

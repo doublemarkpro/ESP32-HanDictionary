@@ -1,6 +1,6 @@
 {
-  "png_bytes": 170713,
-  "rgba_bytes": 3901504,
+  "png_bytes": 187692,
+  "rgba_bytes": 4024640,
   "assets": [
     {
       "name": "panel_dictionary",
@@ -73,6 +73,18 @@
       "width": 262,
       "height": 166,
       "bytes": 13089
+    },
+    {
+      "name": "assistant_robot",
+      "width": 160,
+      "height": 160,
+      "bytes": 12776
+    },
+    {
+      "name": "assistant_child",
+      "width": 72,
+      "height": 72,
+      "bytes": 4203
     },
     {
       "name": "footer",

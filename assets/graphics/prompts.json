@@ -81,6 +81,15 @@
       "source": "decor-leaves.png",
       "generator": "OpenAI built-in imagegen",
       "reference": "docs/ui/tab5-home-screen-v2.png"
+    },
+    {
+      "id": "assistant-robot-v2",
+      "ref": "tab5-assistant-dialog.png",
+      "subject": "A friendly blue-and-white sprout robot sitting down and reading an open mint-green book, with a cheerful face, rounded hands and feet, and the whole character clearly visible.",
+      "prompt": "Use case: illustration-story. Asset type: one isolated production UI illustration for a child's Chinese dictionary on M5Stack Tab5. Create a friendly blue-and-white sprout robot sitting down and reading an open mint-green book. Polished rounded soft 3D children's learning-app style, gentle top-left light, cheerful mint, sky-blue and navy palette, clear silhouette at 160 px. Output one centered cutout on a genuinely transparent alpha background with generous padding. No UI, no readable text, no logo, no watermark, no border, no floor and no opaque backdrop.",
+      "source": "assistant-robot.png",
+      "generator": "OpenAI built-in imagegen",
+      "reference": "docs/ui/tab5-assistant-dialog.png"
     }
   ]
 }

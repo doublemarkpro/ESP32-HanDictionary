@@ -315,7 +315,7 @@ def font_converter():
     return candidates[-1]
 
 
-def build_dictionary_font(output, font):
+def build_dictionary_font(output, font, size=28, bpp=2):
     font = Path(font).resolve()
     if not font.is_file():
         raise ValueError(f"Dictionary font not found: {font}")
@@ -324,7 +324,7 @@ def build_dictionary_font(output, font):
         raise ValueError("Generating the SD font requires Node.js")
     subprocess.run([
         node, str(font_converter()), "--no-compress", "--no-prefilter", "--no-kerning",
-        "--font", str(font), "--format", "cbin", "--bpp", "2", "--size", "28",
+        "--font", str(font), "--format", "cbin", "--bpp", str(bpp), "--size", str(size),
         "-r", "0x20-0x2ff,0x2000-0x206f,0x3000-0x303f,0x4e00-0x9fff,0xff00-0xffef",
         "-o", str(output),
     ], check=True)
@@ -362,10 +362,14 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
     (dictionary / "pinyin.idx").write_bytes(pinyin_index)
     font_size = 0
     font_crc = 0
+    candidate_font_size = 0
+    candidate_font_crc = 0
     scalable_font_size = 0
     scalable_font_crc = 0
     if font:
         font_size, font_crc = build_dictionary_font(dictionary / "font-28-2.bin", font)
+        candidate_font_size, candidate_font_crc = build_dictionary_font(
+            dictionary / "font-40-1.bin", font, 40, 1)
         scalable_font = dictionary / "SourceHanSansSC-Normal.otf"
         shutil.copyfile(font, scalable_font)
         scalable_font_size = scalable_font.stat().st_size
@@ -403,6 +407,13 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
             "bpp": 2,
             "bytes": font_size,
             "crc32": font_crc,
+        }
+        manifest["indexed_dictionary"]["candidate_font"] = {
+            "path": "dictionary/font-40-1.bin",
+            "size": 40,
+            "bpp": 1,
+            "bytes": candidate_font_size,
+            "crc32": candidate_font_crc,
         }
         manifest["indexed_dictionary"]["scalable_font"] = {
             "path": "dictionary/SourceHanSansSC-Normal.otf",

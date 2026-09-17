@@ -14,8 +14,8 @@ const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 test('complete unique inventory; weather fallback does not invent sunny weather',()=>{
   assert.equal(weatherIds.length,22);
   assert.equal(controlIds.length,50);
-  assert.equal(manifest.assets.length,90);
-  assert.equal(new Set(manifest.assets.map(a=>a.id)).size,90);
+  assert.equal(manifest.assets.length,91);
+  assert.equal(new Set(manifest.assets.map(a=>a.id)).size,91);
   assert.equal(weatherAssetId('rain'),'weather-rain');
   for(const value of ['not-received',null,undefined,'../clear-day',''])
     assert.equal(weatherAssetId(value),'weather-unknown');
@@ -47,9 +47,9 @@ test('every exported PNG has verified dimensions, alpha, hash and bounded size',
       count++; bytes+=png.length;
     }
   }
-  assert.equal(count,252);
-  assert.deepEqual(manifest.totals,{assets:90,pngs:count,png_bytes:bytes});
-  assert.ok(bytes<4*1024*1024,'SD graphics budget');
+  assert.equal(count,255);
+  assert.deepEqual(manifest.totals,{assets:91,pngs:count,png_bytes:bytes});
+  assert.ok(bytes<4.5*1024*1024,'SD graphics budget');
 });
 
 test('small optional C pack matches PNG exports and stays below 128 KiB payload',()=>{

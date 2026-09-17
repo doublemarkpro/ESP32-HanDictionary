@@ -13,9 +13,9 @@
     "png_bytes": 92335
   },
   "totals": {
-    "assets": 90,
-    "pngs": 252,
-    "png_bytes": 3047419
+    "assets": 91,
+    "pngs": 255,
+    "png_bytes": 4323537
   },
   "assets": [
     {
@@ -3021,6 +3021,41 @@
           "bytes": 169682,
           "decoded_rgba_bytes": 642560,
           "sha256": "24855abcbd3d6110f428150cda80d45534116fbd3d36da391692346f21b5d96a"
+        }
+      ]
+    },
+    {
+      "id": "assistant-robot-v2",
+      "group": "illustration",
+      "source": "assets/graphics/source/raster/assistant-robot.png",
+      "origin": "ai-generated-illustration",
+      "source_sha256": "b3495e9bbcf81716e8ea1e2814b443e2f6c9cea1d027eafe02031585224f6898",
+      "source_hash_encoding": "binary",
+      "opaque": false,
+      "variants": [
+        {
+          "width": 320,
+          "height": 355,
+          "path": "assistant-robot-v2/320.png",
+          "bytes": 184529,
+          "decoded_rgba_bytes": 454400,
+          "sha256": "ecccb49ef67ae435a26a93bbc02aef13d6f595f0ffc18d3aef5abc98af0cca57"
+        },
+        {
+          "width": 480,
+          "height": 532,
+          "path": "assistant-robot-v2/480.png",
+          "bytes": 395834,
+          "decoded_rgba_bytes": 1021440,
+          "sha256": "c29525f7dee0eff5d6184588f59b0f4d6b53e9ade2c02d3aa2c5e4a63af71326"
+        },
+        {
+          "width": 640,
+          "height": 710,
+          "path": "assistant-robot-v2/640.png",
+          "bytes": 695755,
+          "decoded_rgba_bytes": 1817600,
+          "sha256": "e7c3c3bf4d45574fe2c7fbc8d7e0b0df6d9aaea8ea23986c8c13f024e9f939a3"
         }
       ]
     }

@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include "esp_check.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_ops.h"
@@ -39,6 +40,7 @@
 #include "mcp_server.h"
 #include "sdmmc_cmd.h"
 #include "soc/usb_wrap_struct.h"
+#include "tab5_keyboard.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "tinyusb_msc.h"
@@ -219,7 +221,7 @@ int Tab5BatteryLevelFromVoltage(uint16_t pack_mv) {
 class M5StackTab5Board : public WifiBoard {
 private:
     i2c_master_bus_handle_t i2c_bus_;
-    Button boot_button_;
+    std::unique_ptr<Button> boot_button_;
     LcdDisplay* display_;
     EspVideo* camera_ = nullptr;
     Pi4ioe1* pi4ioe1_;
@@ -233,6 +235,7 @@ private:
     bool sd_card_mounted_ = false;
     tinyusb_msc_storage_handle_t usb_storage_ = nullptr;
     bool tinyusb_driver_started_ = false;
+    std::unique_ptr<Tab5Keyboard> keyboard_;
 #endif
 
     void InitializeI2c() {
@@ -348,7 +351,9 @@ private:
     }
 
     void InitializeButtons() {
-        boot_button_.OnClick([this]() {
+        if (!boot_button_)
+            return;
+        boot_button_->OnClick([this]() {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
@@ -357,6 +362,30 @@ private:
             app.ToggleChatState();
         });
     }
+
+#if CONFIG_HAN_DICTIONARY
+    void InitializeKeyboard(HanDisplay* product) {
+        keyboard_ = std::make_unique<Tab5Keyboard>();
+        if (keyboard_->Initialize(
+                [product](const std::string& input) {
+                    Application::GetInstance().Schedule(
+                        [product, input] { product->HandleKeyboardInput(input); });
+                },
+                [product](bool connected) {
+                    if (!connected)
+                        return;
+                    Application::GetInstance().Schedule(
+                        [product] { product->ShowKeyboardConnected(); });
+                })) {
+            return;
+        }
+        keyboard_.reset();
+        // ExtPort1 shares GPIO0 with the BOOT key. A failed I2C watcher can safely release that
+        // pin back to the ordinary button implementation.
+        boot_button_ = std::make_unique<Button>(BOOT_BUTTON_GPIO);
+        ESP_LOGW(TAG, "Tab5 Keyboard watcher unavailable; BOOT button enabled");
+    }
+#endif
 
     void InitializeGt911TouchPad() {
         ESP_LOGI(TAG, "Init GT911");
@@ -702,7 +731,7 @@ private:
     }
 
 public:
-    M5StackTab5Board() : boot_button_(BOOT_BUTTON_GPIO) {
+    M5StackTab5Board() {
         InitializeI2c();
         I2cDetect();
         InitializePi4ioe();
@@ -717,6 +746,10 @@ public:
         });
         product->SetUsbStorageAction([this] { return StartUsbStorageMode(); });
         product->SetUsbStorageRestoreAction([this] { return StopUsbStorageMode(); });
+        // A164 is powered by ExtPort1. Enable it before starting the hot-plug watcher so a keyboard
+        // inserted after boot can answer the periodic I2C probe.
+        SetExt5vEn(true);
+        InitializeKeyboard(product);
         InitializeContentCard();
         DictionaryService::GetInstance().SetResultCallback(
             [product](const han::Entry& entry, bool auto_play_strokes) {
@@ -734,6 +767,9 @@ public:
             });
 #endif
         InitializeCamera();
+#if !CONFIG_HAN_DICTIONARY
+        boot_button_ = std::make_unique<Button>(BOOT_BUTTON_GPIO);
+#endif
         InitializeButtons();
         SetChargeQcEn(true);
         SetChargeEn(true);
@@ -741,7 +777,9 @@ public:
         // The dictionary product does not use the outward-facing 5 V rails. Leaving both boost
         // converters enabled wastes battery even while the screen is off.
         SetUsb5vEn(false);
-        SetExt5vEn(false);
+        // ExtPort1 remains powered for keyboard hot-plug detection. GPIO0 is its I2C SDA line, so
+        // the dictionary build deliberately does not install a competing BOOT-button handler.
+        SetExt5vEn(true);
 #else
         SetUsb5vEn(true);
         SetExt5vEn(true);

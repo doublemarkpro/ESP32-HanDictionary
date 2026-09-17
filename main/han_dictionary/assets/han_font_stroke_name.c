@@ -443,4 +443,7 @@ lv_font_t han_font_stroke_name = {
     .user_data = NULL,
 };
 
+
+
 #endif /*#if HAN_FONT_STROKE_NAME*/
+

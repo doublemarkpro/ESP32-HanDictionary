@@ -59,6 +59,7 @@ if(CONFIG_HAN_DICTIONARY)
         "han_dictionary/assets/han_font_character.c"
         "han_dictionary/assets/han_font_stroke_name.c"
         "han_dictionary/assets/home_skin.c" "han_dictionary/assets/han_font_home.c"
+        "han_dictionary/assets/han_font_assistant.c"
         "han_dictionary/assets/han_font_brand.c"
         "han_dictionary/assets/han_font_clock.c"
         "han_dictionary/assets/han_font_flip_digits.c"

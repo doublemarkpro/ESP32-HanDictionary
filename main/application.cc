@@ -174,7 +174,7 @@ void Application::Run() {
         MAIN_EVENT_VAD_CHANGE | MAIN_EVENT_CLOCK_TICK | MAIN_EVENT_ERROR |
         MAIN_EVENT_NETWORK_CONNECTED | MAIN_EVENT_NETWORK_DISCONNECTED | MAIN_EVENT_TOGGLE_CHAT |
         MAIN_EVENT_START_LISTENING | MAIN_EVENT_STOP_LISTENING | MAIN_EVENT_ACTIVATION_DONE |
-        MAIN_EVENT_STATE_CHANGED | MAIN_EVENT_PLAYBACK_DRAINED;
+        MAIN_EVENT_STATE_CHANGED | MAIN_EVENT_PLAYBACK_DRAINED | MAIN_EVENT_STOP_CONVERSATION;
 
     while (true) {
         auto bits = xEventGroupWaitBits(event_group_, ALL_EVENTS, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -221,6 +221,10 @@ void Application::Run() {
 
         if (bits & MAIN_EVENT_STOP_LISTENING) {
             HandleStopListeningEvent();
+        }
+
+        if (bits & MAIN_EVENT_STOP_CONVERSATION) {
+            HandleStopConversationEvent();
         }
 
         if (bits & MAIN_EVENT_SEND_AUDIO) {
@@ -304,6 +308,7 @@ void Application::HandleNetworkDisconnectedEvent() {
     auto state = GetDeviceState();
     if (state == kDeviceStateConnecting || state == kDeviceStateListening ||
         state == kDeviceStateSpeaking) {
+        EndConversation();
         ESP_LOGI(TAG, "Closing audio channel due to network disconnection");
         protocol_->CloseAudioChannel();
     }
@@ -533,6 +538,7 @@ void Application::InitializeProtocol() {
 
     protocol_->OnAudioChannelClosed([this, &board]() {
         board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+        EndConversation();
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
@@ -553,12 +559,18 @@ void Application::InitializeProtocol() {
                 return;
             }
             if (strcmp(state->valuestring, "start") == 0) {
-                Schedule([this]() {
+                const auto generation = conversation_generation_.load();
+                Schedule([this, generation]() {
+                    if (!IsConversationCurrent(generation))
+                        return;
                     aborted_ = false;
                     SetDeviceState(kDeviceStateSpeaking);
                 });
             } else if (strcmp(state->valuestring, "stop") == 0) {
-                Schedule([this]() {
+                const auto generation = conversation_generation_.load();
+                Schedule([this, generation]() {
+                    if (!IsConversationCurrent(generation))
+                        return;
                     if (GetDeviceState() == kDeviceStateSpeaking) {
                         if (listening_mode_ == kListeningModeManualStop) {
                             SetDeviceState(kDeviceStateIdle);
@@ -576,8 +588,11 @@ void Application::InitializeProtocol() {
                         glyphs.clear();
                     }
                     ESP_LOGI(TAG, "<< %s", text->valuestring);
-                    Schedule([display, message = std::string(text->valuestring),
+                    const auto generation = conversation_generation_.load();
+                    Schedule([this, display, generation, message = std::string(text->valuestring),
                               glyphs = std::move(glyphs), bpp]() {
+                        if (!IsConversationCurrent(generation))
+                            return;
                         display->AddTextGlyphs(glyphs, bpp);
                         display->SetChatMessage("assistant", message.c_str());
                     });
@@ -592,8 +607,11 @@ void Application::InitializeProtocol() {
                     glyphs.clear();
                 }
                 ESP_LOGI(TAG, ">> %s", text->valuestring);
-                Schedule([display, message = std::string(text->valuestring),
+                const auto generation = conversation_generation_.load();
+                Schedule([this, display, generation, message = std::string(text->valuestring),
                           glyphs = std::move(glyphs), bpp]() {
+                    if (!IsConversationCurrent(generation))
+                        return;
                     display->AddTextGlyphs(glyphs, bpp);
                     display->SetChatMessage("user", message.c_str());
                 });
@@ -703,6 +721,14 @@ void Application::StartListening() { xEventGroupSetBits(event_group_, MAIN_EVENT
 
 void Application::StopListening() { xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_LISTENING); }
 
+void Application::StopConversation() {
+    // Invalidate callbacks before the main task consumes the stop event. The display callback
+    // runs on LVGL's task, while TTS/STT callbacks can arrive on a protocol task; waiting for the
+    // event loop leaves a window in which a stale status update can reopen a dismissed dialog.
+    EndConversation();
+    xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_CONVERSATION);
+}
+
 void Application::HandleToggleChatEvent() {
     auto state = GetDeviceState();
 
@@ -725,6 +751,7 @@ void Application::HandleToggleChatEvent() {
     }
 
     if (state == kDeviceStateIdle) {
+        BeginConversation();
         ListeningMode mode = GetDefaultListeningMode();
         if (!protocol_->IsAudioChannelOpened()) {
             SetDeviceState(kDeviceStateConnecting);
@@ -754,6 +781,7 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
         if (!protocol_->OpenAudioChannel()) {
             // Return to idle so the device is not stuck in the connecting
             // state (not every failure path reports a network error)
+            EndConversation();
             SetDeviceState(kDeviceStateIdle);
             return;
         }
@@ -780,6 +808,7 @@ void Application::HandleStartListeningEvent() {
     }
 
     if (state == kDeviceStateIdle) {
+        BeginConversation();
         if (!protocol_->IsAudioChannelOpened()) {
             SetDeviceState(kDeviceStateConnecting);
             // Schedule to let the state change be processed first (UI update)
@@ -806,6 +835,28 @@ void Application::HandleStopListeningEvent() {
         }
         SetDeviceState(kDeviceStateIdle);
     }
+}
+
+void Application::HandleStopConversationEvent() {
+    const auto state = GetDeviceState();
+    const bool active_state = state == kDeviceStateConnecting || state == kDeviceStateListening ||
+                              state == kDeviceStateSpeaking;
+    const bool channel_open = protocol_ && protocol_->IsAudioChannelOpened();
+    if (!active_state && !channel_open) {
+        return;
+    }
+
+    EndConversation();
+    if (state == kDeviceStateSpeaking) {
+        AbortSpeaking(kAbortReasonNone);
+    }
+    if (channel_open) {
+        protocol_->CloseAudioChannel();
+    }
+    // Cancel a connection attempt immediately. ContinueOpenAudioChannel() rechecks this state
+    // before opening the channel, so a queued wake-up cannot resurrect the dismissed dialog.
+    if (active_state)
+        SetDeviceState(kDeviceStateIdle);
 }
 
 void Application::HandleWakeWordDetectedEvent() {
@@ -855,6 +906,7 @@ void Application::BeginWakeWordInvoke(const std::string& wake_word) {
         audio_service_.EnableWakeWordDetection(true);
         return;
     }
+    BeginConversation();
 
     if (!protocol_->IsAudioChannelOpened()) {
         // Schedule to let the state change be processed first (UI update),
@@ -881,6 +933,7 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
             // Return to idle so the device is not stuck in the connecting
             // state (not every failure path reports a network error), and
             // wake word detection is re-enabled by the idle state handler.
+            EndConversation();
             SetDeviceState(kDeviceStateIdle);
             return;
         }
@@ -1012,6 +1065,20 @@ void Application::AbortSpeaking(AbortReason reason) {
     if (protocol_) {
         protocol_->SendAbortSpeaking(reason);
     }
+}
+
+void Application::BeginConversation() {
+    conversation_generation_.fetch_add(1);
+    conversation_active_.store(true);
+}
+
+void Application::EndConversation() {
+    conversation_active_.store(false);
+    conversation_generation_.fetch_add(1);
+}
+
+bool Application::IsConversationCurrent(uint32_t generation) const {
+    return conversation_active_.load() && conversation_generation_.load() == generation;
 }
 
 void Application::SetListeningMode(ListeningMode mode) {

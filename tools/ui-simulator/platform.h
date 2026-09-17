@@ -91,6 +91,7 @@ struct Application {
     bool defer = false;
     std::vector<std::function<void()>> pending;
     int starts = 0, stops = 0;
+    bool conversation_active = true;
     DeviceState state = kDeviceStateIdle;
     static Application& GetInstance() {
         static Application a;
@@ -117,6 +118,12 @@ struct Application {
         ++stops;
         state = kDeviceStateIdle;
     }
+    void StopConversation() {
+        conversation_active = false;
+        ++stops;
+        state = kDeviceStateIdle;
+    }
+    bool IsConversationActive() const { return conversation_active; }
     void SetDeviceState(DeviceState value) { state = value; }
     void PlaySound(std::string_view) {}
     AudioService& GetAudioService() {

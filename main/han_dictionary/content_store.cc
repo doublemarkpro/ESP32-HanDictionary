@@ -424,6 +424,9 @@ bool ContentStore::Initialize() {
     dictionary_font_size_ = 0;
     dictionary_font_crc_ = 0;
     dictionary_font_path_.clear();
+    dictionary_candidate_font_size_ = 0;
+    dictionary_candidate_font_crc_ = 0;
+    dictionary_candidate_font_path_.clear();
     dictionary_scalable_font_path_.clear();
     stroke_index_ready_ = false;
     stroke_records_ = 0;
@@ -545,11 +548,10 @@ bool ContentStore::Initialize() {
     const bool smooth_font = cJSON_IsString(font_path) && cJSON_IsNumber(font_bpp) &&
                              strcmp(font_path->valuestring, "dictionary/font-28-2.bin") == 0 &&
                              font_bpp->valueint == 2;
-    if (indexed_ready_ && (legacy_font || smooth_font) &&
-        cJSON_IsNumber(font_size) && font_size->valuedouble == font_size->valueint &&
-        font_size->valueint >= 128 * 1024 && font_size->valueint <= 4 * 1024 * 1024 &&
-        cJSON_IsNumber(font_crc) && font_crc->valuedouble >= 0 &&
-        font_crc->valuedouble <= UINT32_MAX) {
+    if (indexed_ready_ && (legacy_font || smooth_font) && cJSON_IsNumber(font_size) &&
+        font_size->valuedouble == font_size->valueint && font_size->valueint >= 128 * 1024 &&
+        font_size->valueint <= 4 * 1024 * 1024 && cJSON_IsNumber(font_crc) &&
+        font_crc->valuedouble >= 0 && font_crc->valuedouble <= UINT32_MAX) {
         dictionary_font_path_ = font_path->valuestring;
         FILE* dictionary_font = fopen((root_ + "/" + dictionary_font_path_).c_str(), "rb");
         if (dictionary_font && FileSize(dictionary_font) == font_size->valueint) {
@@ -559,6 +561,30 @@ bool ContentStore::Initialize() {
         if (dictionary_font)
             fclose(dictionary_font);
     }
+    auto candidate_font = cJSON_GetObjectItemCaseSensitive(indexed, "candidate_font");
+    auto candidate_font_path = cJSON_GetObjectItemCaseSensitive(candidate_font, "path");
+    auto candidate_font_size = cJSON_GetObjectItemCaseSensitive(candidate_font, "bytes");
+    auto candidate_font_bpp = cJSON_GetObjectItemCaseSensitive(candidate_font, "bpp");
+    auto candidate_font_height = cJSON_GetObjectItemCaseSensitive(candidate_font, "size");
+    auto candidate_font_crc = cJSON_GetObjectItemCaseSensitive(candidate_font, "crc32");
+    if (indexed_ready_ && cJSON_IsString(candidate_font_path) &&
+        strcmp(candidate_font_path->valuestring, "dictionary/font-40-1.bin") == 0 &&
+        cJSON_IsNumber(candidate_font_bpp) && candidate_font_bpp->valueint == 1 &&
+        cJSON_IsNumber(candidate_font_height) && candidate_font_height->valueint == 40 &&
+        cJSON_IsNumber(candidate_font_size) &&
+        candidate_font_size->valuedouble == candidate_font_size->valueint &&
+        candidate_font_size->valueint >= 128 * 1024 &&
+        candidate_font_size->valueint <= 4 * 1024 * 1024 && cJSON_IsNumber(candidate_font_crc) &&
+        candidate_font_crc->valuedouble >= 0 && candidate_font_crc->valuedouble <= UINT32_MAX) {
+        dictionary_candidate_font_path_ = candidate_font_path->valuestring;
+        FILE* file = fopen((root_ + "/" + dictionary_candidate_font_path_).c_str(), "rb");
+        if (file && FileSize(file) == candidate_font_size->valueint) {
+            dictionary_candidate_font_size_ = candidate_font_size->valueint;
+            dictionary_candidate_font_crc_ = static_cast<uint32_t>(candidate_font_crc->valuedouble);
+        }
+        if (file)
+            fclose(file);
+    }
     auto scalable_font = cJSON_GetObjectItemCaseSensitive(indexed, "scalable_font");
     auto scalable_font_path = cJSON_GetObjectItemCaseSensitive(scalable_font, "path");
     auto scalable_font_format = cJSON_GetObjectItemCaseSensitive(scalable_font, "format");
@@ -567,8 +593,10 @@ bool ContentStore::Initialize() {
         strcmp(scalable_font_path->valuestring, "dictionary/SourceHanSansSC-Normal.otf") == 0 &&
         cJSON_IsString(scalable_font_format) &&
         strcmp(scalable_font_format->valuestring, "opentype") == 0 &&
-        cJSON_IsNumber(scalable_font_size) && scalable_font_size->valuedouble == scalable_font_size->valueint &&
-        scalable_font_size->valueint >= 1024 * 1024 && scalable_font_size->valueint <= 32 * 1024 * 1024) {
+        cJSON_IsNumber(scalable_font_size) &&
+        scalable_font_size->valuedouble == scalable_font_size->valueint &&
+        scalable_font_size->valueint >= 1024 * 1024 &&
+        scalable_font_size->valueint <= 32 * 1024 * 1024) {
         const std::string relative = scalable_font_path->valuestring;
         FILE* scalable = fopen((root_ + "/" + relative).c_str(), "rb");
         if (scalable && FileSize(scalable) == scalable_font_size->valueint)
@@ -589,6 +617,9 @@ void ContentStore::Detach(const std::string& notice) {
     dictionary_font_size_ = 0;
     dictionary_font_crc_ = 0;
     dictionary_font_path_.clear();
+    dictionary_candidate_font_size_ = 0;
+    dictionary_candidate_font_crc_ = 0;
+    dictionary_candidate_font_path_.clear();
     dictionary_scalable_font_path_.clear();
     notice_ = notice;
 }
@@ -598,6 +629,19 @@ bool ContentStore::ReadDictionaryFont(std::string& data) const {
     if (!indexed_ready_ || dictionary_font_size_ == 0 || dictionary_font_path_.empty() ||
         !Read(dictionary_font_path_, data, 4 * 1024 * 1024) ||
         data.size() != dictionary_font_size_ || Crc32(data) != dictionary_font_crc_) {
+        data.clear();
+        return false;
+    }
+    return true;
+}
+
+bool ContentStore::ReadCandidateDictionaryFont(std::string& data) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    if (!indexed_ready_ || dictionary_candidate_font_size_ == 0 ||
+        dictionary_candidate_font_path_.empty() ||
+        !Read(dictionary_candidate_font_path_, data, 4 * 1024 * 1024) ||
+        data.size() != dictionary_candidate_font_size_ ||
+        Crc32(data) != dictionary_candidate_font_crc_) {
         data.clear();
         return false;
     }

@@ -6,6 +6,7 @@ extern "C" {
 LV_FONT_DECLARE(han_font_home);
 LV_FONT_DECLARE(han_font_brand);
 LV_FONT_DECLARE(han_font_clock);
+LV_FONT_DECLARE(han_font_assistant);
 LV_IMAGE_DECLARE(han_panel_dictionary);
 LV_IMAGE_DECLARE(han_panel_phonetics);
 LV_IMAGE_DECLARE(han_panel_timetable);
@@ -13,6 +14,10 @@ LV_IMAGE_DECLARE(han_panel_timer);
 LV_IMAGE_DECLARE(han_panel_alarm);
 LV_IMAGE_DECLARE(han_panel_weather);
 LV_IMAGE_DECLARE(han_art_book);
+#ifdef HAN_UI_HOST_SIM
+LV_IMAGE_DECLARE(han_assistant_robot);
+#endif
+LV_IMAGE_DECLARE(han_assistant_child);
 LV_IMAGE_DECLARE(han_art_headphones);
 LV_IMAGE_DECLARE(han_art_calendar);
 LV_IMAGE_DECLARE(han_art_timer);

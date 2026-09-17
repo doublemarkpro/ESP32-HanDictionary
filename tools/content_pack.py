@@ -300,6 +300,18 @@ def validate_index_font(folder, manifest):
         if (font.get("bytes") != path.stat().st_size or
                 font.get("crc32") != zlib.crc32(path.read_bytes())):
             raise ValueError("Indexed dictionary font checksum mismatch")
+    if "candidate_font" in indexed:
+        font = indexed["candidate_font"]
+        if (not isinstance(font, dict) or
+                font.get("path") != "dictionary/font-40-1.bin" or
+                font.get("size") != 40 or font.get("bpp") != 1):
+            raise ValueError("Indexed dictionary candidate font metadata is invalid")
+        path = Path(folder) / font["path"]
+        if not path.is_file() or not 128 * 1024 <= path.stat().st_size <= 4 * 1024 * 1024:
+            raise ValueError("Indexed dictionary candidate font size is invalid")
+        if (font.get("bytes") != path.stat().st_size or
+                font.get("crc32") != zlib.crc32(path.read_bytes())):
+            raise ValueError("Indexed dictionary candidate font checksum mismatch")
     if "scalable_font" in indexed:
         font = indexed["scalable_font"]
         if (not isinstance(font, dict) or
