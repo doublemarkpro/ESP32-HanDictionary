@@ -24,6 +24,18 @@ DEFAULT_FONT = (
     content_pack.ROOT
     / "managed_components/lvgl__lvgl/scripts/built_in_font/SourceHanSansSC-Normal.otf"
 )
+DEFAULT_CANDIDATE_FONT = (
+    content_pack.ROOT / "assets/source/fonts/LXGWWenKaiGBScreen.ttf"
+)
+DEFAULT_CANDIDATE_FONT_LICENSE = (
+    content_pack.ROOT / "assets/source/fonts/LXGW-WenKai-Screen-OFL.txt"
+)
+DEFAULT_CANDIDATE_SCALABLE_FONT = (
+    content_pack.ROOT / "assets/source/fonts/NotoSansSC-Medium.ttf"
+)
+DEFAULT_CANDIDATE_SCALABLE_FONT_LICENSE = (
+    content_pack.ROOT / "assets/source/fonts/Noto-CJK-OFL.txt"
+)
 PINYIN_RE = re.compile(
     r"[A-Za-züÜāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ]+(?:[ '\-]"
     r"[A-Za-züÜāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ]+)*"
@@ -31,8 +43,16 @@ PINYIN_RE = re.compile(
 CJK_RE = r"\u4e00-\u9fff"
 COMMON_CHARACTERS = (
     "的一是不了人我在有他这为之大来以个中上们到说国和地也子时道出而要于就下得可你"
-    "年生自会那后能对着事其里所去行过家十用发天如然作方成者多日都三小军二无同么"
+    "年生自会那后能对着事其里所去趣行过家十用发天如然作方成者多日都三小军二无同么"
     "经法当起与好看学进种将还分此心前面又定见只主没公从知全工己使情明性汉规矩"
+    "外想实把做本点现因些正更美次动话合回加向间问很最头新样体别她老名长比内路化"
+    "任给第门相应开手但重身放常西气五直总四场由书它高意真才度海安口连难望风教"
+    "受车空带今满变数东声该记少保报结反处目太快关原认志几何光社非德强平形利清"
+    "等部月象物世文感表战果被解许写信爱至神量级近江期识造取根论运农指区白条系乐"
+    "每林住队南色打收告先王亲边怕服早院吃房音火际则完治导器确容必整置百须改周况"
+    "查找字典拼读习校师友父母哥姐弟妹春夏秋冬山水花草木石土金雨雪云电星日月早晚"
+    "午夜红黄蓝绿黑白大小多少上下左右前后里外东西南北一二三四五六七八九零语数学"
+    "英语体育音乐美术科学劳动信息班会社团课本笔画偏旁结构组词意思天气闹钟课程作业"
 )
 COMMON_RANK = {character: rank for rank, character in enumerate(COMMON_CHARACTERS)}
 CNCHAR_SOURCE_URL = "https://github.com/theajack/cnchar"
@@ -271,9 +291,14 @@ def encode_pinyin_index(entries):
     directory = bytearray()
     data = bytearray()
     for syllable in sorted(groups):
-        characters = "".join(sorted(groups[syllable],
-                                    key=lambda character: (COMMON_RANK.get(character, 10000),
-                                                           ord(character)))).encode("utf-8")
+        def candidate_rank(character):
+            common_rank = COMMON_RANK.get(character)
+            strokes = entries[character].get("stroke_count", 0)
+            stroke_rank = strokes if isinstance(strokes, int) and strokes > 0 else 65
+            return (common_rank is None, stroke_rank,
+                    common_rank if common_rank is not None else 10000, ord(character))
+
+        characters = "".join(sorted(groups[syllable], key=candidate_rank)).encode("utf-8")
         count = len(characters) // 3
         if not count or count > 1024:
             raise ValueError(f"Too many candidates for pinyin syllable: {syllable}")
@@ -315,7 +340,7 @@ def font_converter():
     return candidates[-1]
 
 
-def build_dictionary_font(output, font, size=28, bpp=2):
+def build_dictionary_font(output, font, size=28, bpp=2, maximum_size=4 * 1024 * 1024):
     font = Path(font).resolve()
     if not font.is_file():
         raise ValueError(f"Dictionary font not found: {font}")
@@ -329,7 +354,7 @@ def build_dictionary_font(output, font, size=28, bpp=2):
         "-o", str(output),
     ], check=True)
     size = output.stat().st_size
-    if not 128 * 1024 <= size <= 4 * 1024 * 1024:
+    if not 128 * 1024 <= size <= maximum_size:
         raise ValueError("Generated dictionary font size is outside the device limit")
     return size, zlib.crc32(output.read_bytes())
 
@@ -364,12 +389,24 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
     font_crc = 0
     candidate_font_size = 0
     candidate_font_crc = 0
+    candidate_scalable_font_size = 0
+    candidate_scalable_font_crc = 0
     scalable_font_size = 0
     scalable_font_crc = 0
     if font:
         font_size, font_crc = build_dictionary_font(dictionary / "font-28-2.bin", font)
         candidate_font_size, candidate_font_crc = build_dictionary_font(
-            dictionary / "font-40-1.bin", font, 40, 1)
+            dictionary / "font-56-kai-1.bin", DEFAULT_CANDIDATE_FONT, 56, 1,
+            8 * 1024 * 1024)
+        licenses = output / "handict/licenses"
+        licenses.mkdir(exist_ok=True)
+        shutil.copyfile(DEFAULT_CANDIDATE_FONT_LICENSE, licenses / "LXGW-WENKAI-OFL.txt")
+        candidate_scalable_font = dictionary / "NotoSansSC-Medium.ttf"
+        shutil.copyfile(DEFAULT_CANDIDATE_SCALABLE_FONT, candidate_scalable_font)
+        candidate_scalable_font_size = candidate_scalable_font.stat().st_size
+        candidate_scalable_font_crc = zlib.crc32(candidate_scalable_font.read_bytes())
+        shutil.copyfile(DEFAULT_CANDIDATE_SCALABLE_FONT_LICENSE,
+                        licenses / "Noto-CJK-OFL.txt")
         scalable_font = dictionary / "SourceHanSansSC-Normal.otf"
         shutil.copyfile(font, scalable_font)
         scalable_font_size = scalable_font.stat().st_size
@@ -409,11 +446,26 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
             "crc32": font_crc,
         }
         manifest["indexed_dictionary"]["candidate_font"] = {
-            "path": "dictionary/font-40-1.bin",
-            "size": 40,
+            "path": "dictionary/font-56-kai-1.bin",
+            "size": 56,
             "bpp": 1,
             "bytes": candidate_font_size,
             "crc32": candidate_font_crc,
+            "source_id": "lxgw-wenkai-screen-1.522",
+            "source_url": "https://github.com/lxgw/LxgwWenKai-Screen",
+            "license": "SIL Open Font License 1.1",
+            "license_file": "licenses/LXGW-WENKAI-OFL.txt",
+        }
+        manifest["indexed_dictionary"]["candidate_scalable_font"] = {
+            "path": "dictionary/NotoSansSC-Medium.ttf",
+            "format": "truetype",
+            "size": 56,
+            "bytes": candidate_scalable_font_size,
+            "crc32": candidate_scalable_font_crc,
+            "source_id": "google-fonts-notosanssc-medium-static",
+            "source_url": "https://github.com/google/fonts/tree/main/ofl/notosanssc",
+            "license": "SIL Open Font License 1.1",
+            "license_file": "licenses/Noto-CJK-OFL.txt",
         }
         manifest["indexed_dictionary"]["scalable_font"] = {
             "path": "dictionary/SourceHanSansSC-Normal.otf",

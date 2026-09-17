@@ -5,7 +5,9 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <memory>
+#include <new>
 
 namespace han {
 namespace {
@@ -25,6 +27,28 @@ constexpr size_t kPinyinHeaderSize = 24;
 constexpr size_t kPinyinDirectorySize = 16;
 constexpr uint32_t kPinyinMaxRecords = 2048;
 constexpr uint32_t kPinyinDataLimit = 256 * 1024;
+// Put familiar school-age characters ahead of rare homophones without dropping any candidate.
+// Keep the importer's list in sync so newly generated pinyin indexes have the same ordering.
+constexpr char kCommonCharacters[] =
+    "的一是不了人我在有他这为之大来以个中上们到说国和地也子时道出而要于就下得可你"
+    "年生自会那后能对着事其里所去趣行过家十用发天如然作方成者多日都三小军二无同么"
+    "经法当起与好看学进种将还分此心前面又定见只主没公从知全工己使情明性汉规矩"
+    "外想实把做本点现因些正更美次动话合回加向间问很最头新样体别她老名长比内路化"
+    "任给第门相应开手但重身放常西气五直总四场由书它高意真才度海安口连难望风教"
+    "受车空带今满变数东声该记少保报结反处目太快关原认志几何光社非德强平形利清"
+    "等部月象物世文感表战果被解许写信爱至神量级近江期识造取根论运农指区白条系乐"
+    "每林住队南色打收告先王亲边怕服早院吃房音火际则完治导器确容必整置百须改周况"
+    "查找字典拼读习校师友父母哥姐弟妹春夏秋冬山水花草木石土金雨雪云电星日月早晚"
+    "午夜红黄蓝绿黑白大小多少上下左右前后里外东西南北一二三四五六七八九零语数学"
+    "英语体育音乐美术科学劳动信息班会社团课本笔画偏旁结构组词意思天气闹钟课程作业";
+
+size_t CommonCharacterRank(const std::string& character) {
+    if (character.size() != 3)
+        return std::numeric_limits<size_t>::max();
+    const auto match = strstr(kCommonCharacters, character.c_str());
+    return match ? static_cast<size_t>(match - kCommonCharacters) / 3
+                 : std::numeric_limits<size_t>::max();
+}
 
 uint32_t ReadLe32(const uint8_t* data) {
     return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
@@ -405,7 +429,13 @@ bool ContentStore::Read(const std::string& relative, std::string& data, size_t l
         return false;
     }
     rewind(file);
-    data.resize(size);
+    try {
+        data.resize(size);
+    } catch (const std::bad_alloc&) {
+        fclose(file);
+        data.clear();
+        return false;
+    }
     const bool ok = fread(data.data(), 1, size, file) == static_cast<size_t>(size);
     fclose(file);
     if (!ok)
@@ -428,6 +458,7 @@ bool ContentStore::Initialize() {
     dictionary_candidate_font_crc_ = 0;
     dictionary_candidate_font_path_.clear();
     dictionary_scalable_font_path_.clear();
+    dictionary_candidate_scalable_font_path_.clear();
     stroke_index_ready_ = false;
     stroke_records_ = 0;
     stroke_data_size_ = 0;
@@ -567,15 +598,23 @@ bool ContentStore::Initialize() {
     auto candidate_font_bpp = cJSON_GetObjectItemCaseSensitive(candidate_font, "bpp");
     auto candidate_font_height = cJSON_GetObjectItemCaseSensitive(candidate_font, "size");
     auto candidate_font_crc = cJSON_GetObjectItemCaseSensitive(candidate_font, "crc32");
-    if (indexed_ready_ && cJSON_IsString(candidate_font_path) &&
+    const bool legacy_candidate_font =
+        cJSON_IsString(candidate_font_path) && cJSON_IsNumber(candidate_font_height) &&
         strcmp(candidate_font_path->valuestring, "dictionary/font-40-1.bin") == 0 &&
-        cJSON_IsNumber(candidate_font_bpp) && candidate_font_bpp->valueint == 1 &&
-        cJSON_IsNumber(candidate_font_height) && candidate_font_height->valueint == 40 &&
-        cJSON_IsNumber(candidate_font_size) &&
+        candidate_font_height->valueint == 40;
+    const bool large_candidate_font =
+        cJSON_IsString(candidate_font_path) && cJSON_IsNumber(candidate_font_height) &&
+        (strcmp(candidate_font_path->valuestring, "dictionary/font-56-kai-1.bin") == 0 ||
+         strcmp(candidate_font_path->valuestring, "dictionary/font-56-heavy-1.bin") == 0) &&
+        candidate_font_height->valueint == 56;
+    if (indexed_ready_ && cJSON_IsString(candidate_font_path) &&
+        (legacy_candidate_font || large_candidate_font) && cJSON_IsNumber(candidate_font_bpp) &&
+        candidate_font_bpp->valueint == 1 && cJSON_IsNumber(candidate_font_size) &&
         candidate_font_size->valuedouble == candidate_font_size->valueint &&
         candidate_font_size->valueint >= 128 * 1024 &&
-        candidate_font_size->valueint <= 4 * 1024 * 1024 && cJSON_IsNumber(candidate_font_crc) &&
-        candidate_font_crc->valuedouble >= 0 && candidate_font_crc->valuedouble <= UINT32_MAX) {
+        candidate_font_size->valueint <= (large_candidate_font ? 8 : 4) * 1024 * 1024 &&
+        cJSON_IsNumber(candidate_font_crc) && candidate_font_crc->valuedouble >= 0 &&
+        candidate_font_crc->valuedouble <= UINT32_MAX) {
         dictionary_candidate_font_path_ = candidate_font_path->valuestring;
         FILE* file = fopen((root_ + "/" + dictionary_candidate_font_path_).c_str(), "rb");
         if (file && FileSize(file) == candidate_font_size->valueint) {
@@ -604,6 +643,32 @@ bool ContentStore::Initialize() {
         if (scalable)
             fclose(scalable);
     }
+    auto candidate_scalable_font =
+        cJSON_GetObjectItemCaseSensitive(indexed, "candidate_scalable_font");
+    auto candidate_scalable_path =
+        cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "path");
+    auto candidate_scalable_format =
+        cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "format");
+    auto candidate_scalable_size =
+        cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "bytes");
+    auto candidate_scalable_height =
+        cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "size");
+    if (indexed_ready_ && cJSON_IsString(candidate_scalable_path) &&
+        strcmp(candidate_scalable_path->valuestring, "dictionary/NotoSansSC-Medium.ttf") == 0 &&
+        cJSON_IsString(candidate_scalable_format) &&
+        strcmp(candidate_scalable_format->valuestring, "truetype") == 0 &&
+        cJSON_IsNumber(candidate_scalable_height) && candidate_scalable_height->valueint == 56 &&
+        cJSON_IsNumber(candidate_scalable_size) &&
+        candidate_scalable_size->valuedouble == candidate_scalable_size->valueint &&
+        candidate_scalable_size->valueint >= 1024 * 1024 &&
+        candidate_scalable_size->valueint <= 32 * 1024 * 1024) {
+        const std::string relative = candidate_scalable_path->valuestring;
+        FILE* scalable = fopen((root_ + "/" + relative).c_str(), "rb");
+        if (scalable && FileSize(scalable) == candidate_scalable_size->valueint)
+            dictionary_candidate_scalable_font_path_ = "S:" + root_ + "/" + relative;
+        if (scalable)
+            fclose(scalable);
+    }
     return true;
 }
 
@@ -621,6 +686,7 @@ void ContentStore::Detach(const std::string& notice) {
     dictionary_candidate_font_crc_ = 0;
     dictionary_candidate_font_path_.clear();
     dictionary_scalable_font_path_.clear();
+    dictionary_candidate_scalable_font_path_.clear();
     notice_ = notice;
 }
 
@@ -639,7 +705,7 @@ bool ContentStore::ReadCandidateDictionaryFont(std::string& data) const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!indexed_ready_ || dictionary_candidate_font_size_ == 0 ||
         dictionary_candidate_font_path_.empty() ||
-        !Read(dictionary_candidate_font_path_, data, 4 * 1024 * 1024) ||
+        !Read(dictionary_candidate_font_path_, data, 8 * 1024 * 1024) ||
         data.size() != dictionary_candidate_font_size_ ||
         Crc32(data) != dictionary_candidate_font_crc_) {
         data.clear();
@@ -651,6 +717,11 @@ bool ContentStore::ReadCandidateDictionaryFont(std::string& data) const {
 std::string ContentStore::DictionaryScalableFontPath() const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     return indexed_ready_ ? dictionary_scalable_font_path_ : std::string();
+}
+
+std::string ContentStore::DictionaryCandidateScalableFontPath() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return indexed_ready_ ? dictionary_candidate_scalable_font_path_ : std::string();
 }
 
 bool ContentStore::ReadStrokeGlyph(const std::string& character, StrokeGlyph& glyph) const {
@@ -912,6 +983,65 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
         if (characters.size() >= limit)
             break;
     }
+    struct RankedCandidate {
+        std::string character;
+        size_t common_rank = std::numeric_limits<size_t>::max();
+        uint8_t stroke_count = UINT8_MAX;
+        size_t original_index = 0;
+    };
+    std::vector<RankedCandidate> ranked;
+    ranked.reserve(characters.size());
+    FILE* stroke_index =
+        stroke_index_ready_ ? fopen((root_ + "/dictionary/strokes.idx").c_str(), "rb") : nullptr;
+    FILE* stroke_data =
+        stroke_index ? fopen((root_ + "/dictionary/strokes.dat").c_str(), "rb") : nullptr;
+    for (size_t index = 0; index < characters.size(); ++index) {
+        RankedCandidate candidate{characters[index], CommonCharacterRank(characters[index]),
+                                  UINT8_MAX, index};
+        const uint32_t codepoint = Codepoint(candidate.character);
+        if (stroke_index && stroke_data && codepoint >= kFirstIndexedCodepoint &&
+            codepoint < kFirstIndexedCodepoint + kIndexedSlots) {
+            const auto position =
+                kIndexHeaderSize +
+                static_cast<size_t>(codepoint - kFirstIndexedCodepoint) * kIndexSlotSize;
+            uint8_t slot[kIndexSlotSize]{};
+            const bool slot_ok = fseek(stroke_index, static_cast<long>(position), SEEK_SET) == 0 &&
+                                 fread(slot, 1, sizeof(slot), stroke_index) == sizeof(slot);
+            const uint32_t offset = ReadLe32(slot);
+            const uint32_t length = ReadLe32(slot + 4);
+            uint8_t count = 0;
+            if (slot_ok && length >= kStrokeHeaderSize && offset <= stroke_data_size_ &&
+                length <= stroke_data_size_ - offset &&
+                fseek(stroke_data, static_cast<long>(offset + 5), SEEK_SET) == 0 &&
+                fread(&count, 1, 1, stroke_data) == 1 && count > 0 && count <= 64)
+                candidate.stroke_count = count;
+        }
+        ranked.push_back(std::move(candidate));
+    }
+    if (stroke_data)
+        fclose(stroke_data);
+    if (stroke_index)
+        fclose(stroke_index);
+    std::sort(ranked.begin(), ranked.end(), [](const auto& left, const auto& right) {
+        const auto missing = std::numeric_limits<size_t>::max();
+        const bool left_common = left.common_rank != missing;
+        const bool right_common = right.common_rank != missing;
+        if (left_common != right_common)
+            return left_common;
+        if (left.stroke_count != right.stroke_count)
+            return left.stroke_count < right.stroke_count;
+        if (left.common_rank != right.common_rank)
+            return left.common_rank < right.common_rank;
+        return left.original_index < right.original_index;
+    });
+    characters.clear();
+    characters.reserve(ranked.size());
+    for (auto& candidate : ranked)
+        characters.push_back(std::move(candidate.character));
     return !characters.empty();
+}
+
+bool ContentStore::IsCommonCharacter(const std::string& character) {
+    return CommonCharacterRank(character) != std::numeric_limits<size_t>::max();
 }
 }  // namespace han

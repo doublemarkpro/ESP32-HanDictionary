@@ -154,6 +154,9 @@ int main(int argc, char** argv) {
               "definition lookup does not start stroke playback");
         Check(han::ContentStore::NormalizePinyin(" Han4 ") == "han4", "pinyin tone normalization");
         Check(han::ContentStore::NormalizePinyin(" ma5 ") == "ma0", "neutral tone normalization");
+        Check(han::ContentStore::IsCommonCharacter("去") &&
+                  !han::ContentStore::IsCommonCharacter("阒"),
+              "common-character priority distinguishes familiar and rare candidates");
         han::LunarDate lunar;
         Check(han::LunarFromGregorian(2026, 9, 15, lunar) && lunar.year == 2026 &&
                   lunar.month == 8 && lunar.day == 5 && !lunar.leap_month,
@@ -203,14 +206,31 @@ int main(int argc, char** argv) {
         const bool timer_plan_smoke = std::getenv("HAN_UI_TIMER_PLAN_SMOKE") != nullptr;
         const bool assistant_smoke = std::getenv("HAN_UI_ASSISTANT_SMOKE") != nullptr;
         const bool keyboard_smoke = std::getenv("HAN_UI_KEYBOARD_SMOKE") != nullptr;
-        const bool keyboard_connect_smoke =
-            std::getenv("HAN_UI_KEYBOARD_CONNECT_SMOKE") != nullptr;
+        const bool keyboard_connect_smoke = std::getenv("HAN_UI_KEYBOARD_CONNECT_SMOKE") != nullptr;
+        const bool settings_smoke = std::getenv("HAN_UI_SETTINGS_SMOKE") != nullptr;
         if (dark_smoke) {
             Settings::values["displaytheme_mode"] = 1;
             Settings::values["displaydark_active"] = 1;
         }
         HanDisplay ui(nullptr, nullptr, 1280, 720, 0, 0, false, false, false);
         ui.SetupUI();
+        if (settings_smoke) {
+            Check(ui.OpenPage("network"), "settings smoke page opens");
+            auto appearance_control =
+                FindLabel(lv_screen_active(), dark_smoke ? "深色模式" : "外观模式");
+            auto screen_off_control = FindLabel(lv_screen_active(), "立即关屏");
+            Check(appearance_control && screen_off_control &&
+                      lv_obj_get_style_text_font(appearance_control, LV_PART_MAIN) ==
+                          lv_obj_get_style_text_font(screen_off_control, LV_PART_MAIN) &&
+                      (dark_smoke ||
+                       lv_color_eq(lv_obj_get_style_bg_color(lv_obj_get_parent(screen_off_control),
+                                                             LV_PART_MAIN),
+                                   lv_color_hex(0xf05b78))),
+                  "screen-off control matches the appearance font and deeper red fill");
+            Shot(folder, dark_smoke ? "dark-settings-controls" : "settings-controls");
+            std::cout << "PASS: settings control typography and screen-off color rendered.\n";
+            return 0;
+        }
         if (keyboard_connect_smoke) {
             ui.ShowKeyboardConnected();
             lv_tick_inc(600);
@@ -249,25 +269,73 @@ int main(int argc, char** argv) {
         }
         if (keyboard_smoke) {
             ui.HandleKeyboardInput("\t");
-            Check(FindLabel(lv_screen_active(), "键盘查字") &&
-                      FindLabel(lv_screen_active(), "TAB5 在线"),
+            Check(FindLabel(lv_screen_active(), "查字典") &&
+                      FindLabel(lv_screen_active(), "键盘已连接"),
                   "Tab shortcut opens the dedicated keyboard lookup page");
+            Check(!FindLabel(lv_screen_active(), "Tab") &&
+                      !FindLabel(lv_screen_active(), "Enter") &&
+                      !FindLabel(lv_screen_active(), "Esc"),
+                  "keyboard lookup omits the shortcut sidebar");
             ui.HandleKeyboardInput("ke3\r");
-            ui.SetPinyinResultsForTest("ke3", {"可", "渴", "坷", "岢"});
+            ui.SetPinyinResultsForTest("ke3", {"可", "渴", "坷", "岢", "炣", "敤", "嵑", "渇"});
+            auto pinyin_prompt = FindLabel(lv_screen_active(), "拼音");
+            auto pinyin_input = FindLabel(lv_screen_active(), "ke3");
             auto first_candidate = FindLabel(lv_screen_active(), "可");
-            Check(FindLabel(lv_screen_active(), "ke3") && first_candidate &&
-                      FindLabel(lv_screen_active(), "岢"),
+            Check(pinyin_prompt && pinyin_input && first_candidate &&
+                      FindLabel(lv_screen_active(), "渇") && FindLabel(lv_screen_active(), "常用"),
                   "keyboard query filters a numeric tone and renders large candidates");
+            Check(lv_obj_get_style_text_font(pinyin_prompt, LV_PART_MAIN) ==
+                      lv_obj_get_style_text_font(pinyin_input, LV_PART_MAIN),
+                  "pinyin prompt and typed query use the same font size");
+            lv_obj_update_layout(lv_screen_active());
+            lv_area_t prompt_area{}, input_area{};
+            lv_obj_get_coords(pinyin_prompt, &prompt_area);
+            lv_obj_get_coords(pinyin_input, &input_area);
+            Check(
+                std::abs((prompt_area.y1 + prompt_area.y2) - (input_area.y1 + input_area.y2)) <= 2,
+                "pinyin prompt and typed query share one visual centre line");
+            Check(lv_obj_get_style_text_font(pinyin_prompt, LV_PART_MAIN) == &han_font_timer &&
+                      lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "查找"),
+                                                 LV_PART_MAIN) == &han_font_timer &&
+                      lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "键盘已连接"),
+                                                 LV_PART_MAIN) == &han_font_timer &&
+                      lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "全部"),
+                                                 LV_PART_MAIN) == &han_font_timer,
+                  "keyboard lookup controls match the settings-page control font");
             Check(!FindLabel(lv_screen_active(), "3声") &&
                       !FindLabel(lv_screen_active(), "清空重输") &&
                       !FindLabel(lv_screen_active(),
                                  "提示：输入 ke3，只显示三声汉字；点击大字进入学习页"),
                   "candidate cards omit tone annotations and redundant footer hints");
             lv_obj_update_layout(first_candidate);
-            Check(lv_obj_get_height(first_candidate) >= 40 &&
-                      lv_obj_get_height(lv_obj_get_parent(first_candidate)) == 138,
+            auto first_card = lv_obj_get_parent(first_candidate);
+            Check(lv_obj_get_height(first_candidate) >= 50 && lv_obj_get_height(first_card) == 146,
                   "candidate glyph has an explicit unclipped label and card height");
+            Check(!lv_color_eq(
+                      lv_obj_get_style_bg_color(first_card, LV_PART_MAIN),
+                      lv_obj_get_style_bg_color(
+                          lv_obj_get_parent(FindLabel(lv_screen_active(), "炣")), LV_PART_MAIN)),
+                  "all eight candidate positions can use distinct pastel backgrounds");
+            Check(lv_obj_get_style_border_width(first_card, LV_PART_MAIN) == 4,
+                  "the first candidate starts selected");
+            ui.HandleKeyboardInput("\x1d");
+            auto second_candidate = FindLabel(lv_screen_active(), "渴");
+            Check(
+                second_candidate &&
+                    lv_obj_get_style_border_width(lv_obj_get_parent(second_candidate),
+                                                  LV_PART_MAIN) == 4 &&
+                    lv_obj_get_style_border_width(
+                        lv_obj_get_parent(FindLabel(lv_screen_active(), "可")), LV_PART_MAIN) == 2,
+                "right arrow advances the visible candidate selection");
+            ui.ShowEntry(entry, true, false, true);
+            Check(FindLabel(lv_screen_active(), "小小字典"),
+                  "selected keyboard candidate opens the dictionary page");
+            Click("<");
+            Check(FindLabel(lv_screen_active(), "ke3") && FindLabel(lv_screen_active(), "渴"),
+                  "dictionary back returns to the preserved keyboard lookup results");
             Shot(folder, dark_smoke ? "dark-keyboard-dictionary" : "keyboard-dictionary");
+            ui.HandleKeyboardInput("\x1b");
+            Check(ui.IsScreenOffForTest(), "Esc uses the global one-key screen-lock path");
             std::cout << "PASS: keyboard dictionary page accepts ke3 and renders candidates.\n";
             return 0;
         }
@@ -852,6 +920,15 @@ int main(int argc, char** argv) {
                   FindLabel(lv_screen_active(), "立即关屏") &&
                   !FindLabel(lv_screen_active(), "+") && !FindLabel(lv_screen_active(), "-"),
               "settings page exposes storage, sliders, auto lock and screen-off controls");
+        auto appearance_control = FindLabel(lv_screen_active(), "外观模式");
+        auto screen_off_control = FindLabel(lv_screen_active(), "立即关屏");
+        Check(appearance_control && screen_off_control &&
+                  lv_obj_get_style_text_font(appearance_control, LV_PART_MAIN) ==
+                      lv_obj_get_style_text_font(screen_off_control, LV_PART_MAIN) &&
+                  lv_color_eq(lv_obj_get_style_bg_color(lv_obj_get_parent(screen_off_control),
+                                                        LV_PART_MAIN),
+                              lv_color_hex(0xf05b78)),
+              "screen-off control matches the appearance font and uses the deeper red fill");
         auto settings_assistant = FindLabel(lv_screen_active(), "小智");
         Check(settings_assistant &&
                   lv_obj_has_flag(lv_obj_get_parent(lv_obj_get_parent(settings_assistant)),
@@ -900,6 +977,27 @@ int main(int argc, char** argv) {
                   "tone filtering works with legacy base-only pinyin index");
             Check(generated.SearchPinyin("yi", pinyin_results, 1024) && pinyin_results.size() > 24,
                   "full homophone search is not truncated to the first page");
+            Check(generated.SearchPinyin("fa2", pinyin_results, 1024) && !pinyin_results.empty(),
+                  "tone-specific candidates are available for stroke-count ordering");
+            bool reached_rare_candidates = false;
+            int previous_stroke_count = 0;
+            for (const auto& candidate : pinyin_results) {
+                const bool common = han::ContentStore::IsCommonCharacter(candidate);
+                Check(!common || !reached_rare_candidates,
+                      "common candidates remain ahead of rare candidates");
+                if (!common && !reached_rare_candidates) {
+                    reached_rare_candidates = true;
+                    previous_stroke_count = 0;
+                }
+                han::Entry candidate_entry;
+                const int stroke_count =
+                    generated.Lookup(candidate, candidate_entry) && candidate_entry.stroke_count > 0
+                        ? candidate_entry.stroke_count
+                        : 65;
+                Check(stroke_count >= previous_stroke_count,
+                      "same-tone candidates are ordered by increasing stroke count");
+                previous_stroke_count = stroke_count;
+            }
             Check(generated.Lookup("汉", entry), "indexed dictionary lookup");
             Check(entry.source == "guoxuedashi-xinhua-community" && entry.stroke_count > 0,
                   "indexed dictionary metadata");

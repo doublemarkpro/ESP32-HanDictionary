@@ -49,6 +49,7 @@ public:
     bool ReadDictionaryFont(std::string& data) const;
     bool ReadCandidateDictionaryFont(std::string& data) const;
     std::string DictionaryScalableFontPath() const;
+    std::string DictionaryCandidateScalableFontPath() const;
     bool ReadStrokeGlyph(const std::string& character, StrokeGlyph& glyph) const;
     bool ready() const {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -65,6 +66,7 @@ public:
     static Entry Demo();
     static std::string TargetCharacter(const std::string& query);
     static std::string NormalizePinyin(const std::string& query);
+    static bool IsCommonCharacter(const std::string& character);
     static bool ParseEntry(const std::string& json, const std::string& character, Entry& entry);
 
 private:
@@ -84,6 +86,7 @@ private:
     uint32_t dictionary_candidate_font_crc_ = 0;
     std::string dictionary_candidate_font_path_;
     std::string dictionary_scalable_font_path_;
+    std::string dictionary_candidate_scalable_font_path_;
     bool stroke_index_ready_ = false;
     uint32_t stroke_records_ = 0;
     uint32_t stroke_data_size_ = 0;

@@ -27,7 +27,7 @@ constexpr TickType_t kProbePeriod = pdMS_TO_TICKS(500);
 constexpr TickType_t kPollPeriod = pdMS_TO_TICKS(20);
 constexpr int kDisconnectFailureLimit = 5;
 
-std::string NormalizeCharacterEvent(const uint8_t* data, size_t length) {
+std::string NormalizeCharacterEvent(uint8_t modifier, const uint8_t* data, size_t length) {
     std::string input(reinterpret_cast<const char*>(data), length);
     while (!input.empty() && input.back() == '\0')
         input.pop_back();
@@ -45,6 +45,23 @@ std::string NormalizeCharacterEvent(const uint8_t* data, size_t length) {
         return "\b";
     if (name == "delete" || name == "del")
         return "\x7f";
+    if (name == "left" || name == "arrowleft" || name == "leftarrow" || name == "arrow_left" ||
+        input == "\x1b[D")
+        return "\x1c";
+    if (name == "right" || name == "arrowright" || name == "rightarrow" || name == "arrow_right" ||
+        input == "\x1b[C")
+        return "\x1d";
+    if (name == "up" || name == "arrowup" || name == "uparrow" || name == "arrow_up" ||
+        input == "\x1b[A")
+        return "\x1e";
+    if (name == "down" || name == "arrowdown" || name == "downarrow" || name == "arrow_down" ||
+        input == "\x1b[B")
+        return "\x1f";
+    // Character-mode firmware revisions either report Ctrl in the modifier byte or emit the
+    // resulting form-feed character directly. Bits 0 and 4 are the standard left/right Ctrl
+    // modifier positions.
+    if (((modifier & 0x11) != 0 && name == "l") || input == "\x0c")
+        return "\x0c";
     return input;
 }
 }  // namespace
@@ -164,7 +181,7 @@ bool Tab5Keyboard::DrainEvents() {
                  event[1]);
         ESP_LOG_BUFFER_HEX_LEVEL(kTag, event.data() + 1, length, ESP_LOG_INFO);
         if (callback_)
-            callback_(NormalizeCharacterEvent(event.data() + 1, length));
+            callback_(NormalizeCharacterEvent(event[0], event.data() + 1, length));
     }
     const uint8_t clear = 0;
     return Write(kInterruptStatus, &clear, 1);

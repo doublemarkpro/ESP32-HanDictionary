@@ -145,8 +145,8 @@ constexpr char kKeyboardArtworkLvglPath[] =
 constexpr char kKeyboardArtworkLvglPath[] =
     "S:/sdcard/handict/ui/graphics/keyboard-connect/tab5-keyboard.png";
 #endif
-// Keep representative candidate glyphs in the host preview font; production uses the complete
-// SD dictionary typeface. 规改该概盖钙溉丐可渴坷岢
+// Keep representative candidate glyphs in the host preview font; production uses the
+// complete SD dictionary typeface. 规改该概盖钙溉丐可渴坷岢炣敤嵑渇
 int PinyinTone(const std::string& value) {
     if (value.empty() || value.back() < '0' || value.back() > '5')
         return -1;
@@ -674,6 +674,15 @@ void HanDisplay::ApplyDictionaryTextFont(lv_obj_t* label) {
         lv_obj_set_style_text_font(label, DictionaryTextFont(), 0);
 }
 
+void HanDisplay::ApplyDictionaryEmphasis(lv_obj_t* label) {
+    if (label == nullptr)
+        return;
+    // Match the settings-page "深色模式" control exactly instead of simulating weight with an
+    // outline around the SD font.
+    lv_obj_set_style_text_font(label, &han_font_timer, 0);
+    lv_obj_set_style_text_outline_stroke_width(label, 0, 0);
+}
+
 void HanDisplay::ApplyDictionaryLargeFont(lv_obj_t* label) {
     if (label != nullptr)
         lv_obj_set_style_text_font(label, DictionaryLargeFont(), 0);
@@ -682,6 +691,12 @@ void HanDisplay::ApplyDictionaryLargeFont(lv_obj_t* label) {
 void HanDisplay::ReleaseDictionaryFonts() {
 #ifndef HAN_UI_HOST_SIM
     DisplayLockGuard guard(this);
+    if (dictionary_candidate_font_ != nullptr) {
+        if (dictionary_candidate_font_is_ttf_)
+            lv_tiny_ttf_destroy(dictionary_candidate_font_);
+        else
+            cbin_font_delete(dictionary_candidate_font_);
+    }
     if (dictionary_font_is_ttf_) {
         if (dictionary_hero_font_ != nullptr)
             lv_tiny_ttf_destroy(dictionary_hero_font_);
@@ -690,8 +705,6 @@ void HanDisplay::ReleaseDictionaryFonts() {
         if (dictionary_font_ != nullptr)
             lv_tiny_ttf_destroy(dictionary_font_);
     } else {
-        if (dictionary_candidate_font_ != nullptr)
-            cbin_font_delete(dictionary_candidate_font_);
         if (dictionary_font_ != nullptr)
             cbin_font_delete(dictionary_font_);
     }
@@ -700,6 +713,7 @@ void HanDisplay::ReleaseDictionaryFonts() {
     dictionary_large_font_ = nullptr;
     dictionary_hero_font_ = nullptr;
     dictionary_font_is_ttf_ = false;
+    dictionary_candidate_font_is_ttf_ = false;
     dictionary_font_data_.clear();
     dictionary_candidate_font_data_.clear();
 #endif
@@ -732,11 +746,14 @@ void HanDisplay::InstallDictionaryFont(std::string data) {
 void HanDisplay::InstallDictionaryCandidateFont(std::string data) {
 #ifndef HAN_UI_HOST_SIM
     DisplayLockGuard guard(this);
-    if (dictionary_font_is_ttf_)
-        return;
-    if (dictionary_candidate_font_ != nullptr)
-        cbin_font_delete(dictionary_candidate_font_);
+    if (dictionary_candidate_font_ != nullptr) {
+        if (dictionary_candidate_font_is_ttf_)
+            lv_tiny_ttf_destroy(dictionary_candidate_font_);
+        else
+            cbin_font_delete(dictionary_candidate_font_);
+    }
     dictionary_candidate_font_ = nullptr;
+    dictionary_candidate_font_is_ttf_ = false;
     dictionary_candidate_font_data_ = std::move(data);
     dictionary_candidate_font_ =
         cbin_font_create(reinterpret_cast<uint8_t*>(dictionary_candidate_font_data_.data()));
@@ -752,6 +769,37 @@ void HanDisplay::InstallDictionaryCandidateFont(std::string data) {
         Render(page_);
 #else
     (void)data;
+#endif
+}
+
+void HanDisplay::InstallScalableDictionaryCandidateFont(const std::string& path) {
+#ifndef HAN_UI_HOST_SIM
+    DisplayLockGuard guard(this);
+    if (dictionary_candidate_font_ != nullptr) {
+        if (dictionary_candidate_font_is_ttf_)
+            lv_tiny_ttf_destroy(dictionary_candidate_font_);
+        else
+            cbin_font_delete(dictionary_candidate_font_);
+    }
+    dictionary_candidate_font_ = nullptr;
+    dictionary_candidate_font_is_ttf_ = false;
+    dictionary_candidate_font_data_.clear();
+
+    // Candidates only show eight glyphs at a time. A bounded dynamic cache keeps grayscale
+    // antialiasing without reserving the roughly 29 MiB a complete 4 bpp CJK bitmap would need.
+    auto candidate = lv_tiny_ttf_create_file_ex(path.c_str(), 56, LV_FONT_KERNING_NONE, 48);
+    if (candidate == nullptr) {
+        ESP_LOGW("HanDisplay", "Ignoring invalid SD antialiased candidate font: %s", path.c_str());
+        return;
+    }
+    candidate->fallback = dictionary_font_ ? dictionary_font_ : &han_font_28;
+    dictionary_candidate_font_ = candidate;
+    dictionary_candidate_font_is_ttf_ = true;
+    ESP_LOGI("HanDisplay", "SD antialiased candidate font loaded: %s", path.c_str());
+    if (page_ == Page::KeyboardLookup)
+        Render(page_);
+#else
+    (void)path;
 #endif
 }
 
@@ -2094,106 +2142,81 @@ void HanDisplay::Dictionary() {
 }
 
 void HanDisplay::KeyboardLookup() {
-    auto side = Card(body_, 0, 0, 238, 566, 0xe7f8f1);
-    lv_obj_set_style_bg_grad_color(side, ThemeFill(0xdff1ff), 0);
-    lv_obj_set_style_bg_grad_dir(side, LV_GRAD_DIR_VER, 0);
-    lv_obj_set_style_radius(side, 26, 0);
-    auto badge = Box(side, 18, 18, 202, 44, 0x168b68);
-    lv_obj_set_style_radius(badge, 22, 0);
-    auto ready_dot = Box(badge, 16, 17, 10, 10, 0xffffff);
-    lv_obj_set_style_radius(ready_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(ready_dot, lv_color_hex(0xffffff), 0);
-    auto badge_text = Label(badge, "TAB5 在线", 28, 6, 164);
-    ApplyDictionaryTextFont(badge_text);
-    lv_obj_set_style_text_color(badge_text, ThemeText(0xffffff), 0);
-    lv_obj_set_style_text_align(badge_text, LV_TEXT_ALIGN_CENTER, 0);
-    auto heading = Label(side, "键盘查字", 16, 78, 206, &han_font_40);
-    ApplyDictionaryLargeFont(heading);
-    lv_obj_set_style_text_align(heading, LV_TEXT_ALIGN_CENTER, 0);
-    auto intro = Label(side, "数字键筛声调", 16, 130, 206);
-    ApplyDictionaryTextFont(intro);
-    lv_obj_set_style_text_color(intro, ThemeText(0x31566f), 0);
-    lv_obj_set_style_text_align(intro, LV_TEXT_ALIGN_CENTER, 0);
-
-    struct Shortcut {
-        const char* key;
-        const char* description;
-    };
-    constexpr Shortcut shortcuts[] = {{"Tab", "打开"}, {"Enter", "查找"}, {"Esc", "首页"}};
-    for (int index = 0; index < 3; ++index) {
-        auto row = Box(side, 16, 180 + index * 62, 206, 50, 0xffffff);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(row, 18, 0);
-        lv_obj_set_style_border_width(row, 1, 0);
-        lv_obj_set_style_border_color(row, ThemeBorder(0xcbdce8), 0);
-        auto key = Box(row, 8, 7, 78, 36, index == 0 ? 0x14875f : 0x256fbe);
-        lv_obj_set_style_radius(key, 18, 0);
-        auto key_text = Label(key, shortcuts[index].key, 0, 3, 78);
-        lv_obj_set_style_text_color(key_text, ThemeText(0xffffff), 0);
-        lv_obj_set_style_text_align(key_text, LV_TEXT_ALIGN_CENTER, 0);
-        auto description = Label(row, shortcuts[index].description, 91, 8, 107);
-        ApplyDictionaryTextFont(description);
-        lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
-    }
-
-#ifdef HAN_UI_HOST_SIM
-    auto mascot = Image(side, &han_assistant_robot, 30, 370);
-    lv_image_set_scale(mascot, 284);
-    lv_image_set_pivot(mascot, 0, 0);
-#else
-    if (SdFileAvailable(kAssistantRobotDiskPath)) {
-        auto mascot = Image(side, kAssistantRobotLvglPath, 24, 366);
-        lv_image_set_scale(mascot, 152);
-        lv_image_set_pivot(mascot, 0, 0);
-    }
-#endif
-
-    auto main = Card(body_, 252, 0, 980, 566, 0xffffff);
-    lv_obj_set_style_radius(main, 26, 0);
+    auto main = Card(body_, 0, 0, 1232, 572, 0xfffdf9);
+    lv_obj_set_style_radius(main, 30, 0);
     lv_obj_set_style_border_width(main, 2, 0);
     lv_obj_set_style_border_color(main, ThemeBorder(0xd5e7f3), 0);
-    auto prompt = Label(main, "拼音", 24, 24, 74);
+
+    auto prompt_box = Box(main, 20, 14, 84, 72, 0xffffff);
+    lv_obj_set_style_bg_opa(prompt_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(prompt_box, 0, 0);
+    auto prompt = Label(prompt_box, "拼音", 0, 0, 84);
     ApplyDictionaryTextFont(prompt);
     lv_obj_set_style_text_align(prompt, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(prompt, LV_LABEL_LONG_CLIP);
-    lv_obj_set_height(prompt, DictionaryTextFont()->line_height + 4);
-    auto input_box = Box(main, 106, 12, 414, 62, 0xf2f8fc);
+    lv_obj_set_height(prompt, DictionaryTextFont()->line_height + 6);
+    lv_obj_align(prompt, LV_ALIGN_CENTER, 0, 0);
+    ApplyDictionaryEmphasis(prompt);
+    auto input_box = Box(main, 112, 14, 558, 72, 0xf2f8fc);
     lv_obj_set_style_bg_grad_color(input_box, ThemeFill(0xeffaf6), 0);
     lv_obj_set_style_bg_grad_dir(input_box, LV_GRAD_DIR_HOR, 0);
-    lv_obj_set_style_radius(input_box, 22, 0);
-    lv_obj_set_style_border_width(input_box, 2, 0);
+    lv_obj_set_style_radius(input_box, 26, 0);
+    lv_obj_set_style_border_width(input_box, 3, 0);
     lv_obj_set_style_border_color(input_box, ThemeBorder(0x9bc8ee), 0);
-    search_input_ = Label(input_box, pinyin_query_.empty() ? "例如 gai" : pinyin_query_.c_str(), 20,
-                          0, 374, &han_font_40);
-    ApplyDictionaryLargeFont(search_input_);
+    search_input_ =
+        Label(input_box, pinyin_query_.empty() ? "例如 qu4" : pinyin_query_.c_str(), 24, 0, 454);
+    lv_obj_set_style_text_font(search_input_, &han_font_timer, 0);
     lv_obj_set_style_text_color(search_input_, ThemeText(pinyin_query_.empty() ? kMuted : kInk), 0);
-    lv_obj_set_height(search_input_, DictionaryLargeFont()->line_height + 6);
-    lv_obj_align(search_input_, LV_ALIGN_LEFT_MID, 20, 0);
-    auto submit = Button(main, "查找", 538, 12, 156, 62, 0x168b68, 1127);
-    ApplyDictionaryTextFont(lv_obj_get_child(submit, 0));
+    lv_obj_set_height(search_input_, DictionaryTextFont()->line_height + 6);
+    lv_obj_align(search_input_, LV_ALIGN_LEFT_MID, 24, 0);
+    auto clear = Button(input_box, "×", 492, 10, 52, 52, 0xddeaf3, 1129);
+    lv_obj_set_style_radius(clear, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(clear, 0), ThemeText(0x6e8da5), 0);
+
+    auto submit = Button(main, "查找", 688, 14, 190, 72, 0x168b68, 1127);
+    ApplyDictionaryLargeFont(lv_obj_get_child(submit, 0));
     lv_obj_set_style_text_color(lv_obj_get_child(submit, 0), ThemeText(0xffffff), 0);
-    lv_obj_set_style_radius(submit, 22, 0);
+    ApplyDictionaryEmphasis(lv_obj_get_child(submit, 0));
+    lv_obj_set_style_radius(submit, 26, 0);
     lv_obj_set_style_border_width(submit, 2, 0);
     lv_obj_set_style_border_color(submit, ThemeBorder(0x0c7557), 0);
+    lv_obj_set_style_shadow_color(submit, ThemeShadow(0x168b68), 0);
+    lv_obj_set_style_shadow_width(submit, 14, 0);
+    lv_obj_set_style_shadow_opa(submit, LV_OPA_20, 0);
+    lv_obj_set_style_shadow_ofs_y(submit, 5, 0);
 
-    auto tone_title_box = Box(main, 24, 88, 84, 44, 0x256fbe);
-    lv_obj_set_style_radius(tone_title_box, 22, 0);
-    auto tone_title = Label(tone_title_box, "声调", 0, 0, 84);
-    ApplyDictionaryTextFont(tone_title);
-    lv_obj_set_style_text_color(tone_title, ThemeText(0xffffff), 0);
-    lv_obj_set_style_text_align(tone_title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(tone_title, LV_ALIGN_CENTER, 0, 0);
+    auto connected = Box(main, 900, 22, 306, 56, 0xe5f8ef);
+    lv_obj_set_style_radius(connected, 28, 0);
+    lv_obj_set_style_border_width(connected, 2, 0);
+    lv_obj_set_style_border_color(connected, ThemeBorder(0xb8ead4), 0);
+    auto keyboard_icon = Box(connected, 18, 12, 44, 32, 0x168b68);
+    lv_obj_set_style_radius(keyboard_icon, 8, 0);
+    for (int row = 0; row < 2; ++row)
+        for (int column = 0; column < 5; ++column) {
+            auto key = Box(keyboard_icon, 5 + column * 7, 5 + row * 9, 5, 5, 0xffffff);
+            lv_obj_set_style_radius(key, 1, 0);
+        }
+    auto space_key = Box(keyboard_icon, 11, 23, 22, 4, 0xffffff);
+    lv_obj_set_style_radius(space_key, 2, 0);
+    auto connected_text = Label(connected, "键盘已连接", 68, 0, 220);
+    ApplyDictionaryTextFont(connected_text);
+    lv_obj_set_style_text_color(connected_text, ThemeText(0x147453), 0);
+    ApplyDictionaryEmphasis(connected_text);
+    lv_obj_set_style_text_align(connected_text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(connected_text, LV_ALIGN_RIGHT_MID, -12, 0);
+
     const char* tone_names[] = {"全部", "轻声", "一声", "二声", "三声", "四声"};
     for (int index = 0; index < 6; ++index) {
         pinyin_tone_buttons_[index] =
-            Button(main, tone_names[index], 120 + index * 138, 88, 126, 44, 0xf5f8fb, 1130 + index);
+            Button(main, tone_names[index], 22 + index * 198, 100, 180, 56, 0xe7f3fc, 1130 + index);
         ApplyDictionaryTextFont(lv_obj_get_child(pinyin_tone_buttons_[index], 0));
-        lv_obj_set_style_radius(pinyin_tone_buttons_[index], 22, 0);
+        lv_obj_set_style_radius(pinyin_tone_buttons_[index], 28, 0);
     }
     UpdatePinyinToneButtons();
 
-    search_results_ = Card(main, 18, 150, 944, 398, 0xf8fbff);
-    lv_obj_set_style_radius(search_results_, 21, 0);
+    search_results_ = Card(main, 18, 166, 1196, 398, 0xf8fbff);
+    lv_obj_set_style_radius(search_results_, 24, 0);
+    lv_obj_set_style_border_color(search_results_, ThemeBorder(0xdbe9f3), 0);
     lv_obj_add_event_cb(search_results_, OnPinyinGesture, LV_EVENT_GESTURE, this);
 
     RenderKeyboardPinyinResults(pinyin_status_text_.empty()
@@ -2212,7 +2235,7 @@ void HanDisplay::RenderKeyboardPinyinResults(const char* status) {
     pinyin_page_label_ = nullptr;
     search_status_ = nullptr;
     if (pinyin_results_.empty()) {
-        search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 28, 166, 888);
+        search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 48, 166, 1100);
         ApplyDictionaryTextFont(search_status_);
         lv_obj_set_style_text_color(search_status_, ThemeText(0x52718b), 0);
         lv_label_set_long_mode(search_status_, LV_LABEL_LONG_DOT);
@@ -2224,39 +2247,67 @@ void HanDisplay::RenderKeyboardPinyinResults(const char* status) {
         std::max(1, (static_cast<int>(pinyin_results_.size()) + kKeyboardPinyinPageSize - 1) /
                         kKeyboardPinyinPageSize);
     pinyin_page_ = std::clamp(pinyin_page_, 0, page_count - 1);
+    pinyin_selected_index_ =
+        pinyin_results_.empty()
+            ? 0
+            : std::clamp(pinyin_selected_index_, 0, static_cast<int>(pinyin_results_.size()) - 1);
     const int first = pinyin_page_ * kKeyboardPinyinPageSize;
     const int last =
         std::min(first + kKeyboardPinyinPageSize, static_cast<int>(pinyin_results_.size()));
-    const uint32_t colors[] = {0xe5f3ff, 0xe4f7ef, 0xfff3d5, 0xf3eaff};
-    const uint32_t borders[] = {0x8fc8ee, 0x75c8a8, 0xe7bb50, 0xb899dd};
+    const uint32_t colors[] = {0xe7f4ff, 0xe8f8ef, 0xfff5dc, 0xf2ebff,
+                               0xffeee7, 0xe5f7f8, 0xffedf3, 0xedf8e6};
+    const uint32_t borders[] = {0xa7d3ef, 0xafe0ca, 0xf0d58c, 0xcdbbea,
+                                0xefbba8, 0xa8dadd, 0xedb5c8, 0xb9dda7};
     for (int index = first; index < last; ++index) {
         const int cell = index - first;
-        auto button = Button(search_results_, pinyin_results_[index].c_str(), 18 + cell % 4 * 230,
-                             18 + cell / 4 * 152, 216, 138, colors[cell % 4], 1200 + index);
-        lv_obj_set_style_radius(button, 24, 0);
-        lv_obj_set_style_border_width(button, 2, 0);
-        lv_obj_set_style_border_color(button, ThemeBorder(borders[cell % 4]), 0);
+        const bool selected = index == pinyin_selected_index_;
+        auto button = Button(search_results_, pinyin_results_[index].c_str(), 14 + cell % 4 * 294,
+                             10 + cell / 4 * 154, 280, 146, colors[cell % 8], 1200 + index);
+        lv_obj_set_style_radius(button, 25, 0);
+        lv_obj_set_style_border_width(button, selected ? 4 : 2, 0);
+        lv_obj_set_style_border_color(button, ThemeBorder(selected ? 0x2ab7ee : borders[cell % 8]),
+                                      0);
+        if (selected) {
+            lv_obj_set_style_shadow_color(button, ThemeShadow(0x32b9ef), 0);
+            lv_obj_set_style_shadow_width(button, 18, 0);
+            lv_obj_set_style_shadow_opa(button, LV_OPA_30, 0);
+        }
         auto text = lv_obj_get_child(button, 0);
         // Every candidate must come from the complete SD dictionary font. The embedded large font
         // intentionally contains only UI examples and therefore cannot render arbitrary results.
         lv_obj_set_style_text_font(text, DictionaryCandidateFont(), 0);
         lv_obj_set_style_text_color(text, ThemeText(kInk), 0);
-        lv_obj_set_size(text, 196, DictionaryCandidateFont()->line_height + 12);
+        const int candidate_height = DictionaryCandidateFont()->line_height + 18;
+        const int candidate_scale = DictionaryCandidateFont()->line_height >= 52 ? 320 : 432;
+        lv_obj_set_size(text, 246, candidate_height);
+        lv_obj_set_style_transform_pivot_x(text, 123, 0);
+        lv_obj_set_style_transform_pivot_y(text, candidate_height / 2, 0);
+        lv_obj_set_style_transform_scale(text, candidate_scale, 0);
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
+        if (cell == 0 && han::ContentStore::IsCommonCharacter(pinyin_results_[index])) {
+            auto common = Box(button, 12, 10, 90, 36, 0x15a86f);
+            lv_obj_set_style_radius(common, 17, 0);
+            auto common_text = Label(common, "常用", 5, 0, 80);
+            ApplyDictionaryTextFont(common_text);
+            lv_obj_set_style_text_color(common_text, ThemeText(0xffffff), 0);
+            lv_obj_set_style_text_align(common_text, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_align(common_text, LV_ALIGN_CENTER, 0, 0);
+        }
     }
-    if (page_count > 1) {
-        auto previous = Button(search_results_, "‹", 18, 338, 60, 42, 0xe9f5ee, 1137);
-        auto next = Button(search_results_, "›", 866, 338, 60, 42, 0xe6f2fc, 1138);
-        ApplyDictionaryTextFont(lv_obj_get_child(previous, 0));
-        ApplyDictionaryTextFont(lv_obj_get_child(next, 0));
-        lv_obj_set_style_radius(previous, 21, 0);
-        lv_obj_set_style_radius(next, 21, 0);
-        const auto page_text = std::to_string(pinyin_page_ + 1) + " / " +
-                               std::to_string(page_count) + "  ·  左右滑动翻页";
-        pinyin_page_label_ = Label(search_results_, page_text.c_str(), 202, 343, 540);
-        ApplyDictionaryTextFont(pinyin_page_label_);
-        lv_obj_set_style_text_align(pinyin_page_label_, LV_TEXT_ALIGN_CENTER, 0);
-    }
+    auto previous = Button(search_results_, "‹", 446, 332, 54, 54, 0xe4f3fc, 1137);
+    auto next = Button(search_results_, "›", 696, 332, 54, 54, 0xe4f3fc, 1138);
+    ApplyDictionaryTextFont(lv_obj_get_child(previous, 0));
+    ApplyDictionaryTextFont(lv_obj_get_child(next, 0));
+    lv_obj_set_style_radius(previous, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(next, LV_RADIUS_CIRCLE, 0);
+    if (pinyin_page_ == 0)
+        lv_obj_set_style_opa(previous, LV_OPA_40, 0);
+    if (pinyin_page_ + 1 == page_count)
+        lv_obj_set_style_opa(next, LV_OPA_40, 0);
+    const auto page_text = std::to_string(pinyin_page_ + 1) + " / " + std::to_string(page_count);
+    pinyin_page_label_ = Label(search_results_, page_text.c_str(), 510, 340, 176);
+    ApplyDictionaryTextFont(pinyin_page_label_);
+    lv_obj_set_style_text_align(pinyin_page_label_, LV_TEXT_ALIGN_CENTER, 0);
 }
 
 void HanDisplay::OpenPinyinSearch() {
@@ -2265,6 +2316,7 @@ void HanDisplay::OpenPinyinSearch() {
     pinyin_results_.clear();
     pinyin_status_text_.clear();
     pinyin_page_ = 0;
+    pinyin_selected_index_ = 0;
     pinyin_tone_ = -1;
     pinyin_tone_buttons_.fill(nullptr);
     search_overlay_ = Card(body_, 0, 0, 1232, 566, 0xfffcf6);
@@ -2358,7 +2410,7 @@ void HanDisplay::UpdatePinyinToneButtons() {
         const bool selected = index == pinyin_tone_ + 1;
         const bool keyboard_page = page_ == Page::KeyboardLookup;
         lv_obj_set_style_bg_color(pinyin_tone_buttons_[index],
-                                  ThemeFill(keyboard_page ? (selected ? 0x168b68 : 0xf5f8fb)
+                                  ThemeFill(keyboard_page ? (selected ? 0x168b68 : 0xe7f3fc)
                                                           : (selected ? kGreen : 0xf1f4f6)),
                                   0);
         lv_obj_set_style_border_width(pinyin_tone_buttons_[index],
@@ -2370,9 +2422,12 @@ void HanDisplay::UpdatePinyinToneButtons() {
             pinyin_tone_buttons_[index],
             ThemeBorder(keyboard_page ? (selected ? 0x0c7557 : 0xcbd9e5) : 0x8ad5a0), 0);
         auto text = lv_obj_get_child(pinyin_tone_buttons_[index], 0);
-        if (text)
+        if (text) {
             lv_obj_set_style_text_color(text,
                                         ThemeText(keyboard_page && selected ? 0xffffff : kInk), 0);
+            if (keyboard_page)
+                ApplyDictionaryEmphasis(text);
+        }
     }
 }
 
@@ -2388,6 +2443,7 @@ void HanDisplay::StartPinyinSearch() {
         pinyin_search_key_.push_back(static_cast<char>('0' + pinyin_tone_));
     pinyin_results_.clear();
     pinyin_page_ = 0;
+    pinyin_selected_index_ = 0;
     RenderPinyinResults("正在离线字库中查找…");
     Queue(7, pinyin_search_key_);
 }
@@ -2445,6 +2501,7 @@ void HanDisplay::ApplyPinyinResults(const std::string& query, std::vector<std::s
         return;
     pinyin_results_ = std::move(results);
     pinyin_page_ = 0;
+    pinyin_selected_index_ = 0;
     const std::string status =
         pinyin_results_.empty()
             ? "没有找到 “" + query + "” 对应的汉字"
@@ -3652,17 +3709,17 @@ void HanDisplay::NetworkSettingsPage() {
     lv_obj_set_style_text_font(lv_obj_get_child(appearance_button, 0), &han_font_timer, 0);
     lv_obj_set_style_text_color(lv_obj_get_child(appearance_button, 0), ThemeText(0xffffff), 0);
 
-    auto screen_button = Button(right, "立即关屏", 292, 456, 252, 76, 0xffabc5, 914);
+    auto screen_button = Button(right, "立即关屏", 292, 456, 252, 76, 0xf05b78, 914);
     lv_obj_set_style_radius(screen_button, 24, 0);
-    lv_obj_set_style_bg_grad_color(screen_button, ThemeFill(0xff8fb3), 0);
+    lv_obj_set_style_bg_grad_color(screen_button, ThemeFill(0xd9385f), 0);
     lv_obj_set_style_bg_grad_dir(screen_button, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_border_width(screen_button, 2, 0);
-    lv_obj_set_style_border_color(screen_button, ThemeBorder(0xffc7d8), 0);
-    lv_obj_set_style_shadow_color(screen_button, ThemeShadow(0xff99b9), 0);
+    lv_obj_set_style_border_color(screen_button, ThemeBorder(0xff9db1), 0);
+    lv_obj_set_style_shadow_color(screen_button, ThemeShadow(0xd9385f), 0);
     lv_obj_set_style_shadow_width(screen_button, 14, 0);
     lv_obj_set_style_shadow_opa(screen_button, LV_OPA_30, 0);
-    lv_obj_set_style_text_font(lv_obj_get_child(screen_button, 0), DynamicTextFont(), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(screen_button, 0), ThemeText(0xb8003b), 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(screen_button, 0), &han_font_timer, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(screen_button, 0), ThemeText(0xffffff), 0);
     auto wake_hint = Label(right, "关屏后点一下屏幕，再向上滑动解锁", 24, 547, 514);
     ApplyDynamicTextFont(wake_hint);
     lv_obj_set_style_text_color(wake_hint, ThemeText(kMuted), 0);
@@ -4677,13 +4734,16 @@ void HanDisplay::Action(int a) {
         return;
     }
     if (a >= 0 && a < 6) {
+        if (a == 0)
+            dictionary_return_to_keyboard_ = false;
         Render(static_cast<Page>(a + 1));
         if (a == 5)
             Queue(4, "");
         return;
     }
     if (a == 6) {
-        Render(Page::Home);
+        Render(page_ == Page::Dictionary && dictionary_return_to_keyboard_ ? Page::KeyboardLookup
+                                                                           : Page::Home);
         return;
     }
     if (a == 7) {
@@ -4853,6 +4913,7 @@ void HanDisplay::Action(int a) {
             pinyin_search_key_.clear();
             pinyin_results_.clear();
             pinyin_page_ = 0;
+            pinyin_selected_index_ = 0;
             lv_label_set_text(search_input_, pinyin_query_.c_str());
             lv_obj_set_style_text_color(search_input_, ThemeText(kInk), 0);
             RenderPinyinResults("输入完成后点查找，或直接选择音调");
@@ -4865,6 +4926,7 @@ void HanDisplay::Action(int a) {
         pinyin_search_key_.clear();
         pinyin_results_.clear();
         pinyin_page_ = 0;
+        pinyin_selected_index_ = 0;
         lv_label_set_text(search_input_,
                           pinyin_query_.empty() ? "输入拼音，例如 han" : pinyin_query_.c_str());
         lv_obj_set_style_text_color(search_input_, ThemeText(pinyin_query_.empty() ? kMuted : kInk),
@@ -4877,6 +4939,7 @@ void HanDisplay::Action(int a) {
         pinyin_search_key_.clear();
         pinyin_results_.clear();
         pinyin_page_ = 0;
+        pinyin_selected_index_ = 0;
         pinyin_tone_ = -1;
         if (page_ == Page::KeyboardLookup) {
             pinyin_status_text_ = "候选汉字会显示在这里";
@@ -4917,6 +4980,7 @@ void HanDisplay::Action(int a) {
         pinyin_status_text_.clear();
         pinyin_results_.clear();
         pinyin_page_ = 0;
+        pinyin_selected_index_ = 0;
         return;
     }
     if (a == 1136) {
@@ -4931,13 +4995,16 @@ void HanDisplay::Action(int a) {
         const int page_count =
             std::max(1, (static_cast<int>(pinyin_results_.size()) + page_size - 1) / page_size);
         pinyin_page_ = std::clamp(pinyin_page_ + (a == 1137 ? -1 : 1), 0, page_count - 1);
+        if (page_ == Page::KeyboardLookup && !pinyin_results_.empty())
+            pinyin_selected_index_ =
+                std::min(pinyin_page_ * page_size, static_cast<int>(pinyin_results_.size()) - 1);
         RenderPinyinResults(nullptr);
         return;
     }
     if (a >= 1200 && a < 1200 + static_cast<int>(pinyin_results_.size())) {
         const auto character = pinyin_results_[a - 1200];
         Toast("正在读取汉字和笔顺…");
-        Queue(0, character);
+        Queue(page_ == Page::KeyboardLookup ? 13 : 0, character);
         return;
     }
     if (a == 20 || a == 22) {
@@ -5241,19 +5308,21 @@ void HanDisplay::ClockTick(lv_timer_t* timer) {
     self->UpdateFlipClock(local, local.tm_year >= 125, true);
 }
 
-void HanDisplay::ShowEntry(const han::Entry& entry, bool auto_play_strokes) {
+void HanDisplay::ShowEntry(const han::Entry& entry, bool auto_play_strokes, bool show_navigation,
+                           bool return_to_keyboard) {
     DisplayLockGuard guard(this);
     entry_ = entry;
+    dictionary_return_to_keyboard_ = return_to_keyboard;
     stroke_ = -1;
     stroke_playing_ = false;
     auto_play_stroke_pending_ = auto_play_strokes && !entry.strokes.empty();
-    if (auto_play_strokes) {
+    if (auto_play_strokes && show_navigation) {
         assistant_navigation_pending_ = true;
         assistant_dialog_hide_at_ms_ = NowMs() + 2400;
     }
     if (setup_ui_called_) {
         Render(Page::Dictionary);
-        if (auto_play_strokes) {
+        if (auto_play_strokes && show_navigation) {
             auto detail = std::string("打开“") + entry.character + "”字并自动播放笔顺";
             ApplyDynamicTextFont(assistant_dialog_navigation_title_);
             ApplyDynamicTextFont(assistant_dialog_navigation_detail_);
@@ -5411,12 +5480,22 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
     if (!setup_ui_called_ || input.empty())
         return;
 
+    // Esc is the dedicated one-key hardware lock; Ctrl+L remains a conventional alternative.
+    // Reuse the existing screen-off path so wake and swipe-unlock behavior remains identical to
+    // the settings-page control.
+    if (input.find('\x1b') != std::string::npos || input.find('\x0c') != std::string::npos) {
+        if (!screen_off_ && !lock_screen_visible_ && !usb_storage_active_)
+            SetScreenOffLocked();
+        return;
+    }
+
     if (input.find('\t') != std::string::npos || input.find('\x04') != std::string::npos) {
         pinyin_query_.clear();
         pinyin_search_key_.clear();
         pinyin_status_text_.clear();
         pinyin_results_.clear();
         pinyin_page_ = 0;
+        pinyin_selected_index_ = 0;
         pinyin_tone_ = -1;
         Render(Page::KeyboardLookup);
         return;
@@ -5426,13 +5505,27 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
 
     bool changed = false;
     bool submit = false;
+    bool selection_changed = false;
     for (const auto raw : input) {
         const auto character = static_cast<unsigned char>(raw);
-        if (character == 0x1b) {
-            Render(Page::Home);
-            return;
-        }
-        if (character == '\r' || character == '\n') {
+        if (character >= 0x1c && character <= 0x1f && !pinyin_results_.empty()) {
+            const int step = character == 0x1c   ? -1
+                             : character == 0x1d ? 1
+                             : character == 0x1e ? -4
+                                                 : 4;
+            const int previous = pinyin_selected_index_;
+            pinyin_selected_index_ = std::clamp(pinyin_selected_index_ + step, 0,
+                                                static_cast<int>(pinyin_results_.size()) - 1);
+            pinyin_page_ = pinyin_selected_index_ / kKeyboardPinyinPageSize;
+            selection_changed |= previous != pinyin_selected_index_;
+        } else if (character == '\r' || character == '\n') {
+            if (!pinyin_results_.empty()) {
+                const int selected = std::clamp(pinyin_selected_index_, 0,
+                                                static_cast<int>(pinyin_results_.size()) - 1);
+                Toast("正在读取汉字和笔顺…");
+                Queue(13, pinyin_results_[selected]);
+                return;
+            }
             submit = true;
         } else if (character == '\b' || character == 0x7f) {
             if (!pinyin_query_.empty()) {
@@ -5457,6 +5550,7 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
         pinyin_search_key_.clear();
         pinyin_results_.clear();
         pinyin_page_ = 0;
+        pinyin_selected_index_ = 0;
         pinyin_status_text_ = pinyin_query_.empty() ? "候选汉字会显示在这里"
                                                     : "按 Enter 查找 “" + pinyin_query_ + "”";
         if (search_input_) {
@@ -5468,6 +5562,8 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
         // Rebuild the header so the tone badge and tone chips track a typed suffix such as ke3.
         Render(Page::KeyboardLookup);
     }
+    if (selection_changed)
+        RenderKeyboardPinyinResults(nullptr);
     if (submit)
         StartPinyinSearch();
 }
@@ -5732,10 +5828,10 @@ void HanDisplay::Worker(void* ptr) {
     for (;;) {
         if (xQueueReceive(self->jobs_, &job, portMAX_DELAY) != pdTRUE)
             continue;
-        if (job.type == 0) {
+        if (job.type == 0 || job.type == 13) {
             han::Entry entry;
             if (store.Lookup(job.value, entry))
-                self->ShowEntry(entry);
+                self->ShowEntry(entry, job.type == 13, false, job.type == 13);
             else
                 self->Toast("未找到这个字，请检查内容包");
         } else if (job.type == 1) {
@@ -5878,14 +5974,30 @@ void HanDisplay::Worker(void* ptr) {
                     delete pending;
             }
         } else if (job.type == 6) {
-            // Loading a complete OpenType font on the device can block LVGL long enough to trip
-            // the task watchdog. Keep the proven CBIN path active until scalable glyph loading is
-            // moved off the UI task and bounded per glyph.
-            std::string data;
-            if (store.ReadDictionaryFont(data))
-                self->InstallDictionaryFont(std::move(data));
-            if (store.ReadCandidateDictionaryFont(data))
-                self->InstallDictionaryCandidateFont(std::move(data));
+            // Keep the body copy in bounded CBIN memory. Candidate glyphs use a single SD-backed
+            // OpenType face with a small LVGL grayscale cache; this removes 1 bpp stair-stepping
+            // without trying to allocate a complete 4 bpp CJK bitmap in PSRAM.
+            std::string candidate_data;
+            std::string body_data;
+            const std::string candidate_scalable_path = store.DictionaryCandidateScalableFontPath();
+#ifndef HAN_UI_HOST_SIM
+            ESP_LOGI("HanDisplay", "Loading SD fonts: PSRAM free=%u largest=%u",
+                     static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+                     static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)));
+#endif
+            const bool body_ready = store.ReadDictionaryFont(body_data);
+            const bool candidate_bitmap_ready = candidate_scalable_path.empty() &&
+                                                store.ReadCandidateDictionaryFont(candidate_data);
+            if (body_ready)
+                self->InstallDictionaryFont(std::move(body_data));
+            if (!candidate_scalable_path.empty())
+                self->InstallScalableDictionaryCandidateFont(candidate_scalable_path);
+            else if (candidate_bitmap_ready)
+                self->InstallDictionaryCandidateFont(std::move(candidate_data));
+#ifndef HAN_UI_HOST_SIM
+            if (candidate_scalable_path.empty() && !candidate_bitmap_ready)
+                ESP_LOGW("HanDisplay", "Candidate font unavailable; using safe embedded fallback");
+#endif
         } else if (job.type == 7) {
             std::vector<std::string> results;
             store.SearchPinyin(job.value, results, 1024);

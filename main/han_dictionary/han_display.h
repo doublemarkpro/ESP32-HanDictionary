@@ -32,7 +32,8 @@ public:
     void SetChatMessage(const char* role, const char* content) override;
     void ClearChatMessages() override;
     void UpdateStatusBar(bool update_all = false) override;
-    void ShowEntry(const han::Entry& entry, bool auto_play_strokes = false);
+    void ShowEntry(const han::Entry& entry, bool auto_play_strokes = false,
+                   bool show_navigation = true, bool return_to_keyboard = false);
     void HandleKeyboardInput(const std::string& input);
     void ShowKeyboardConnected();
     bool OpenPage(const std::string& page);
@@ -43,6 +44,7 @@ public:
     void SetWeatherTextForTest(std::string text);
     void SetClockTimeForTest(int year, int month, int day, int hour, int minute, int second);
     void SetUsbStorageActiveForTest(bool active);
+    bool IsScreenOffForTest() const { return screen_off_.load(); }
     void SetPinyinResultsForTest(const std::string& query, std::vector<std::string> results) {
         ApplyPinyinResults(query, std::move(results));
     }
@@ -180,9 +182,11 @@ private:
     const lv_font_t* DictionaryCandidateFont() const;
     void ApplyDynamicTextFont(lv_obj_t* label);
     void ApplyDictionaryTextFont(lv_obj_t* label);
+    void ApplyDictionaryEmphasis(lv_obj_t* label);
     void ApplyDictionaryLargeFont(lv_obj_t* label);
     void InstallDictionaryFont(std::string data);
     void InstallDictionaryCandidateFont(std::string data);
+    void InstallScalableDictionaryCandidateFont(const std::string& path);
     void InstallScalableDictionaryFonts(const std::string& path);
     void ReleaseDictionaryFonts();
     lv_obj_t* Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h, uint32_t color,
@@ -271,7 +275,9 @@ private:
     std::string pinyin_status_text_;
     std::vector<std::string> pinyin_results_;
     int pinyin_page_ = 0;
+    int pinyin_selected_index_ = 0;
     int pinyin_tone_ = -1;
+    bool dictionary_return_to_keyboard_ = false;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
     std::array<FlipDigit, 6> flip_digits_{};
@@ -354,6 +360,7 @@ private:
     lv_font_t* dictionary_large_font_ = nullptr;
     lv_font_t* dictionary_hero_font_ = nullptr;
     bool dictionary_font_is_ttf_ = false;
+    bool dictionary_candidate_font_is_ttf_ = false;
 #endif
     int brightness_setting_ = 75;
     int volume_setting_ = 70;

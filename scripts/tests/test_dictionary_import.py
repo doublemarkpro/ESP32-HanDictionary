@@ -108,6 +108,26 @@ class DictionaryImportTests(unittest.TestCase):
         self.assertEqual(module.pinyin_keys("hàn guī lǜ ma lu:4"),
                          ["han", "han4", "gui", "gui1", "lv", "lv4", "ma", "ma0"])
 
+    def test_pinyin_candidates_put_common_then_low_stroke_characters_first(self):
+        entries = {
+            "阒": {"pinyin": "qù", "stroke_count": 12},
+            "趣": {"pinyin": "qù", "stroke_count": 15},
+            "去": {"pinyin": "qù", "stroke_count": 5},
+            "觑": {"pinyin": "qù", "stroke_count": 15},
+        }
+        encoded, _ = module.encode_pinyin_index(entries)
+        _, _, count, directory_size, _, _ = module.content_pack.PINYIN_HEADER.unpack_from(encoded)
+        candidates = {}
+        for record in range(count):
+            key, offset, candidate_count, _ = module.content_pack.PINYIN_RECORD.unpack_from(
+                encoded, module.content_pack.PINYIN_HEADER.size +
+                record * module.content_pack.PINYIN_RECORD.size)
+            key = key.rstrip(b"\0").decode("ascii")
+            begin = module.content_pack.PINYIN_HEADER.size + directory_size + offset
+            candidates[key] = encoded[begin:begin + candidate_count * 3].decode("utf-8")
+        self.assertEqual(candidates["qu4"], "去趣阒觑")
+        self.assertCountEqual(candidates["qu4"], entries)
+
     def test_existing_output_and_corrupt_data_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "source.tab"
