@@ -144,6 +144,8 @@ constexpr char kBootLightLvglPath[] =
     "S:" HAN_SOURCE_ROOT "/content/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-light.png";
 constexpr char kBootDarkLvglPath[] =
     "S:" HAN_SOURCE_ROOT "/content/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-dark.png";
+constexpr char kBootDeviceLvglPath[] =
+    "S:" HAN_SOURCE_ROOT "/content/sdcard/handict/ui/graphics/boot-page/tab5-keyboard-emblem.png";
 #else
 constexpr char kBootConfigPath[] = "/sdcard/handict/boot.json";
 constexpr char kBootLightDiskPath[] =
@@ -153,10 +155,16 @@ constexpr char kBootLightLvglPath[] =
     "S:/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-light.png";
 constexpr char kBootDarkLvglPath[] =
     "S:/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-dark.png";
+constexpr char kBootDeviceDiskPath[] =
+    "/sdcard/handict/ui/graphics/boot-page/tab5-keyboard-emblem.png";
+constexpr char kBootDeviceLvglPath[] =
+    "S:/sdcard/handict/ui/graphics/boot-page/tab5-keyboard-emblem.png";
 extern const uint8_t boot_light_start[] asm("_binary_boot_light_png_start");
 extern const uint8_t boot_light_end[] asm("_binary_boot_light_png_end");
 extern const uint8_t boot_dark_start[] asm("_binary_boot_dark_png_start");
 extern const uint8_t boot_dark_end[] asm("_binary_boot_dark_png_end");
+extern const uint8_t boot_device_start[] asm("_binary_boot_device_png_start");
+extern const uint8_t boot_device_end[] asm("_binary_boot_device_png_end");
 #endif
 #ifdef HAN_UI_HOST_SIM
 constexpr char kKeyboardArtworkLvglPath[] =
@@ -930,6 +938,29 @@ void HanDisplay::ShowBootAnimation() {
 #endif
     if (background != nullptr)
         lv_obj_set_style_opa(background, LV_OPA_COVER, 0);
+
+    lv_obj_t* device_emblem = nullptr;
+#ifdef HAN_UI_HOST_SIM
+    device_emblem = Image(boot_overlay_, kBootDeviceLvglPath, 525, 168);
+#else
+    if (SdFileAvailable(kBootDeviceDiskPath)) {
+        device_emblem = Image(boot_overlay_, kBootDeviceLvglPath, 525, 168);
+    } else {
+        boot_embedded_device_ = {};
+        boot_embedded_device_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        boot_embedded_device_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
+        boot_embedded_device_.header.w = 180;
+        boot_embedded_device_.header.h = 180;
+        boot_embedded_device_.data = boot_device_start;
+        boot_embedded_device_.data_size =
+            static_cast<uint32_t>(boot_device_end - boot_device_start);
+        device_emblem = Image(boot_overlay_, &boot_embedded_device_, 525, 168);
+        lv_image_set_scale(device_emblem, 327);
+        lv_image_set_pivot(device_emblem, 0, 0);
+    }
+#endif
+    if (device_emblem != nullptr)
+        lv_obj_set_style_opa(device_emblem, LV_OPA_COVER, 0);
 
     // Present the complete product identity from the start. The former oversized single-character
     // collision phase looked coarse on the physical 720p panel and left the approved brand frame

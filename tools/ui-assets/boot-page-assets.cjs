@@ -38,7 +38,32 @@ async function render(name) {
   console.log(path.relative(root, embedded));
 }
 
-Promise.all([render('light'), render('dark')]).catch((error) => {
+async function renderDeviceEmblem() {
+  const input = path.join(source, 'tab5-keyboard-emblem.png');
+  const target = path.join(output, 'tab5-keyboard-emblem.png');
+  const embedded = path.join(
+    root,
+    'main',
+    'han_dictionary',
+    'assets',
+    'boot_device.png',
+  );
+  if (!fs.existsSync(input)) throw new Error(`Missing boot device emblem: ${input}`);
+  fs.mkdirSync(output, { recursive: true });
+  await sharp(input)
+    .resize(230, 230, { fit: 'contain' })
+    // Keep the SD-card version as full RGBA so the translucent halo stays smooth on the panel.
+    .png({ palette: false, quality: 94, compressionLevel: 9 })
+    .toFile(target);
+  await sharp(input)
+    .resize(180, 180, { fit: 'contain' })
+    .png({ palette: true, colours: 64, quality: 88, compressionLevel: 9 })
+    .toFile(embedded);
+  console.log(path.relative(root, target));
+  console.log(path.relative(root, embedded));
+}
+
+Promise.all([render('light'), render('dark'), renderDeviceEmblem()]).catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

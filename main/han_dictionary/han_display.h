@@ -271,6 +271,7 @@ private:
     bool boot_ready_ = false;
     bool boot_dismiss_scheduled_ = false;
     lv_image_dsc_t boot_embedded_background_{};
+    lv_image_dsc_t boot_embedded_device_{};
     lv_obj_t* timer_value_ = nullptr;
     lv_obj_t* timer_progress_ = nullptr;
     lv_obj_t* timer_today_value_ = nullptr;

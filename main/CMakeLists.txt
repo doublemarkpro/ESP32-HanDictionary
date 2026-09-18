@@ -76,7 +76,8 @@ if(CONFIG_HAN_DICTIONARY)
     list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
     set(HAN_BOOT_ASSETS
         "han_dictionary/assets/boot_light.png"
-        "han_dictionary/assets/boot_dark.png")
+        "han_dictionary/assets/boot_dark.png"
+        "han_dictionary/assets/boot_device.png")
 endif()
 
 # Add board common files
