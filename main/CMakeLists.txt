@@ -49,6 +49,7 @@ set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg"
 if(CONFIG_HAN_DICTIONARY)
     list(APPEND SOURCES "han_dictionary/dictionary_service.cc"
         "han_dictionary/content_store.cc" "han_dictionary/han_display.cc"
+        "han_dictionary/han_ota_server.cc"
         "han_dictionary/mqtt_message_board.cc"
         "han_dictionary/lunar_calendar.cc"
         "han_dictionary/qweather_service.cc"

@@ -53,6 +53,26 @@ constexpr uint32_t kDarkMuted = 0xa9bad0;
 constexpr uint32_t kDarkBorder = 0x344b69;
 std::atomic<bool> g_dark_theme_enabled{false};
 
+bool IsWakeWordPhoneticLabel(const char* text) {
+    if (!text)
+        return false;
+    constexpr char kExpected[] = "ni3hao3xiao3zhi4";
+    char normalized[sizeof(kExpected)] = {};
+    size_t length = 0;
+    for (const unsigned char* cursor = reinterpret_cast<const unsigned char*>(text); *cursor;
+         ++cursor) {
+        unsigned char value = *cursor;
+        if (value == ' ' || value == '_' || value == '-')
+            continue;
+        if (value >= 'A' && value <= 'Z')
+            value = static_cast<unsigned char>(value - 'A' + 'a');
+        if (length + 1 >= sizeof(normalized))
+            return false;
+        normalized[length++] = static_cast<char>(value);
+    }
+    return strcmp(normalized, kExpected) == 0;
+}
+
 uint8_t Red(uint32_t color) { return static_cast<uint8_t>((color >> 16) & 0xff); }
 
 uint8_t Green(uint32_t color) { return static_cast<uint8_t>((color >> 8) & 0xff); }
@@ -665,6 +685,11 @@ lv_obj_t* HanDisplay::Label(lv_obj_t* parent, const char* text, int x, int y, in
 
 const lv_font_t* HanDisplay::DynamicTextFont() const {
 #ifndef HAN_UI_HOST_SIM
+    // Runtime text can contain any CJK character. Prefer the complete SD-backed rounded Heavy
+    // face so one label never mixes the theme font with a visually different fallback font.
+    // The embedded subset below is only needed before the SD font finishes loading.
+    if (dictionary_font_ != nullptr)
+        return dictionary_font_;
     auto theme = dynamic_cast<LvglTheme*>(current_theme_);
     if (theme != nullptr && theme->text_font() != nullptr && theme->text_font()->font() != nullptr)
         return theme->text_font()->font();
@@ -674,6 +699,8 @@ const lv_font_t* HanDisplay::DynamicTextFont() const {
 
 const lv_font_t* HanDisplay::DictionaryTextFont() const {
 #ifndef HAN_UI_HOST_SIM
+    if (dictionary_font_ != nullptr)
+        return dictionary_font_;
     if (dictionary_ui_fonts_ready_)
         return &dictionary_ui_font_;
 #endif
@@ -788,8 +815,18 @@ void HanDisplay::InstallDictionaryFont(std::string data) {
     dictionary_large_ui_font_.fallback = dictionary_font_;
     ESP_LOGI("HanDisplay", "SD dictionary font loaded: %u bytes",
              static_cast<unsigned>(dictionary_font_data_.size()));
-    if (page_ == Page::Dictionary || page_ == Page::KeyboardLookup || page_ == Page::Weather)
+    // Rebind every live dynamic label after the complete face becomes available. Page-owned
+    // labels are recreated by Render(); persistent assistant labels need an explicit refresh.
+    if (message_ != nullptr)
+        lv_obj_set_style_text_font(message_, DynamicTextFont(), 0);
+    ApplyDynamicTextFont(assistant_dialog_hint_);
+    ApplyDynamicTextFont(assistant_dialog_navigation_title_);
+    ApplyDynamicTextFont(assistant_dialog_navigation_detail_);
+    RebuildAssistantHistory();
+    if (!screen_off_ && !lock_screen_visible_ && !usb_storage_active_)
         Render(page_);
+    else
+        theme_render_pending_ = true;
 #else
     (void)data;
 #endif
@@ -1403,12 +1440,13 @@ void HanDisplay::SetupUI() {
 }
 
 void HanDisplay::SetTheme(Theme* theme) {
-    // Product artwork and headings keep their fixed fonts. Text received from the service uses
-    // the common Noto font so the server's dynamic glyph fallback can fill uncommon characters.
+    // Product artwork and headings keep their fixed fonts. Runtime text uses the complete
+    // SD-backed rounded Heavy face once it is available.
     DisplayLockGuard guard(this);
     current_theme_ = theme;
     lv_obj_set_style_text_font(status_label_, &han_font_28, 0);
     lv_obj_set_style_text_font(notification_label_, &han_font_28, 0);
+    lv_obj_set_style_text_font(message_, DynamicTextFont(), 0);
     RebuildAssistantHistory();
     ApplyDynamicTextFont(assistant_dialog_hint_);
     ApplyDynamicTextFont(assistant_dialog_navigation_title_);
@@ -1558,6 +1596,8 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
         return;
     const bool suppress_system = startup_chrome_suppressed_ && role && strcmp(role, "system") == 0;
     const char* shown = suppress_system ? "" : (text ? text : "");
+    if (role && strcmp(role, "user") == 0 && IsWakeWordPhoneticLabel(shown))
+        shown = "你好小智";
     const char* who = "小智";
     uint32_t color = 0xf4fbff;
     uint32_t gradient = 0xfffbef;
@@ -1578,8 +1618,8 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
         role_color = 0xffdfad;
         role_gradient = 0xffefcc;
     }
-    lv_obj_set_style_text_font(
-        message_, role && strcmp(role, "assistant") == 0 ? DynamicTextFont() : &han_font_28, 0);
+    // All runtime roles can contain arbitrary text. Keep the entire line on one complete face.
+    lv_obj_set_style_text_font(message_, DynamicTextFont(), 0);
     lv_label_set_text(role_label_, who);
     lv_obj_align(role_label_, LV_ALIGN_CENTER, 0, -1);
     lv_label_set_text(message_, shown);
@@ -1588,9 +1628,9 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
     lv_obj_set_style_bg_color(role_box_, ThemeFill(role_color), 0);
     lv_obj_set_style_bg_grad_color(role_box_, ThemeFill(role_gradient), 0);
 
-    const bool has_text = text && text[0] && !suppress_system;
+    const bool has_text = shown[0] && !suppress_system;
     if (has_text && role && (strcmp(role, "user") == 0 || strcmp(role, "assistant") == 0)) {
-        AppendAssistantHistory(role, text);
+        AppendAssistantHistory(role, shown);
     }
 
     if (page_ == Page::Home || !assistant_dialog_)
@@ -1858,7 +1898,8 @@ void HanDisplay::Render(Page page) {
     timer_plan_values_.fill(nullptr);
     timer_last_rendered_second_ = -1;
     timer_week_bars_.fill(nullptr);
-    stroke_value_ = stroke_image_ = network_info_ = network_detail_ = search_ = nullptr;
+    stroke_value_ = stroke_image_ = network_info_ = network_detail_ = network_ip_ = search_ =
+        nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
     search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
     pinyin_page_label_ = pinyin_progress_ = pinyin_progress_value_ = nullptr;
@@ -4104,7 +4145,7 @@ void HanDisplay::Network() {
         auto restore_label = lv_obj_get_child(restore, 0);
         lv_obj_set_style_text_color(restore_label, ThemeText(0xffffff), 0);
         lv_obj_set_style_text_font(restore_label, &han_font_40, 0);
-        network_info_ = network_detail_ = nullptr;
+        network_info_ = network_detail_ = network_ip_ = nullptr;
         return;
     }
     if (settings_page_ == 1) {
@@ -4135,11 +4176,13 @@ void HanDisplay::NetworkSettingsPage() {
         lv_image_set_scale(wifi_art, 420);
         lv_image_set_pivot(wifi_art, 0, 0);
     }
-    network_info_ = Label(connection, "正在读取网络状态…", 184, 38, 210);
+    network_info_ = Label(connection, "正在读取网络状态…", 184, 26, 210);
     lv_obj_set_style_text_font(network_info_, &han_font_timer, 0);
     lv_obj_set_style_text_color(network_info_, ThemeText(0x102347), 0);
-    network_detail_ = Label(connection, "", 184, 88, 210, &han_font_28);
+    network_detail_ = Label(connection, "", 184, 78, 218, &han_font_28);
     lv_obj_set_style_text_color(network_detail_, ThemeText(0x304664), 0);
+    network_ip_ = Label(connection, "", 184, 121, 218, DynamicTextFont());
+    lv_obj_set_style_text_color(network_ip_, ThemeText(kMuted), 0);
     auto network_button = Button(connection, "手机配网", 410, 63, 184, 76, 0x349fe8, 10);
     lv_obj_set_style_radius(network_button, 30, 0);
     style_action_button(network_button);
@@ -5807,8 +5850,16 @@ void HanDisplay::Tick(lv_timer_t* timer) {
         return;
     }
     if (self->assistant_dialog_hide_at_ms_ > 0 && NowMs() >= self->assistant_dialog_hide_at_ms_) {
+        const bool dictionary_handoff_finished = self->assistant_navigation_pending_;
         self->assistant_dialog_hide_at_ms_ = 0;
         self->assistant_navigation_pending_ = false;
+        if (dictionary_handoff_finished) {
+            // The dictionary is now the active experience. End the voice session as part of the
+            // handoff, and latch the modal closed before any queued listening/TTS callback can
+            // reopen it over the stroke page.
+            self->assistant_dialog_dismissed_ = true;
+            Application::GetInstance().StopConversation();
+        }
         self->HideAssistantDialog();
         self->StartPendingStrokePlayback();
     }
@@ -6178,6 +6229,7 @@ void HanDisplay::UpdateStatusBar(bool) {
     auto& wifi = WifiManager::GetInstance();
     std::string network_status;
     std::string network_detail;
+    std::string network_ip;
     const bool config = wifi.IsConfigMode();
     if (config) {
         network_status = "手机配网模式";
@@ -6185,6 +6237,9 @@ void HanDisplay::UpdateStatusBar(bool) {
     } else if (wifi.IsConnected()) {
         network_status = "Wi-Fi 已连接";
         network_detail = wifi.GetSsid();
+        const auto ip_address = wifi.GetIpAddress();
+        if (!ip_address.empty())
+            network_ip = ip_address;
     } else {
         network_status = "Wi-Fi 未连接";
         network_detail = "可使用本地功能";
@@ -6242,6 +6297,8 @@ void HanDisplay::UpdateStatusBar(bool) {
         SetTextIfChanged(network_info_, network_status.c_str());
     if (network_detail_)
         SetTextIfChanged(network_detail_, network_detail.c_str());
+    if (network_ip_)
+        SetTextIfChanged(network_ip_, network_ip.c_str());
     // The alarm is based on synchronized system time; RTC wake-up is not implied. tm_wday starts
     // on Sunday, while the persisted weekday mask starts on Monday.
     const int64_t day = static_cast<int64_t>(tm.tm_year) * 366 + tm.tm_yday;

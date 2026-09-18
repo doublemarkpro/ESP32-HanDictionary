@@ -165,6 +165,8 @@ struct Board {
 struct WifiManager {
     bool connected = false;
     int rssi = -55;
+    std::string ssid = "家庭WiFi";
+    std::string ip_address = "192.168.1.88";
     static WifiManager& GetInstance() {
         static WifiManager w;
         return w;
@@ -174,7 +176,8 @@ struct WifiManager {
     int GetRssi() { return rssi; }
     std::string GetApSsid() { return ""; }
     std::string GetApWebUrl() { return ""; }
-    std::string GetSsid() { return ""; }
+    std::string GetSsid() { return ssid; }
+    std::string GetIpAddress() { return ip_address; }
 };
 struct Settings {
     inline static std::map<std::string, int> values;

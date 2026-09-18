@@ -146,6 +146,12 @@ bool AfeAudioEngine::Initialize(AudioCodec* codec, int frame_duration_ms, srmode
     afe_config->wakenet_model_name = wake_detector_ == WakeDetector::kWakeNet
         ? wakenet_model_name
         : nullptr;
+#if CONFIG_HAN_DICTIONARY
+    // This product is used primarily by children, whose faster cadence and higher pitch can be
+    // harder for the stock wake-word operating point. Prefer WakeNet's high-recall mode while
+    // keeping the codec gain below the Tab5 BSP maximum to avoid clipping close speech.
+    afe_config->wakenet_mode = DET_MODE_95;
+#endif
     afe_config->agc_init = false;
     afe_config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
 

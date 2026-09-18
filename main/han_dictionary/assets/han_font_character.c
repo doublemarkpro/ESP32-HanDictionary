@@ -589,4 +589,3 @@ lv_font_t han_font_character = {
 
 
 #endif /*#if HAN_FONT_CHARACTER*/
-

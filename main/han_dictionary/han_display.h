@@ -243,6 +243,7 @@ private:
     lv_obj_t* assistant_dialog_navigation_detail_ = nullptr;
     lv_obj_t* network_info_ = nullptr;
     lv_obj_t* network_detail_ = nullptr;
+    lv_obj_t* network_ip_ = nullptr;
     lv_obj_t* mqtt_settings_popup_ = nullptr;
     lv_obj_t* appearance_popup_ = nullptr;
     std::array<lv_obj_t*, 3> appearance_mode_buttons_{};

@@ -386,7 +386,13 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (settings_smoke) {
+            WifiManager::GetInstance().connected = true;
             Check(ui.OpenPage("network"), "settings smoke page opens");
+            ui.UpdateStatusBar();
+            Check(FindLabel(lv_screen_active(), "Wi-Fi 已连接") &&
+                      FindLabel(lv_screen_active(), "家庭WiFi") &&
+                      FindLabel(lv_screen_active(), "192.168.1.88"),
+                  "connected Wi-Fi shows its SSID and IPv4 address");
             auto appearance_control =
                 FindLabel(lv_screen_active(), dark_smoke ? "深色模式" : "外观模式");
             auto screen_off_control = FindLabel(lv_screen_active(), "立即关屏");
@@ -399,7 +405,7 @@ int main(int argc, char** argv) {
                                    lv_color_hex(0xf05b78))),
                   "screen-off control matches the appearance font and deeper red fill");
             Shot(folder, dark_smoke ? "dark-settings-controls" : "settings-controls");
-            std::cout << "PASS: settings control typography and screen-off color rendered.\n";
+            std::cout << "PASS: settings Wi-Fi details and controls rendered.\n";
             return 0;
         }
         if (keyboard_connect_smoke) {
@@ -655,17 +661,21 @@ int main(int argc, char** argv) {
         Check(FindLabel(lv_screen_active(), "正在打开“小小字典”"),
               "stroke query shows its navigation handoff");
         Shot(folder, "assistant-dialog-navigation");
-        auto stop_label = FindLabel(lv_screen_active(), "停止对话");
-        auto dialog_scrim = stop_label;
+        auto dialog_scrim = FindLabel(lv_screen_active(), "停止对话");
         for (int level = 0; level < 4; ++level)
             dialog_scrim = lv_obj_get_parent(dialog_scrim);
         auto& app = Application::GetInstance();
         app.state = kDeviceStateSpeaking;
         const int stop_count = app.stops;
-        Click("停止对话");
+        lv_tick_inc(2400);
+        lv_timer_handler();
         Check(app.stops == stop_count + 1 && app.state == kDeviceStateIdle && dialog_scrim &&
-                  lv_obj_has_flag(dialog_scrim, LV_OBJ_FLAG_HIDDEN),
-              "one stop-dialog click ends a speaking conversation and hides the modal");
+                   lv_obj_has_flag(dialog_scrim, LV_OBJ_FLAG_HIDDEN),
+              "dictionary handoff automatically ends the conversation and hides the modal");
+        ui.SetStatus("正在聆听");
+        ui.SetChatMessage("assistant", "这是一条迟到的回复");
+        Check(lv_obj_has_flag(dialog_scrim, LV_OBJ_FLAG_HIDDEN),
+              "late voice callbacks cannot reopen the dialog over the dictionary");
         Click("<");
         Check(!FindLabel(lv_screen_active(), "按住说话"), "press-to-talk control removed");
         ui.SetStatus("正在初始化");
@@ -1185,9 +1195,13 @@ int main(int argc, char** argv) {
         auto wifi = FindImage(lv_screen_active(), &han_status_wifi_off);
         Check(wifi != nullptr, "Wi-Fi action present");
         lv_obj_send_event(lv_obj_get_parent(wifi), LV_EVENT_CLICKED, nullptr);
+        WifiManager::GetInstance().connected = true;
         ui.UpdateStatusBar();
         Shot(folder, "network");
         Check(FindLabel(lv_screen_active(), "网络与存储") &&
+                  FindLabel(lv_screen_active(), "Wi-Fi 已连接") &&
+                  FindLabel(lv_screen_active(), "家庭WiFi") &&
+                  FindLabel(lv_screen_active(), "192.168.1.88") &&
                   FindLabel(lv_screen_active(), "显示与声音") &&
                   FindLabel(lv_screen_active(), "自动锁屏") &&
                   FindLabel(lv_screen_active(), "10 分钟") &&

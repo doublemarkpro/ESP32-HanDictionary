@@ -10,24 +10,28 @@ fs.mkdirSync(out, {recursive:true}); fs.mkdirSync(source, {recursive:true});
 const fonts = path.join(root, 'managed_components/lvgl__lvgl/scripts/built_in_font');
 const roundedHeavy = path.join(root, 'assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf');
 const fontTool = require.resolve('lv_font_conv/lv_font_conv.js');
-const files = fs.readdirSync(path.join(root, 'main/han_dictionary')).filter(f=>/\.(cc|h)$/.test(f));
-const entriesDir = path.join(root,'content/sdcard/handict/dictionary/entries');
-const strings = files.map(f=>fs.readFileSync(path.join(root,'main/han_dictionary',f),'utf8')).join('') +
-  fs.readdirSync(entriesDir).filter(f=>f.endsWith('.json')).map(f=>fs.readFileSync(path.join(entriesDir,f),'utf8')).join('') +
-  fs.readFileSync(path.join(root, 'content/sdcard/handict/qweather.example.json'), 'utf8') +
-  ['content/sdcard/handict/timetable.json', 'docs/examples/timetable.example.json'].map(f => {
-    const data = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
-    return JSON.stringify([data.days, data.supplies]);
-  }).join('');
-const chinese = [...new Set(strings.match(/[\u2000-\u206f\u3000-\u9fff\uff00-\uffef]/g))].join('');
-const dynamicChinese = [...new Set((strings +
-  fs.readFileSync(path.join(root, 'main/assets/locales/zh-CN/language.json'), 'utf8') +
-  fs.readFileSync(path.join(root, 'tools/ui-simulator/main.cc'), 'utf8'))
+// The full dictionary fonts live on microSD and are loaded dynamically. Keep only the static
+// device UI and localized status strings in the firmware fallback fonts; including dictionary
+// entries or simulator-only text here duplicates hundreds of KiB in every OTA application.
+const embeddedStrings = ['han_display.cc', 'han_display.h']
+  .map(f=>fs.readFileSync(path.join(root, 'main/han_dictionary', f), 'utf8')).join('') +
+  fs.readFileSync(path.join(root, 'main/assets/locales/zh-CN/language.json'), 'utf8');
+const embeddedChinese = [...new Set(embeddedStrings
   .match(/[\u2000-\u206f\u3000-\u9fff\uff00-\uffef]/g))].join('');
+// han_font_40 is used directly only by these large headings. Dictionary content and its
+// uncommon glyphs use the SD font, while Latin, pinyin, IPA, and numbers come from the range
+// below. Keeping the large bitmap font focused saves considerably more space per glyph.
+const largeFallbackStrings = [
+  '小智对话', '还没有天气', 'USB 读卡器已开启', '使用完成后',
+  '正在安全恢复…', '重启并恢复', '↑', '向上滑动解锁', '电池详情', '键盘已连接'
+].join('');
+const largeFallbackSymbols = [...new Set(largeFallbackStrings
+  .match(/[\u2000-\u206f\u2190-\u21ff\u3000-\u9fff\uff00-\uffef]/g))].join('');
 for(const size of [28,40]) {
   const name=`han_font_${size}`;
   execFileSync(process.execPath,[fontTool,'--font',roundedHeavy,
-    '--symbols',size === 28 ? dynamicChinese : chinese,'--font',path.join(fonts,'DejaVuSans.ttf'),'--range','0x20-0x7e,0xa0-0x2ff,0x3b8',
+    '--symbols',size === 28 ? embeddedChinese : largeFallbackSymbols,
+    '--font',path.join(fonts,'DejaVuSans.ttf'),'--range','0x20-0x7e,0xa0-0x2ff,0x3b8',
     '--size',String(size),'--bpp','4','--format','lvgl','--no-kerning',
     '--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')],{stdio:'inherit'});
 }
@@ -55,6 +59,10 @@ const icons={
  settings:`<path fill="#75b7eb" d="M56 11h16l5 14 12 5 14-6 11 12-7 13 5 13 15 5v16l-15 5-5 12 7 14-11 11-14-7-12 5-5 15H56l-5-15-12-5-14 7-11-11 7-14-5-12-15-5V67l15-5 5-13-7-13 11-12 14 6 12-5Z"/><circle cx="64" cy="75" r="22" fill="#fff9f0"/><circle cx="64" cy="75" r="10" fill="#4a8fcb"/>`
 };
 (async()=>{
+ if (process.argv.includes('--fonts-only')) {
+  console.log('Generated firmware fonts only.');
+  return;
+ }
  let c='#include "lvgl.h"\n';
  for(const [name,body] of Object.entries(icons)){
   const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">${body}</svg>`;

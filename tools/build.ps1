@@ -14,7 +14,9 @@ $variant = if ($HardwareRevision -eq "P4X") {
 }
 
 Write-Host "正在构建 $variant ..." -ForegroundColor Cyan
-python .\scripts\build.py m5stack/tab5 --name $variant --language zh-CN --wake-word nihaoxiaozhi
+# WakeNet9l improves recall for quickly spoken wake phrases. This matters for the children's
+# dictionary and costs only a small model-size increase on the ESP32-P4/PSRAM target.
+python .\scripts\build.py m5stack/tab5 --name $variant --language zh-CN --wake-word wn9l_nihaoxiaozhi_tts3
 if ($LASTEXITCODE -ne 0) {
     throw "构建失败，退出码：$LASTEXITCODE"
 }

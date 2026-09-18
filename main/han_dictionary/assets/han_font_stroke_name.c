@@ -497,4 +497,3 @@ lv_font_t han_font_stroke_name = {
 
 
 #endif /*#if HAN_FONT_STROKE_NAME*/
-

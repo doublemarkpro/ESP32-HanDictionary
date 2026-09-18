@@ -1,4 +1,8 @@
 #include "application.h"
+
+#ifdef CONFIG_HAN_DICTIONARY
+#include "han_ota_server.h"
+#endif
 #include "assets.h"
 #include "assets/lang_config.h"
 #include "audio_codec.h"
@@ -278,6 +282,9 @@ void Application::Run() {
 
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
+#ifdef CONFIG_HAN_DICTIONARY
+    HanOtaServer::GetInstance().Start();
+#endif
     auto state = GetDeviceState();
 
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
@@ -571,6 +578,9 @@ void Application::InitializeProtocol() {
                 Schedule([this, generation]() {
                     if (!IsConversationCurrent(generation))
                         return;
+#ifdef CONFIG_HAN_DICTIONARY
+                    audio_service_.EndStreamingPlayback();
+#endif
                     if (GetDeviceState() == kDeviceStateSpeaking) {
                         if (listening_mode_ == kListeningModeManualStop) {
                             SetDeviceState(kDeviceStateIdle);
@@ -1010,6 +1020,11 @@ void Application::HandleStateChangedEvent() {
                 audio_service_.EnableWakeWordDetection(audio_service_.IsAfeWakeWord());
             }
             audio_service_.ResetDecoder();
+#ifdef CONFIG_HAN_DICTIONARY
+            // Keep a three-frame (about 180 ms) cushion against short Wi-Fi/WebSocket stalls.
+            // Other products retain their existing zero-prebuffer behavior.
+            audio_service_.StartStreamingPlayback(3);
+#endif
             break;
         case kDeviceStateWifiConfiguring:
             audio_service_.EnableVoiceProcessing(false);

@@ -1,4 +1,5 @@
 #include "audio_service.h"
+#include <algorithm>
 #include <esp_log.h>
 #include <cstring>
 
@@ -184,6 +185,9 @@ void AudioService::Stop() {
         audio_decode_queue_.clear();
         audio_playback_queue_.clear();
         audio_testing_queue_.clear();
+        streaming_playback_active_ = false;
+        streaming_playback_prebuffering_ = false;
+        streaming_prebuffer_packets_ = 0;
         notify_drained = MarkPlaybackDrainedLocked();
         audio_queue_cv_.notify_all();
     }
@@ -372,7 +376,7 @@ void AudioService::OpusCodecTask() {
         std::unique_lock<std::mutex> lock(audio_queue_mutex_);
         audio_queue_cv_.wait(lock, [this]() {
             return service_stopped_.load() || !audio_encode_queue_.empty() ||
-                   (!audio_decode_queue_.empty() &&
+                   (CanDecodeAudioLocked() &&
                     audio_playback_queue_.size() < MAX_PLAYBACK_TASKS_IN_QUEUE);
         });
         if (service_stopped_.load()) {
@@ -380,8 +384,9 @@ void AudioService::OpusCodecTask() {
         }
 
         /* Decode the audio from decode queue */
-        if (!audio_decode_queue_.empty() &&
+        if (CanDecodeAudioLocked() &&
             audio_playback_queue_.size() < MAX_PLAYBACK_TASKS_IN_QUEUE) {
+            streaming_playback_prebuffering_ = false;
             auto packet = std::move(audio_decode_queue_.front());
             audio_decode_queue_.pop_front();
             decode_in_flight_ = true;
@@ -613,6 +618,29 @@ bool AudioService::PushPacketToDecodeQueue(std::unique_ptr<AudioStreamPacket> pa
     return true;
 }
 
+void AudioService::StartStreamingPlayback(size_t prebuffer_packets) {
+    std::lock_guard<std::mutex> lock(audio_queue_mutex_);
+    streaming_playback_active_ = true;
+    streaming_prebuffer_packets_ = std::max<size_t>(1, prebuffer_packets);
+    streaming_playback_prebuffering_ = streaming_prebuffer_packets_ > 1;
+    audio_queue_cv_.notify_all();
+}
+
+void AudioService::EndStreamingPlayback() {
+    bool notify_drained = false;
+    {
+        std::lock_guard<std::mutex> lock(audio_queue_mutex_);
+        streaming_playback_active_ = false;
+        streaming_playback_prebuffering_ = false;
+        streaming_prebuffer_packets_ = 0;
+        notify_drained = MarkPlaybackDrainedLocked();
+        audio_queue_cv_.notify_all();
+    }
+    if (notify_drained && callbacks_.on_playback_drained) {
+        callbacks_.on_playback_drained();
+    }
+}
+
 std::unique_ptr<AudioStreamPacket> AudioService::PopPacketFromSendQueue() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
     if (audio_send_queue_.empty()) {
@@ -777,6 +805,9 @@ void AudioService::ResetDecoder() {
         audio_decode_queue_.clear();
         audio_playback_queue_.clear();
         audio_testing_queue_.clear();
+        streaming_playback_active_ = false;
+        streaming_playback_prebuffering_ = false;
+        streaming_prebuffer_packets_ = 0;
         notify_drained = MarkPlaybackDrainedLocked();
         audio_queue_cv_.notify_all();
     }
@@ -790,8 +821,26 @@ bool AudioService::IsPlaybackDrainedLocked() const {
            !output_in_flight_;
 }
 
+bool AudioService::CanDecodeAudioLocked() const {
+    if (audio_decode_queue_.empty()) {
+        return false;
+    }
+    return !streaming_playback_active_ || !streaming_playback_prebuffering_ ||
+           audio_decode_queue_.size() >= streaming_prebuffer_packets_;
+}
+
 bool AudioService::MarkPlaybackDrainedLocked() {
-    if (!IsPlaybackDrainedLocked() || playback_drained_notified_) {
+    if (!IsPlaybackDrainedLocked()) {
+        return false;
+    }
+    // During a live TTS stream, an empty queue usually means a brief network gap rather than the
+    // end of speech. Rebuild the small cushion before resuming so the rest of the sentence does
+    // not alternate between tiny audio fragments and silence.
+    if (streaming_playback_active_) {
+        streaming_playback_prebuffering_ = streaming_prebuffer_packets_ > 1;
+        return false;
+    }
+    if (playback_drained_notified_) {
         return false;
     }
     playback_drained_notified_ = true;

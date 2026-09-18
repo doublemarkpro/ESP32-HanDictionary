@@ -3681,4 +3681,3 @@ lv_font_t han_font_large = {
 
 
 #endif /*#if HAN_FONT_LARGE*/
-

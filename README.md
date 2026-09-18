@@ -67,9 +67,9 @@ SD 卡和电池硬件，因此截图不能代替真机验收。
 | 设备 | M5Stack Tab5，1280×720 横屏 |
 | 芯片 | ESP32-P4 Rev 1.x/2.x 使用 Legacy 变体；Rev 3.x 使用 P4X 变体 |
 | SDK | **ESP-IDF v6.0.2**（本仓库首选并已验证） |
-| Flash | 16 MiB；产品使用 `partitions/han16m.csv`，两个 5 MiB OTA 应用槽 |
+| Flash | 16 MiB；产品使用 `partitions/han16m.csv`，两个 6 MiB OTA 应用槽 |
 | 存储卡 | microSD；大插画、字典内容、音标/铃声音频和私有配置均从卡中读取 |
-| 当前固件 | `xiaozhi.bin` 约 4.85 MiB；最小应用槽尚余约 670 KiB（提交时测量） |
+| 当前固件 | `xiaozhi.bin` 约 4.76 MiB；6 MiB 应用槽尚余约 1.24 MiB（提交时测量） |
 
 Legacy Rev 1.3 真机已经验证显示、触摸、Wi-Fi、语音唤醒、页面切换、USB 读卡器和应用烧录。
 P4X 目前以构建验证为主；不同屏幕批次、触摸四角、长时间续航和异常断网仍需分别实测。

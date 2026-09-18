@@ -140,6 +140,8 @@ public:
 
     bool PushPacketToDecodeQueue(std::unique_ptr<AudioStreamPacket> packet, bool wait = false);
     std::unique_ptr<AudioStreamPacket> PopPacketFromSendQueue();
+    void StartStreamingPlayback(size_t prebuffer_packets);
+    void EndStreamingPlayback();
     void PlaySound(const std::string_view& sound);
     void PlaySound(const std::string_view& sound, const std::function<bool()>& should_continue);
     bool ReadAudioData(std::vector<int16_t>& data, int sample_rate, int samples);
@@ -186,6 +188,9 @@ private:
     bool decode_in_flight_ = false;
     bool output_in_flight_ = false;
     bool playback_drained_notified_ = true;
+    bool streaming_playback_active_ = false;
+    bool streaming_playback_prebuffering_ = false;
+    size_t streaming_prebuffer_packets_ = 0;
     uint32_t playback_generation_ = 0;
     // For server AEC
     std::deque<uint32_t> timestamp_queue_;
@@ -211,6 +216,7 @@ private:
     bool InitializeAudioEngine();
     void SetDecodeSampleRate(int sample_rate, int frame_duration);
     void CheckAndUpdateAudioPowerState();
+    bool CanDecodeAudioLocked() const;
     bool IsPlaybackDrainedLocked() const;
     bool MarkPlaybackDrainedLocked();
 };

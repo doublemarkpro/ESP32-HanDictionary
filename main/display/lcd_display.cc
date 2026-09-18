@@ -19,16 +19,30 @@
 
 #define TAG "LcdDisplay"
 
+#if CONFIG_HAN_DICTIONARY
+LV_FONT_DECLARE(han_font_28);
+#else
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(font_material_symbols_30_4);
 LV_FONT_DECLARE(font_noto_emoji_30_4);
+#endif
 
 void LcdDisplay::InitializeLcdThemes() {
+#if CONFIG_HAN_DICTIONARY
+    // HanDisplay replaces the generic LCD UI, uses image assets for every status icon, and
+    // intentionally ignores generic emoji. Reuse its fallback font for the base theme metadata
+    // instead of linking the otherwise unreachable 30 px Noto, Material, and emoji bitmaps.
+    auto text_font = std::make_shared<LvglBuiltInFont>(&han_font_28);
+    auto icon_font = text_font;
+    auto large_icon_font = text_font;
+    auto emoji_font = text_font;
+#else
     auto text_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_TEXT_FONT);
     auto icon_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_ICON_FONT);
     auto large_icon_font = std::make_shared<LvglBuiltInFont>(&font_material_symbols_30_4);
     auto emoji_font = std::make_shared<LvglBuiltInFont>(&font_noto_emoji_30_4);
+#endif
 
     // light theme
     auto light_theme = new LvglTheme("light");
