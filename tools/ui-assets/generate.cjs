@@ -8,6 +8,7 @@ const out = path.join(root, 'main/han_dictionary/assets');
 const source = path.join(root, 'assets/source');
 fs.mkdirSync(out, {recursive:true}); fs.mkdirSync(source, {recursive:true});
 const fonts = path.join(root, 'managed_components/lvgl__lvgl/scripts/built_in_font');
+const roundedHeavy = path.join(root, 'assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf');
 const fontTool = require.resolve('lv_font_conv/lv_font_conv.js');
 const files = fs.readdirSync(path.join(root, 'main/han_dictionary')).filter(f=>/\.(cc|h)$/.test(f));
 const entriesDir = path.join(root,'content/sdcard/handict/dictionary/entries');
@@ -25,12 +26,12 @@ const dynamicChinese = [...new Set((strings +
   .match(/[\u2000-\u206f\u3000-\u9fff\uff00-\uffef]/g))].join('');
 for(const size of [28,40]) {
   const name=`han_font_${size}`;
-  execFileSync(process.execPath,[fontTool,'--font',path.join(fonts,'SourceHanSansSC-Normal.otf'),
+  execFileSync(process.execPath,[fontTool,'--font',roundedHeavy,
     '--symbols',size === 28 ? dynamicChinese : chinese,'--font',path.join(fonts,'DejaVuSans.ttf'),'--range','0x20-0x7e,0xa0-0x2ff,0x3b8',
     '--size',String(size),'--bpp','4','--format','lvgl','--no-kerning',
     '--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')],{stdio:'inherit'});
 }
-execFileSync(process.execPath,[fontTool,'--font',path.join(fonts,'SourceHanSansSC-Normal.otf'),
+execFileSync(process.execPath,[fontTool,'--font',roundedHeavy,
   '--symbols','横折撇竖弯点钩提捺斜第0123456789笔/',
   '--size','18','--bpp','4','--format','lvgl','--no-kerning',
   '--lv-font-name','han_font_stroke_name','--lv-include','lvgl.h',

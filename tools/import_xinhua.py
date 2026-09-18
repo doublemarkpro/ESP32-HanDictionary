@@ -31,10 +31,16 @@ DEFAULT_CANDIDATE_FONT_LICENSE = (
     content_pack.ROOT / "assets/source/fonts/LXGW-WenKai-Screen-OFL.txt"
 )
 DEFAULT_CANDIDATE_SCALABLE_FONT = (
-    content_pack.ROOT / "assets/source/fonts/NotoSansSC-Medium.ttf"
+    content_pack.ROOT / "assets/source/fonts/NotoSerifSC-Bold.ttf"
 )
 DEFAULT_CANDIDATE_SCALABLE_FONT_LICENSE = (
     content_pack.ROOT / "assets/source/fonts/Noto-CJK-OFL.txt"
+)
+DEFAULT_UI_SCALABLE_FONT = (
+    content_pack.ROOT / "assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf"
+)
+DEFAULT_UI_SCALABLE_FONT_LICENSE = (
+    content_pack.ROOT / "assets/licenses/ResourceHanRounded-LICENSE.txt"
 )
 PINYIN_RE = re.compile(
     r"[A-Za-züÜāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ]+(?:[ '\-]"
@@ -340,7 +346,7 @@ def font_converter():
     return candidates[-1]
 
 
-def build_dictionary_font(output, font, size=28, bpp=2, maximum_size=4 * 1024 * 1024):
+def build_dictionary_font(output, font, size=28, bpp=2, maximum_size=5 * 1024 * 1024):
     font = Path(font).resolve()
     if not font.is_file():
         raise ValueError(f"Dictionary font not found: {font}")
@@ -391,22 +397,33 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
     candidate_font_crc = 0
     candidate_scalable_font_size = 0
     candidate_scalable_font_crc = 0
+    ui_scalable_font_size = 0
+    ui_scalable_font_crc = 0
     scalable_font_size = 0
     scalable_font_crc = 0
     if font:
-        font_size, font_crc = build_dictionary_font(dictionary / "font-28-2.bin", font)
+        # The complete body face must match the rounded Heavy UI used by alarm/settings. The
+        # caller-provided source font is retained below as a scalable compatibility fallback.
+        font_size, font_crc = build_dictionary_font(
+            dictionary / "font-28-2.bin", DEFAULT_UI_SCALABLE_FONT)
         candidate_font_size, candidate_font_crc = build_dictionary_font(
-            dictionary / "font-56-kai-1.bin", DEFAULT_CANDIDATE_FONT, 56, 1,
+            dictionary / "font-40-kai-2.bin", DEFAULT_CANDIDATE_FONT, 40, 2,
             8 * 1024 * 1024)
         licenses = output / "handict/licenses"
         licenses.mkdir(exist_ok=True)
         shutil.copyfile(DEFAULT_CANDIDATE_FONT_LICENSE, licenses / "LXGW-WENKAI-OFL.txt")
-        candidate_scalable_font = dictionary / "NotoSansSC-Medium.ttf"
+        candidate_scalable_font = dictionary / "NotoSerifSC-Bold.ttf"
         shutil.copyfile(DEFAULT_CANDIDATE_SCALABLE_FONT, candidate_scalable_font)
         candidate_scalable_font_size = candidate_scalable_font.stat().st_size
         candidate_scalable_font_crc = zlib.crc32(candidate_scalable_font.read_bytes())
         shutil.copyfile(DEFAULT_CANDIDATE_SCALABLE_FONT_LICENSE,
                         licenses / "Noto-CJK-OFL.txt")
+        ui_scalable_font = dictionary / "ResourceHanRoundedCN-Heavy.ttf"
+        shutil.copyfile(DEFAULT_UI_SCALABLE_FONT, ui_scalable_font)
+        ui_scalable_font_size = ui_scalable_font.stat().st_size
+        ui_scalable_font_crc = zlib.crc32(ui_scalable_font.read_bytes())
+        shutil.copyfile(DEFAULT_UI_SCALABLE_FONT_LICENSE,
+                        licenses / "ResourceHanRounded-LICENSE.txt")
         scalable_font = dictionary / "SourceHanSansSC-Normal.otf"
         shutil.copyfile(font, scalable_font)
         scalable_font_size = scalable_font.stat().st_size
@@ -446,9 +463,9 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
             "crc32": font_crc,
         }
         manifest["indexed_dictionary"]["candidate_font"] = {
-            "path": "dictionary/font-56-kai-1.bin",
-            "size": 56,
-            "bpp": 1,
+            "path": "dictionary/font-40-kai-2.bin",
+            "size": 40,
+            "bpp": 2,
             "bytes": candidate_font_size,
             "crc32": candidate_font_crc,
             "source_id": "lxgw-wenkai-screen-1.522",
@@ -457,15 +474,25 @@ def convert(input_path, output, limit=None, font=None, radicals=None, structures
             "license_file": "licenses/LXGW-WENKAI-OFL.txt",
         }
         manifest["indexed_dictionary"]["candidate_scalable_font"] = {
-            "path": "dictionary/NotoSansSC-Medium.ttf",
+            "path": "dictionary/NotoSerifSC-Bold.ttf",
             "format": "truetype",
             "size": 56,
             "bytes": candidate_scalable_font_size,
             "crc32": candidate_scalable_font_crc,
-            "source_id": "google-fonts-notosanssc-medium-static",
-            "source_url": "https://github.com/google/fonts/tree/main/ofl/notosanssc",
+            "weight": 700,
+            "source_id": "google-fonts-notoserifsc-bold-static",
+            "source_url": "https://github.com/google/fonts/tree/main/ofl/notoserifsc",
             "license": "SIL Open Font License 1.1",
             "license_file": "licenses/Noto-CJK-OFL.txt",
+        }
+        manifest["indexed_dictionary"]["ui_scalable_font"] = {
+            "path": "dictionary/ResourceHanRoundedCN-Heavy.ttf",
+            "format": "truetype",
+            "bytes": ui_scalable_font_size,
+            "crc32": ui_scalable_font_crc,
+            "source_id": "resource-han-rounded-cn-heavy",
+            "license": "SIL Open Font License 1.1",
+            "license_file": "licenses/ResourceHanRounded-LICENSE.txt",
         }
         manifest["indexed_dictionary"]["scalable_font"] = {
             "path": "dictionary/SourceHanSansSC-Normal.otf",

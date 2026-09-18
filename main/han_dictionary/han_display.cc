@@ -139,6 +139,26 @@ constexpr char kAssistantRobotLvglPath[] =
 constexpr char kKeyboardArtworkDiskPath[] =
     "/sdcard/handict/ui/graphics/keyboard-connect/tab5-keyboard.png";
 #ifdef HAN_UI_HOST_SIM
+constexpr char kBootConfigPath[] = HAN_SOURCE_ROOT "/content/sdcard/handict/boot.json";
+constexpr char kBootLightLvglPath[] =
+    "S:" HAN_SOURCE_ROOT "/content/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-light.png";
+constexpr char kBootDarkLvglPath[] =
+    "S:" HAN_SOURCE_ROOT "/content/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-dark.png";
+#else
+constexpr char kBootConfigPath[] = "/sdcard/handict/boot.json";
+constexpr char kBootLightDiskPath[] =
+    "/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-light.png";
+constexpr char kBootDarkDiskPath[] = "/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-dark.png";
+constexpr char kBootLightLvglPath[] =
+    "S:/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-light.png";
+constexpr char kBootDarkLvglPath[] =
+    "S:/sdcard/handict/ui/graphics/boot-page/miaozhi-boot-dark.png";
+extern const uint8_t boot_light_start[] asm("_binary_boot_light_png_start");
+extern const uint8_t boot_light_end[] asm("_binary_boot_light_png_end");
+extern const uint8_t boot_dark_start[] asm("_binary_boot_dark_png_start");
+extern const uint8_t boot_dark_end[] asm("_binary_boot_dark_png_end");
+#endif
+#ifdef HAN_UI_HOST_SIM
 constexpr char kKeyboardArtworkLvglPath[] =
     "S:" HAN_SOURCE_ROOT "/content/sdcard/handict/ui/graphics/keyboard-connect/tab5-keyboard.png";
 #else
@@ -292,6 +312,13 @@ struct PendingMissingStrokeGlyph {
     HanDisplay* display;
     std::string character;
 };
+struct PendingDictionaryEntry {
+    HanDisplay* display;
+    han::Entry entry;
+    han::StrokeGlyph glyph;
+    bool auto_play_strokes;
+    bool return_to_keyboard;
+};
 void ApplyStrokeGlyphAsync(void* context) {
     std::unique_ptr<PendingStrokeGlyph> pending(static_cast<PendingStrokeGlyph*>(context));
     pending->display->ApplyStrokeGlyph(pending->character, std::move(pending->glyph));
@@ -300,6 +327,11 @@ void ApplyMissingStrokeGlyphAsync(void* context) {
     std::unique_ptr<PendingMissingStrokeGlyph> pending(
         static_cast<PendingMissingStrokeGlyph*>(context));
     pending->display->ApplyMissingStrokeGlyph(pending->character);
+}
+void ShowDictionaryEntryAsync(void* context) {
+    std::unique_ptr<PendingDictionaryEntry> pending(static_cast<PendingDictionaryEntry*>(context));
+    pending->display->ShowEntry(pending->entry, pending->auto_play_strokes, false,
+                                pending->return_to_keyboard, std::move(pending->glyph));
 }
 void SetTextIfChanged(lv_obj_t* label, const char* text) {
     if (strcmp(lv_label_get_text(label), text) != 0)
@@ -356,12 +388,14 @@ std::string Duration(int64_t ms) {
     return out;
 }
 
-bool CurrentTimerWeek(int& anchor, int& weekday) {
+bool CurrentTimerWeek(int& anchor, int& weekday, int* day_key = nullptr) {
     const auto now = time(nullptr);
     struct tm local{};
     localtime_r(&now, &local);
     if (local.tm_year < 125)
         return false;
+    if (day_key)
+        *day_key = (local.tm_year + 1900) * 10000 + (local.tm_mon + 1) * 100 + local.tm_mday;
     weekday = (local.tm_wday + 6) % 7;
     local.tm_mday -= weekday;
     local.tm_hour = 12;
@@ -632,22 +666,26 @@ const lv_font_t* HanDisplay::DynamicTextFont() const {
 
 const lv_font_t* HanDisplay::DictionaryTextFont() const {
 #ifndef HAN_UI_HOST_SIM
-    if (dictionary_font_ != nullptr)
-        return dictionary_font_;
+    if (dictionary_ui_fonts_ready_)
+        return &dictionary_ui_font_;
 #endif
     return &han_font_28;
 }
 
 const lv_font_t* HanDisplay::DictionaryLargeFont() const {
 #ifndef HAN_UI_HOST_SIM
-    if (dictionary_large_font_ != nullptr)
-        return dictionary_large_font_;
+    if (dictionary_ui_fonts_ready_)
+        return &dictionary_large_ui_font_;
 #endif
     return &han_font_40;
 }
 
 const lv_font_t* HanDisplay::DictionaryHeroFont() const {
 #ifndef HAN_UI_HOST_SIM
+    // Keep the short-lived dictionary placeholder in the same complete Kai face as lookup
+    // candidates so it does not visibly change typeface while the stroke canvas is prepared.
+    if (dictionary_candidate_font_ != nullptr)
+        return dictionary_candidate_font_;
     if (dictionary_hero_font_ != nullptr)
         return dictionary_hero_font_;
 #endif
@@ -660,7 +698,9 @@ const lv_font_t* HanDisplay::DictionaryCandidateFont() const {
         return dictionary_candidate_font_;
     return DictionaryTextFont();
 #else
-    return &han_font_40;
+    // The simulator's embedded body face carries its rare-character smoke-test set. It is the
+    // host equivalent of the complete SD candidate face used on hardware.
+    return DictionaryTextFont();
 #endif
 }
 
@@ -691,6 +731,8 @@ void HanDisplay::ApplyDictionaryLargeFont(lv_obj_t* label) {
 void HanDisplay::ReleaseDictionaryFonts() {
 #ifndef HAN_UI_HOST_SIM
     DisplayLockGuard guard(this);
+    dictionary_ui_font_.fallback = nullptr;
+    dictionary_large_ui_font_.fallback = nullptr;
     if (dictionary_candidate_font_ != nullptr) {
         if (dictionary_candidate_font_is_ttf_)
             lv_tiny_ttf_destroy(dictionary_candidate_font_);
@@ -734,6 +776,8 @@ void HanDisplay::InstallDictionaryFont(std::string data) {
     // 28 px fallback glyphs in the same line. The embedded 28 px font only covers punctuation or
     // UI text outside the full dictionary-font range.
     dictionary_font_->fallback = &han_font_28;
+    dictionary_ui_font_.fallback = dictionary_font_;
+    dictionary_large_ui_font_.fallback = dictionary_font_;
     ESP_LOGI("HanDisplay", "SD dictionary font loaded: %u bytes",
              static_cast<unsigned>(dictionary_font_data_.size()));
     if (page_ == Page::Dictionary || page_ == Page::KeyboardLookup || page_ == Page::Weather)
@@ -772,7 +816,7 @@ void HanDisplay::InstallDictionaryCandidateFont(std::string data) {
 #endif
 }
 
-void HanDisplay::InstallScalableDictionaryCandidateFont(const std::string& path) {
+bool HanDisplay::InstallScalableDictionaryCandidateFont(const std::string& path) {
 #ifndef HAN_UI_HOST_SIM
     DisplayLockGuard guard(this);
     if (dictionary_candidate_font_ != nullptr) {
@@ -790,7 +834,7 @@ void HanDisplay::InstallScalableDictionaryCandidateFont(const std::string& path)
     auto candidate = lv_tiny_ttf_create_file_ex(path.c_str(), 56, LV_FONT_KERNING_NONE, 48);
     if (candidate == nullptr) {
         ESP_LOGW("HanDisplay", "Ignoring invalid SD antialiased candidate font: %s", path.c_str());
-        return;
+        return false;
     }
     candidate->fallback = dictionary_font_ ? dictionary_font_ : &han_font_28;
     dictionary_candidate_font_ = candidate;
@@ -798,8 +842,10 @@ void HanDisplay::InstallScalableDictionaryCandidateFont(const std::string& path)
     ESP_LOGI("HanDisplay", "SD antialiased candidate font loaded: %s", path.c_str());
     if (page_ == Page::KeyboardLookup)
         Render(page_);
+    return true;
 #else
     (void)path;
+    return false;
 #endif
 }
 
@@ -817,10 +863,239 @@ lv_obj_t* HanDisplay::Button(lv_obj_t* parent, const char* text, int x, int y, i
     return obj;
 }
 
+void HanDisplay::LoadBootConfig() {
+    auto file = fopen(kBootConfigPath, "rb");
+    if (file == nullptr)
+        return;
+    char json[2049]{};
+    const size_t size = fread(json, 1, sizeof(json) - 1, file);
+    fclose(file);
+    if (size == 0 || size >= sizeof(json) - 1)
+        return;
+
+    auto root = cJSON_ParseWithLength(json, size);
+    if (root == nullptr)
+        return;
+    if (auto enabled = cJSON_GetObjectItemCaseSensitive(root, "enabled"); cJSON_IsBool(enabled))
+        boot_enabled_ = cJSON_IsTrue(enabled);
+    if (auto duration = cJSON_GetObjectItemCaseSensitive(root, "duration_ms");
+        cJSON_IsNumber(duration)) {
+        // Keep the completed identity frame visible long enough to be perceived on real hardware.
+        // Older cards may still contain the original 1800 ms value, so enforce the new minimum.
+        boot_duration_ms_ = std::clamp(duration->valueint, 3800, 7000);
+    }
+    if (auto title = cJSON_GetObjectItemCaseSensitive(root, "title");
+        cJSON_IsString(title) && title->valuestring != nullptr &&
+        strlen(title->valuestring) <= 48) {
+        boot_title_ = title->valuestring;
+    }
+    if (auto subtitle = cJSON_GetObjectItemCaseSensitive(root, "subtitle");
+        cJSON_IsString(subtitle) && subtitle->valuestring != nullptr &&
+        strlen(subtitle->valuestring) <= 96) {
+        boot_subtitle_ = subtitle->valuestring;
+    }
+    cJSON_Delete(root);
+}
+
+void HanDisplay::ShowBootAnimation() {
+    if (!boot_enabled_ || boot_overlay_ != nullptr)
+        return;
+
+    boot_overlay_ = Box(lv_layer_top(), 0, 0, 1280, 720, dark_theme_ ? 0x07111f : 0xeaf8ff);
+    lv_obj_set_style_radius(boot_overlay_, 0, 0);
+    lv_obj_add_flag(boot_overlay_, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t* background = nullptr;
+#ifdef HAN_UI_HOST_SIM
+    background = Image(boot_overlay_, dark_theme_ ? kBootDarkLvglPath : kBootLightLvglPath, 0, 0);
+#else
+    const char* disk_path = dark_theme_ ? kBootDarkDiskPath : kBootLightDiskPath;
+    if (SdFileAvailable(disk_path)) {
+        background =
+            Image(boot_overlay_, dark_theme_ ? kBootDarkLvglPath : kBootLightLvglPath, 0, 0);
+    } else {
+        const uint8_t* start = dark_theme_ ? boot_dark_start : boot_light_start;
+        const uint8_t* end = dark_theme_ ? boot_dark_end : boot_light_end;
+        boot_embedded_background_ = {};
+        boot_embedded_background_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        boot_embedded_background_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;
+        boot_embedded_background_.header.w = 640;
+        boot_embedded_background_.header.h = 360;
+        boot_embedded_background_.data = start;
+        boot_embedded_background_.data_size = static_cast<uint32_t>(end - start);
+        background = Image(boot_overlay_, &boot_embedded_background_, 0, 0);
+        lv_image_set_scale(background, 512);
+        lv_image_set_pivot(background, 0, 0);
+    }
+#endif
+    if (background != nullptr)
+        lv_obj_set_style_opa(background, LV_OPA_COVER, 0);
+
+    // Present the complete product identity from the start. The former oversized single-character
+    // collision phase looked coarse on the physical 720p panel and left the approved brand frame
+    // visible for less than a second.
+    auto title = Label(boot_overlay_, boot_title_.c_str(), 340, 472, 600, &han_font_brand);
+    lv_obj_set_height(title, 80);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(dark_theme_ ? 0xf8fbff : 0x14365d), 0);
+    lv_obj_set_style_opa(title, LV_OPA_COVER, 0);
+    auto subtitle =
+        Label(boot_overlay_, boot_subtitle_.c_str(), 340, 556, 600, &han_font_assistant);
+    lv_obj_set_height(subtitle, 48);
+    lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(subtitle, lv_color_hex(dark_theme_ ? 0xb9cee3 : 0x476d8f), 0);
+    lv_obj_set_style_opa(subtitle, LV_OPA_COVER, 0);
+
+    auto progress_panel = Box(boot_overlay_, 286, 613, 708, 70, dark_theme_ ? 0x0e2b48 : 0xffffff);
+    lv_obj_set_style_radius(progress_panel, 30, 0);
+    lv_obj_set_style_bg_opa(progress_panel, dark_theme_ ? LV_OPA_70 : LV_OPA_80, 0);
+    lv_obj_set_style_border_width(progress_panel, 2, 0);
+    lv_obj_set_style_border_color(progress_panel, lv_color_hex(dark_theme_ ? 0x4d9bc5 : 0xc7e7f4),
+                                  0);
+    lv_obj_set_style_border_opa(progress_panel, LV_OPA_70, 0);
+
+    boot_status_ = Label(progress_panel, "正在准备学习空间…", 24, 7, 512, &han_font_28);
+    lv_obj_set_height(boot_status_, 32);
+    lv_obj_set_style_text_color(boot_status_, lv_color_hex(dark_theme_ ? 0xe7f4ff : 0x315978), 0);
+    boot_progress_value_ = Label(progress_panel, "0%", 574, 7, 102, &han_font_28);
+    lv_obj_set_height(boot_progress_value_, 32);
+    lv_obj_set_style_text_align(boot_progress_value_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(boot_progress_value_,
+                                lv_color_hex(dark_theme_ ? 0xffffff : 0x194f77), 0);
+
+    boot_progress_ = lv_bar_create(progress_panel);
+    lv_obj_set_pos(boot_progress_, 24, 47);
+    lv_obj_set_size(boot_progress_, 660, 11);
+    lv_bar_set_range(boot_progress_, 0, 100);
+    lv_bar_set_value(boot_progress_, 0, LV_ANIM_OFF);
+    lv_obj_set_style_radius(boot_progress_, 6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(boot_progress_, lv_color_hex(dark_theme_ ? 0x26465f : 0xd9eaf1),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(boot_progress_, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(boot_progress_, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(boot_progress_, lv_color_hex(dark_theme_ ? 0x59d9c2 : 0x2aa7e8),
+                              LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(boot_progress_, lv_color_hex(dark_theme_ ? 0x7cbcff : 0x55d1af),
+                                   LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(boot_progress_, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+
+    boot_started_tick_ = lv_tick_get();
+    boot_target_progress_ = 4;
+    boot_visible_progress_ = 0;
+    boot_ready_ = false;
+    boot_dismiss_scheduled_ = false;
+    boot_progress_timer_ = lv_timer_create(UpdateBootAnimation, 70, this);
+
+    // This is a safety ceiling, not a simulated completion time. Normal dismissal is scheduled
+    // by SetBootStage() only after the application reaches standby. If networking or the server
+    // is unavailable, the overlay exits honestly into offline mode instead of claiming success.
+    boot_timer_ = lv_timer_create(HideBootAnimation, 25000, this);
+    lv_timer_set_repeat_count(boot_timer_, 1);
+}
+
+void HanDisplay::SetBootStage(int progress, const char* status, bool ready) {
+    if (boot_overlay_ == nullptr)
+        return;
+    boot_target_progress_ = std::max(boot_target_progress_, std::clamp(progress, 0, 100));
+    if (boot_status_ != nullptr && status != nullptr && status[0])
+        lv_label_set_text(boot_status_, status);
+    if (!ready || boot_dismiss_scheduled_ || boot_timer_ == nullptr)
+        return;
+
+    boot_ready_ = true;
+    boot_dismiss_scheduled_ = true;
+    constexpr uint32_t kReadyHoldMs = 700;
+    const uint32_t elapsed = lv_tick_get() - boot_started_tick_;
+    const uint32_t minimum_remaining = elapsed < static_cast<uint32_t>(boot_duration_ms_)
+                                           ? static_cast<uint32_t>(boot_duration_ms_) - elapsed
+                                           : 0;
+    lv_timer_set_period(boot_timer_, std::max(kReadyHoldMs, minimum_remaining));
+    lv_timer_reset(boot_timer_);
+}
+
+void HanDisplay::UpdateBootAnimation(lv_timer_t* timer) {
+    auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    if (self->boot_overlay_ == nullptr || self->boot_progress_ == nullptr)
+        return;
+    const uint32_t elapsed = lv_tick_get() - self->boot_started_tick_;
+    // Local initialization may advance to 45%. Everything after that is driven by actual network,
+    // time-sync and protocol callbacks. This keeps the progress fluid without inventing success.
+    const int local_progress = std::clamp(4 + static_cast<int>(elapsed / 70), 4, 45);
+    self->boot_target_progress_ = std::max(self->boot_target_progress_, local_progress);
+    if (self->boot_target_progress_ <= 45)
+        self->boot_visible_progress_ =
+            std::max(self->boot_visible_progress_, self->boot_target_progress_);
+    else if (self->boot_visible_progress_ < self->boot_target_progress_)
+        self->boot_visible_progress_ =
+            std::min(self->boot_visible_progress_ + 2, self->boot_target_progress_);
+    lv_bar_set_value(self->boot_progress_, self->boot_visible_progress_, LV_ANIM_ON);
+    if (self->boot_progress_value_ != nullptr) {
+        const auto value = std::to_string(self->boot_visible_progress_) + "%";
+        lv_label_set_text(self->boot_progress_value_, value.c_str());
+    }
+    if (self->boot_status_ != nullptr && self->boot_target_progress_ <= 45) {
+        const char* status = self->boot_visible_progress_ < 18   ? "正在准备学习空间…"
+                             : self->boot_visible_progress_ < 36 ? "正在读取 microSD 卡…"
+                                                                 : "正在初始化网络…";
+        lv_label_set_text(self->boot_status_, status);
+    }
+}
+
+void HanDisplay::HideBootAnimation(lv_timer_t* timer) {
+    auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    self->boot_timer_ = nullptr;
+    if (self->boot_progress_timer_ != nullptr) {
+        lv_timer_delete(self->boot_progress_timer_);
+        self->boot_progress_timer_ = nullptr;
+    }
+    if (self->boot_overlay_ == nullptr)
+        return;
+    if (!self->boot_ready_) {
+        self->boot_target_progress_ = 100;
+        self->boot_visible_progress_ = 100;
+        if (self->boot_status_ != nullptr)
+            lv_label_set_text(self->boot_status_, "网络未就绪，进入离线模式");
+    }
+    if (self->boot_progress_ != nullptr)
+        lv_bar_set_value(self->boot_progress_, 100, LV_ANIM_OFF);
+    if (self->boot_progress_value_ != nullptr)
+        lv_label_set_text(self->boot_progress_value_, "100%");
+    if (self->boot_status_ != nullptr && self->boot_ready_)
+        lv_label_set_text(self->boot_status_, "准备完成");
+    auto overlay = self->boot_overlay_;
+    self->boot_overlay_ = nullptr;
+    self->boot_progress_ = nullptr;
+    self->boot_progress_value_ = nullptr;
+    self->boot_status_ = nullptr;
+    lv_obj_fade_out(overlay, 280, 0);
+    lv_obj_delete_delayed(overlay, 310);
+    if (self->keyboard_connection_pending_) {
+        auto delayed = lv_timer_create(
+            [](lv_timer_t* pending_timer) {
+                auto display = static_cast<HanDisplay*>(lv_timer_get_user_data(pending_timer));
+                if (display->keyboard_connection_pending_ && !display->screen_off_ &&
+                    !display->lock_screen_visible_ && !display->usb_storage_active_) {
+                    display->keyboard_connection_pending_ = false;
+                    display->ShowKeyboardConnectionOverlay();
+                }
+            },
+            330, self);
+        lv_timer_set_repeat_count(delayed, 1);
+    }
+}
+
 void HanDisplay::SetupUI() {
     if (setup_ui_called_)
         return;
+#ifndef HAN_UI_HOST_SIM
+    dictionary_ui_font_ = han_font_28;
+    dictionary_large_ui_font_ = han_font_40;
+    dictionary_ui_font_.fallback = nullptr;
+    dictionary_large_ui_font_.fallback = nullptr;
+    dictionary_ui_fonts_ready_ = true;
+#endif
     LoadPreferences();
+    LoadBootConfig();
     jobs_ = xQueueCreate(4, sizeof(Job));
     ESP_ERROR_CHECK(jobs_ ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreate(Worker, "han_content", 8192, this, 2, nullptr) == pdPASS
@@ -849,7 +1124,9 @@ void HanDisplay::SetupUI() {
     lv_obj_set_style_text_opa(lv_obj_get_child(back_, 0), LV_OPA_TRANSP, 0);
     back_image_ = Image(back_, &han_timetable_back, 12, 12);
     title_ = Label(root_, "小小助手", 212, 24, 470, &han_font_brand);
-    date_ = Label(root_, "日期待同步", 747, 37, 208);
+    date_ = Label(root_, "日期待同步", 670, 41, 280, &han_font_clock);
+    lv_obj_set_height(date_, 48);
+    lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_CENTER, 0);
     clock_ = Label(root_, "—:—", 970, 41, 132, &han_font_clock);
     lv_obj_set_height(clock_, 48);
     lv_obj_add_flag(clock_, LV_OBJ_FLAG_CLICKABLE);
@@ -918,7 +1195,7 @@ void HanDisplay::SetupUI() {
     lv_obj_set_style_border_color(status_box_, ThemeBorder(0xc9ddf3), 0);
     lv_obj_set_style_bg_grad_color(status_box_, ThemeFill(0xe4f8ef), 0);
     lv_obj_set_style_bg_grad_dir(status_box_, LV_GRAD_DIR_HOR, 0);
-    status_label_ = Label(status_box_, "准备中", 12, 14, 178);
+    status_label_ = Label(status_box_, "等待唤醒", 12, 14, 178);
     notification_label_ = Label(status_box_, "", 12, 14, 178);
     // The microphone artwork is white, so keep it on a saturated circular chip instead of relying
     // on the pale status gradient for contrast.
@@ -929,8 +1206,11 @@ void HanDisplay::SetupUI() {
     lv_obj_set_style_shadow_color(status_mic_badge_, ThemeShadow(0x4a7796), 0);
     lv_obj_set_style_shadow_width(status_mic_badge_, 7, 0);
     lv_obj_set_style_shadow_opa(status_mic_badge_, LV_OPA_20, 0);
-    auto status_mic = Image(status_mic_badge_, &han_status_mic, 1, 1);
-    lv_image_set_scale(status_mic, 250);
+    // The source is 48 px square, but its visible microphone is optically lighter than the
+    // circular badge. Give it an even four-pixel inset after scaling so the artwork, not merely
+    // its source rectangle, sits on the badge's centre.
+    auto status_mic = Image(status_mic_badge_, &han_status_mic, 4, 4);
+    lv_image_set_scale(status_mic, 224);
     lv_image_set_pivot(status_mic, 0, 0);
     lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
     lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_DOT);
@@ -1073,7 +1353,13 @@ void HanDisplay::SetupUI() {
     // they are built by Render().
     ApplyTheme(dark_theme_, false);
     Render(Page::Home);
-    if (keyboard_connection_pending_) {
+#ifdef HAN_UI_HOST_SIM
+    if (std::getenv("HAN_UI_BOOT_SMOKE") != nullptr)
+        ShowBootAnimation();
+#else
+    ShowBootAnimation();
+#endif
+    if (keyboard_connection_pending_ && boot_overlay_ == nullptr) {
         keyboard_connection_pending_ = false;
         ShowKeyboardConnectionOverlay();
     }
@@ -1105,24 +1391,58 @@ void HanDisplay::SetTheme(Theme* theme) {
     if (dictionary_hero_font_ != nullptr)
         dictionary_hero_font_->fallback = &han_font_40;
 #endif
+    // Assets::ApplyConfig() can replace the theme's shared text-font owner at runtime. LVGL
+    // styles retain raw lv_font_t pointers, so every page-owned label must be rebuilt while
+    // LvglDisplay::SetTextFont() is still keeping the previous owner alive. Otherwise a page
+    // opened during the boot-time asset refresh can draw through the released font and fault.
+    if (!screen_off_ && !lock_screen_visible_ && !usb_storage_active_)
+        Render(page_);
+    else
+        theme_render_pending_ = true;
 }
 
 void HanDisplay::SetStatus(const char* status) {
     const char* shown = status ? status : "";
 #ifndef HAN_UI_HOST_SIM
-    const bool connecting = status && strcmp(status, Lang::Strings::CONNECTING) == 0;
+    bool connecting = status && strcmp(status, Lang::Strings::CONNECTING) == 0;
     const bool standby = status && strcmp(status, Lang::Strings::STANDBY) == 0;
     if (strcmp(shown, Lang::Strings::STANDBY) == 0)
         shown = "等待唤醒";
-    LvglDisplay::SetStatus(shown);
 #else
-    const bool connecting = strstr(shown, "连接") != nullptr;
+    bool connecting = strstr(shown, "连接") != nullptr;
     const bool standby = strstr(shown, "唤醒") != nullptr;
     if (!shown[0])
         shown = "等待唤醒";
-    MipiLcdDisplay::SetStatus(shown);
 #endif
+    if (standby)
+        startup_chrome_suppressed_ = false;
+    if (startup_chrome_suppressed_) {
+        // The full-screen boot page already owns startup feedback. Keep the home assistant card
+        // stable instead of replaying checking-version/protocol/network phases after it dismisses.
+        shown = "等待唤醒";
+        connecting = false;
+    }
+    MipiLcdDisplay::SetStatus(shown);
     DisplayLockGuard guard(this);
+#ifndef HAN_UI_HOST_SIM
+    if (status && strcmp(status, Lang::Strings::CHECKING_NEW_VERSION) == 0)
+        SetBootStage(82, "Wi-Fi 已连接，正在同步时间…");
+    else if (status && strcmp(status, Lang::Strings::LOADING_PROTOCOL) == 0) {
+        const bool time_valid = time(nullptr) >= 1735689600;
+        SetBootStage(time_valid ? 94 : 90,
+                     time_valid ? "时间已同步，正在登录服务器…" : "正在登录服务器，等待校时…");
+    } else if (standby) {
+        const bool time_valid = time(nullptr) >= 1735689600;
+        SetBootStage(100, time_valid ? "准备完成" : "时间未同步，进入离线模式", true);
+    }
+#else
+    if (strstr(shown, "检查") != nullptr)
+        SetBootStage(82, "Wi-Fi 已连接，正在同步时间…");
+    else if (strstr(shown, "登录") != nullptr)
+        SetBootStage(94, "时间已同步，正在登录服务器…");
+    else if (standby)
+        SetBootStage(100, "准备完成", true);
+#endif
     const bool listening = strstr(shown, "听") != nullptr;
     const bool speaking = strstr(shown, "说") || strstr(shown, "回答");
     if (status_box_) {
@@ -1163,11 +1483,50 @@ void HanDisplay::SetStatus(const char* status) {
     }
 }
 
+void HanDisplay::ShowNotification(const std::string& notification, int duration_ms) {
+    ShowNotification(notification.c_str(), duration_ms);
+}
+
+void HanDisplay::ShowNotification(const char* notification, int duration_ms) {
+    const char* shown = notification ? notification : "";
+    const auto starts_with = [shown](const char* prefix) {
+        return prefix != nullptr && strncmp(shown, prefix, strlen(prefix)) == 0;
+    };
+#ifndef HAN_UI_HOST_SIM
+    const bool startup_network_notice = strcmp(shown, Lang::Strings::SCANNING_WIFI) == 0 ||
+                                        starts_with(Lang::Strings::CONNECT_TO) ||
+                                        starts_with(Lang::Strings::CONNECTED_TO);
+#else
+    const bool startup_network_notice = strstr(shown, "WiFi") != nullptr ||
+                                        strstr(shown, "网络") != nullptr ||
+                                        strstr(shown, "连接") != nullptr;
+#endif
+    if (startup_chrome_suppressed_ && startup_network_notice) {
+        DisplayLockGuard guard(this);
+#ifndef HAN_UI_HOST_SIM
+        if (strcmp(shown, Lang::Strings::SCANNING_WIFI) == 0)
+            SetBootStage(52, "正在搜索 Wi-Fi…");
+        else if (starts_with(Lang::Strings::CONNECTED_TO))
+            SetBootStage(76, "Wi-Fi 已连接，正在同步时间…");
+        else if (starts_with(Lang::Strings::CONNECT_TO))
+            SetBootStage(64, "正在连接 Wi-Fi…");
+#else
+        if (strstr(shown, "已连接") != nullptr)
+            SetBootStage(76, "Wi-Fi 已连接，正在同步时间…");
+        else
+            SetBootStage(64, "正在连接 Wi-Fi…");
+#endif
+        return;
+    }
+    MipiLcdDisplay::ShowNotification(shown, duration_ms);
+}
+
 void HanDisplay::SetChatMessage(const char* role, const char* text) {
     DisplayLockGuard guard(this);
     if (!message_ || !role_label_ || !assistant_card_)
         return;
-    const char* shown = text ? text : "";
+    const bool suppress_system = startup_chrome_suppressed_ && role && strcmp(role, "system") == 0;
+    const char* shown = suppress_system ? "" : (text ? text : "");
     const char* who = "小智";
     uint32_t color = 0xf4fbff;
     uint32_t gradient = 0xfffbef;
@@ -1187,11 +1546,6 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
         gradient = 0xfffdf5;
         role_color = 0xffdfad;
         role_gradient = 0xffefcc;
-        if (initial_banner_pending_) {
-            shown = "正在准备屏幕、声音和网络，请稍候…";
-            who = "准备中";
-            initial_banner_pending_ = false;
-        }
     }
     lv_obj_set_style_text_font(
         message_, role && strcmp(role, "assistant") == 0 ? DynamicTextFont() : &han_font_28, 0);
@@ -1203,7 +1557,7 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
     lv_obj_set_style_bg_color(role_box_, ThemeFill(role_color), 0);
     lv_obj_set_style_bg_grad_color(role_box_, ThemeFill(role_gradient), 0);
 
-    const bool has_text = text && text[0];
+    const bool has_text = text && text[0] && !suppress_system;
     if (has_text && role && (strcmp(role, "user") == 0 || strcmp(role, "assistant") == 0)) {
         AppendAssistantHistory(role, text);
     }
@@ -1220,7 +1574,7 @@ void HanDisplay::SetChatMessage(const char* role, const char* text) {
         lv_label_set_text(assistant_dialog_status_, "正在回答");
         lv_obj_set_style_bg_color(assistant_dialog_status_box_, ThemeFill(0xffdfcf), 0);
         lv_label_set_text(assistant_dialog_hint_, "小智正在回答，请稍候…");
-    } else if (role && strcmp(role, "system") == 0) {
+    } else if (!suppress_system && role && strcmp(role, "system") == 0) {
         ShowAssistantDialog();
         lv_label_set_text(assistant_dialog_hint_, "正在连接小智…");
     } else if (!has_text && !assistant_navigation_pending_) {
@@ -1476,7 +1830,7 @@ void HanDisplay::Render(Page page) {
     stroke_value_ = stroke_image_ = network_info_ = network_detail_ = search_ = nullptr;
     glyph_title_image_ = glyph_title_placeholder_ = nullptr;
     search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
-    pinyin_page_label_ = nullptr;
+    pinyin_page_label_ = pinyin_progress_ = pinyin_progress_value_ = nullptr;
     definition_overlay_ = nullptr;
     pinyin_tone_buttons_.fill(nullptr);
     brightness_value_ = volume_value_ = auto_lock_value_ = nullptr;
@@ -1497,10 +1851,13 @@ void HanDisplay::Render(Page page) {
         lv_draw_buf_destroy(glyph_title_draw_buf_);
         glyph_title_draw_buf_ = nullptr;
     }
-    // Late worker results are ignored after the expected character is cleared.
+    // Late worker results are ignored after the expected character is cleared. A glyph loaded
+    // together with the next entry is deliberately retained so Dictionary() can draw both the
+    // 田字格 and title canvases before the first panel refresh.
     stroke_placeholder_ = nullptr;
     expected_stroke_character_.clear();
-    stroke_glyph_ = {};
+    if (page != Page::Dictionary || stroke_glyph_.character != entry_.character)
+        stroke_glyph_ = {};
     const char* titles[] = {"小小助手", "小小字典", "英语音标", "课程表", "作业计时",
                             "闹钟",     "天气",     "设置",     "时钟",   "查字典"};
     const lv_image_dsc_t* page_icons[] = {
@@ -1523,10 +1880,11 @@ void HanDisplay::Render(Page page) {
     lv_obj_set_size(back_, 72, 72);
     lv_obj_set_style_radius(back_, 24, 0);
     lv_obj_set_pos(back_image_, 12, 12);
-    lv_obj_set_pos(date_, 747, 37);
-    lv_obj_set_width(date_, 208);
-    lv_obj_set_style_text_font(date_, &han_font_28, 0);
-    lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_pos(date_, 670, 41);
+    lv_obj_set_width(date_, 280);
+    lv_obj_set_height(date_, 48);
+    lv_obj_set_style_text_font(date_, &han_font_clock, 0);
+    lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_grad_dir(body_, LV_GRAD_DIR_NONE, 0);
     if (page == Page::Network)
@@ -1558,8 +1916,8 @@ void HanDisplay::Render(Page page) {
         lv_obj_set_pos(back_image_, 19, 19);
         lv_obj_set_x(title_, 133);
         lv_obj_set_y(title_, 24);
-        lv_obj_set_pos(date_, 548, 49);
-        lv_obj_set_width(date_, 225);
+        lv_obj_set_pos(date_, 520, 41);
+        lv_obj_set_width(date_, 320);
         lv_obj_set_style_text_align(date_, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_pos(body_, 0, 0);
         lv_obj_set_size(body_, 1280, 720);
@@ -1718,10 +2076,8 @@ void HanDisplay::Home() {
             lv_obj_set_style_border_color(grid, ThemeBorder(0xffffff), 0);
             Box(grid, 60, 5, 1, 116, 0x9ed7aa);
             Box(grid, 4, 63, 113, 1, 0x9ed7aa);
-            auto character = Image(grid, &han_home_gui, 0, 3);
+            auto character = Image(grid, &han_home_miao, 3, 6);
             if (dark_theme_) {
-                // This glyph asset is black. Tint it explicitly so it remains legible on the
-                // dark-blue practice grid used by the night theme.
                 lv_obj_set_style_image_recolor(character, lv_color_hex(0xb9e3ff), 0);
                 lv_obj_set_style_image_recolor_opa(character, LV_OPA_COVER, 0);
             }
@@ -2011,7 +2367,7 @@ void HanDisplay::Dictionary() {
     auto progress = Box(body_, 341, 448, 124, 34, 0xffdfe3);
     lv_obj_set_style_radius(progress, 17, 0);
     stroke_value_ = Label(progress, "", 4, 0, 116);
-    ApplyDictionaryTextFont(stroke_value_);
+    ApplyDictionaryEmphasis(stroke_value_);
     lv_obj_set_style_text_align(stroke_value_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(stroke_value_, LV_ALIGN_CENTER, 0, 0);
 
@@ -2028,6 +2384,9 @@ void HanDisplay::Dictionary() {
         lv_obj_set_style_shadow_opa(control, LV_OPA_20, 0);
         lv_obj_set_style_shadow_ofs_y(control, 4, 0);
         auto text = lv_obj_get_child(control, 0);
+        // The complete rounded SD face keeps all three captions visually identical and includes
+        // glyphs such as “下” which are outside the small embedded timer-font subset.
+        ApplyDictionaryTextFont(text);
         lv_obj_set_style_text_color(text, lv_color_white(), 0);
     }
 
@@ -2037,12 +2396,9 @@ void HanDisplay::Dictionary() {
     glyph_title_draw_buf_ = lv_draw_buf_create(96, 88, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
     lv_obj_set_pos(glyph_title_image_, 18, 1);
     lv_obj_remove_flag(glyph_title_image_, LV_OBJ_FLAG_CLICKABLE);
-    if (glyph_title_draw_buf_) {
+    if (glyph_title_draw_buf_)
         lv_canvas_set_draw_buf(glyph_title_image_, glyph_title_draw_buf_);
-        lv_obj_add_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_obj_add_flag(glyph_title_image_, LV_OBJ_FLAG_HIDDEN);
     glyph_title_placeholder_ =
         Label(details, entry_.character.c_str(), 18, 17, 96, DictionaryHeroFont());
     lv_obj_set_height(glyph_title_placeholder_, 56);
@@ -2065,8 +2421,8 @@ void HanDisplay::Dictionary() {
         lv_obj_set_style_transform_scale_x(button, 235, LV_STATE_PRESSED);
         lv_obj_set_style_transform_scale_y(button, 235, LV_STATE_PRESSED);
         auto action_text = lv_obj_get_child(button, 0);
-        ApplyDictionaryTextFont(action_text);
-        lv_obj_set_size(action_text, 58, DictionaryTextFont()->line_height + 2);
+        ApplyDictionaryEmphasis(action_text);
+        lv_obj_set_size(action_text, 58, han_font_timer.line_height + 2);
         lv_obj_set_style_text_align(action_text, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(action_text, LV_ALIGN_RIGHT_MID, -6, 0);
         auto icon = Image(button, action_icons[index], 7, 5);
@@ -2154,7 +2510,7 @@ void HanDisplay::KeyboardLookup() {
     ApplyDictionaryTextFont(prompt);
     lv_obj_set_style_text_align(prompt, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(prompt, LV_LABEL_LONG_CLIP);
-    lv_obj_set_height(prompt, DictionaryTextFont()->line_height + 6);
+    lv_obj_set_height(prompt, han_font_timer.line_height);
     lv_obj_align(prompt, LV_ALIGN_CENTER, 0, 0);
     ApplyDictionaryEmphasis(prompt);
     auto input_box = Box(main, 112, 14, 558, 72, 0xf2f8fc);
@@ -2163,11 +2519,10 @@ void HanDisplay::KeyboardLookup() {
     lv_obj_set_style_radius(input_box, 26, 0);
     lv_obj_set_style_border_width(input_box, 3, 0);
     lv_obj_set_style_border_color(input_box, ThemeBorder(0x9bc8ee), 0);
-    search_input_ =
-        Label(input_box, pinyin_query_.empty() ? "例如 qu4" : pinyin_query_.c_str(), 24, 0, 454);
+    search_input_ = Label(input_box, pinyin_query_.c_str(), 24, 0, 454);
     lv_obj_set_style_text_font(search_input_, &han_font_timer, 0);
-    lv_obj_set_style_text_color(search_input_, ThemeText(pinyin_query_.empty() ? kMuted : kInk), 0);
-    lv_obj_set_height(search_input_, DictionaryTextFont()->line_height + 6);
+    lv_obj_set_style_text_color(search_input_, ThemeText(kInk), 0);
+    lv_obj_set_height(search_input_, han_font_timer.line_height);
     lv_obj_align(search_input_, LV_ALIGN_LEFT_MID, 24, 0);
     auto clear = Button(input_box, "×", 492, 10, 52, 52, 0xddeaf3, 1129);
     lv_obj_set_style_radius(clear, LV_RADIUS_CIRCLE, 0);
@@ -2198,12 +2553,12 @@ void HanDisplay::KeyboardLookup() {
         }
     auto space_key = Box(keyboard_icon, 11, 23, 22, 4, 0xffffff);
     lv_obj_set_style_radius(space_key, 2, 0);
-    auto connected_text = Label(connected, "键盘已连接", 68, 0, 220);
+    auto connected_text = Label(connected, "键盘已连接", 62, 0, 236);
     ApplyDictionaryTextFont(connected_text);
     lv_obj_set_style_text_color(connected_text, ThemeText(0x147453), 0);
     ApplyDictionaryEmphasis(connected_text);
     lv_obj_set_style_text_align(connected_text, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(connected_text, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_align(connected_text, LV_ALIGN_RIGHT_MID, -8, 0);
 
     const char* tone_names[] = {"全部", "轻声", "一声", "二声", "三声", "四声"};
     for (int index = 0; index < 6; ++index) {
@@ -2232,15 +2587,36 @@ void HanDisplay::RenderKeyboardPinyinResults(const char* status) {
     if (status)
         pinyin_status_text_ = status;
     lv_obj_clean(search_results_);
-    pinyin_page_label_ = nullptr;
+    pinyin_page_label_ = pinyin_progress_ = pinyin_progress_value_ = nullptr;
     search_status_ = nullptr;
     if (pinyin_results_.empty()) {
-        search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 48, 166, 1100);
+        const bool searching =
+            !pinyin_search_key_.empty() && pinyin_status_text_ == "正在离线字库中查找…";
+        search_status_ =
+            Label(search_results_, pinyin_status_text_.c_str(), 48, searching ? 118 : 166, 1100);
         ApplyDictionaryTextFont(search_status_);
         lv_obj_set_style_text_color(search_status_, ThemeText(0x52718b), 0);
         lv_label_set_long_mode(search_status_, LV_LABEL_LONG_DOT);
         lv_obj_set_height(search_status_, 40);
         lv_obj_set_style_text_align(search_status_, LV_TEXT_ALIGN_CENTER, 0);
+        if (searching) {
+            pinyin_progress_ = lv_bar_create(search_results_);
+            lv_obj_set_pos(pinyin_progress_, 248, 210);
+            lv_obj_set_size(pinyin_progress_, 700, 24);
+            lv_bar_set_range(pinyin_progress_, 0, 100);
+            const int progress = pinyin_search_progress_.load();
+            lv_bar_set_value(pinyin_progress_, progress, LV_ANIM_OFF);
+            lv_obj_set_style_radius(pinyin_progress_, 12, LV_PART_MAIN);
+            lv_obj_set_style_bg_color(pinyin_progress_, ThemeFill(0xd9e8f2), LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(pinyin_progress_, LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_radius(pinyin_progress_, 12, LV_PART_INDICATOR);
+            lv_obj_set_style_bg_color(pinyin_progress_, ThemeFill(0x2ab7ee), LV_PART_INDICATOR);
+            const auto progress_text = std::to_string(progress) + "%";
+            pinyin_progress_value_ = Label(search_results_, progress_text.c_str(), 510, 248, 176);
+            ApplyDictionaryTextFont(pinyin_progress_value_);
+            lv_obj_set_style_text_color(pinyin_progress_value_, ThemeText(0x52718b), 0);
+            lv_obj_set_style_text_align(pinyin_progress_value_, LV_TEXT_ALIGN_CENTER, 0);
+        }
     }
 
     const int page_count =
@@ -2277,8 +2653,12 @@ void HanDisplay::RenderKeyboardPinyinResults(const char* status) {
         // intentionally contains only UI examples and therefore cannot render arbitrary results.
         lv_obj_set_style_text_font(text, DictionaryCandidateFont(), 0);
         lv_obj_set_style_text_color(text, ThemeText(kInk), 0);
-        const int candidate_height = DictionaryCandidateFont()->line_height + 18;
-        const int candidate_scale = DictionaryCandidateFont()->line_height >= 52 ? 320 : 432;
+        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+        const int candidate_height = DictionaryCandidateFont()->line_height + 12;
+        // The selected Noto Serif SC Bold face is authored at the native 56 px size used in the
+        // approved preview. Scaling it again shifts its visual bounds and makes card centring less
+        // predictable, so keep the glyph at 1:1 and centre its complete line box in every card.
+        const int candidate_scale = DictionaryCandidateFont()->line_height >= 52 ? 256 : 384;
         lv_obj_set_size(text, 246, candidate_height);
         lv_obj_set_style_transform_pivot_x(text, 123, 0);
         lv_obj_set_style_transform_pivot_y(text, candidate_height / 2, 0);
@@ -2319,32 +2699,66 @@ void HanDisplay::OpenPinyinSearch() {
     pinyin_selected_index_ = 0;
     pinyin_tone_ = -1;
     pinyin_tone_buttons_.fill(nullptr);
+    pinyin_progress_ = pinyin_progress_value_ = nullptr;
+    pinyin_search_complete_ = false;
+    pinyin_pending_key_.clear();
+    pinyin_pending_results_.clear();
+    pinyin_visible_progress_ = 0;
+    pinyin_search_progress_.store(0);
     search_overlay_ = Card(body_, 0, 0, 1232, 566, 0xfffcf6);
+    lv_obj_set_style_radius(search_overlay_, 28, 0);
     lv_obj_set_style_border_width(search_overlay_, 3, 0);
     lv_obj_set_style_border_color(search_overlay_, ThemeBorder(0xd7eee0), 0);
-    auto search_title = Label(search_overlay_, "拼音查字", 24, 18, 190, &han_font_40);
-    ApplyDictionaryTextFont(search_title);
+    auto search_title = Label(search_overlay_, "拼音查字", 24, 14, 180);
+    ApplyDictionaryEmphasis(search_title);
+    lv_obj_set_height(search_title, han_font_timer.line_height);
+    lv_obj_set_style_text_align(search_title, LV_TEXT_ALIGN_CENTER, 0);
     auto input_box = Box(search_overlay_, 220, 14, 450, 64, 0xf2f7fb);
+    lv_obj_set_style_radius(input_box, 22, 0);
     lv_obj_set_style_border_width(input_box, 2, 0);
     lv_obj_set_style_border_color(input_box, ThemeBorder(0xc9dfea), 0);
-    search_input_ = Label(input_box, "输入拼音，例如 han", 20, 10, 410);
-    ApplyDictionaryTextFont(search_input_);
+    search_input_ = Label(input_box, "输入拼音，例如 han", 20, 0, 410);
+    ApplyDictionaryEmphasis(search_input_);
+    lv_obj_set_height(search_input_, han_font_timer.line_height);
+    lv_obj_align(search_input_, LV_ALIGN_LEFT_MID, 20, 0);
     lv_obj_set_style_text_color(search_input_, ThemeText(kMuted), 0);
-    auto submit = Button(search_overlay_, "查找", 690, 14, 164, 64, kGreen, 1127);
-    auto close = Button(search_overlay_, "关闭", 1034, 14, 174, 64, kPink, 1128);
-    ApplyDictionaryTextFont(lv_obj_get_child(submit, 0));
-    ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
+    lv_obj_align_to(search_title, input_box, LV_ALIGN_OUT_LEFT_MID, -16, 0);
+    auto submit = Button(search_overlay_, "查找", 690, 14, 164, 64, 0x28cf7d, 1127);
+    auto close = Button(search_overlay_, "关闭", 872, 14, 174, 64, 0xf05b78, 1128);
+    ApplyDictionaryEmphasis(lv_obj_get_child(submit, 0));
+    ApplyDictionaryEmphasis(lv_obj_get_child(close, 0));
+    lv_obj_set_style_text_color(lv_obj_get_child(submit, 0), ThemeText(0xffffff), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(close, 0), ThemeText(0xffffff), 0);
+    lv_obj_set_style_radius(submit, 22, 0);
+    lv_obj_set_style_radius(close, 22, 0);
+    lv_obj_set_style_bg_grad_color(submit, ThemeFill(0x08b966), 0);
+    lv_obj_set_style_bg_grad_color(close, ThemeFill(0xdb3156), 0);
+    lv_obj_set_style_bg_grad_dir(submit, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_grad_dir(close, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_border_width(submit, 2, 0);
+    lv_obj_set_style_border_width(close, 2, 0);
+    lv_obj_set_style_border_color(submit, ThemeBorder(0x70e4a8), 0);
+    lv_obj_set_style_border_color(close, ThemeBorder(0xff8faa), 0);
+    lv_obj_set_style_shadow_color(submit, ThemeShadow(0x28c978), 0);
+    lv_obj_set_style_shadow_color(close, ThemeShadow(0xd83055), 0);
+    lv_obj_set_style_shadow_width(submit, 12, 0);
+    lv_obj_set_style_shadow_width(close, 12, 0);
+    lv_obj_set_style_shadow_opa(submit, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_opa(close, LV_OPA_30, 0);
 
-    auto tone_title = Label(search_overlay_, "音调", 28, 104, 82);
-    ApplyDictionaryTextFont(tone_title);
+    auto tone_title = Label(search_overlay_, "音调", 24, 91, 82);
+    ApplyDictionaryEmphasis(tone_title);
+    lv_obj_set_height(tone_title, han_font_timer.line_height);
+    lv_obj_set_style_text_align(tone_title, LV_TEXT_ALIGN_CENTER, 0);
     const char* tone_names[] = {"全部", "轻声", "一声", "二声", "三声", "四声"};
     for (int index = 0; index < 6; ++index) {
         pinyin_tone_buttons_[index] =
-            Button(search_overlay_, tone_names[index], 118 + index * 147, 91, 132, 52,
+            Button(search_overlay_, tone_names[index], 118 + index * 179, 91, 163, 52,
                    index == 0 ? kGreen : 0xf1f4f6, 1130 + index);
-        ApplyDictionaryTextFont(lv_obj_get_child(pinyin_tone_buttons_[index], 0));
+        ApplyDictionaryEmphasis(lv_obj_get_child(pinyin_tone_buttons_[index], 0));
         lv_obj_set_style_radius(pinyin_tone_buttons_[index], 20, 0);
     }
+    lv_obj_align_to(tone_title, pinyin_tone_buttons_[0], LV_ALIGN_OUT_LEFT_MID, -12, 0);
 
     search_results_ = Card(search_overlay_, 24, 164, 520, 374, 0xffffff);
     lv_obj_add_event_cb(search_results_, OnPinyinGesture, LV_EVENT_GESTURE, this);
@@ -2356,13 +2770,13 @@ void HanDisplay::OpenPinyinSearch() {
             char label[2] = {rows[row][column], '\0'};
             auto key = Button(keyboard, label, starts[row] + column * 60, 14 + row * 76, 52, 60,
                               0xffffff, 1100 + rows[row][column] - 'a');
-            ApplyDictionaryTextFont(lv_obj_get_child(key, 0));
+            ApplyDictionaryEmphasis(lv_obj_get_child(key, 0));
         }
     }
     auto backspace = Button(keyboard, "退格", 116, 246, 190, 62, kOrange, 1126);
     auto clear = Button(keyboard, "清空", 330, 246, 190, 62, kPurple, 1129);
-    ApplyDictionaryTextFont(lv_obj_get_child(backspace, 0));
-    ApplyDictionaryTextFont(lv_obj_get_child(clear, 0));
+    ApplyDictionaryEmphasis(lv_obj_get_child(backspace, 0));
+    ApplyDictionaryEmphasis(lv_obj_get_child(clear, 0));
     RenderPinyinResults(DictionaryService::GetInstance().store().pinyin_ready()
                             ? "输入拼音，可按音调缩小候选范围"
                             : "SD 卡缺少拼音索引，请更新内容包");
@@ -2381,9 +2795,9 @@ void HanDisplay::OpenDefinitionDetails() {
     lv_image_set_pivot(icon, 0, 0);
     const std::string title = entry_.character + " 的完整释义";
     auto title_label = Label(definition_overlay_, title.c_str(), 102, 24, 820);
-    ApplyDictionaryTextFont(title_label);
+    ApplyDictionaryEmphasis(title_label);
     auto close = Button(definition_overlay_, "关闭", 1020, 18, 180, 62, kPink, 1136);
-    ApplyDictionaryTextFont(lv_obj_get_child(close, 0));
+    ApplyDictionaryEmphasis(lv_obj_get_child(close, 0));
     lv_obj_set_style_radius(close, 22, 0);
 
     auto content = Card(definition_overlay_, 24, 96, 1184, 442, 0xffffff);
@@ -2424,9 +2838,11 @@ void HanDisplay::UpdatePinyinToneButtons() {
         auto text = lv_obj_get_child(pinyin_tone_buttons_[index], 0);
         if (text) {
             lv_obj_set_style_text_color(text,
-                                        ThemeText(keyboard_page && selected ? 0xffffff : kInk), 0);
-            if (keyboard_page)
-                ApplyDictionaryEmphasis(text);
+                                        ThemeText(keyboard_page && selected ? 0xffffff
+                                                  : selected                ? 0x147453
+                                                                            : kInk),
+                                        0);
+            ApplyDictionaryEmphasis(text);
         }
     }
 }
@@ -2442,10 +2858,58 @@ void HanDisplay::StartPinyinSearch() {
     if (pinyin_tone_ >= 0 && PinyinTone(pinyin_search_key_) < 0)
         pinyin_search_key_.push_back(static_cast<char>('0' + pinyin_tone_));
     pinyin_results_.clear();
+    pinyin_pending_results_.clear();
+    pinyin_pending_key_.clear();
+    pinyin_search_complete_ = false;
     pinyin_page_ = 0;
     pinyin_selected_index_ = 0;
+    pinyin_visible_progress_ = 0;
+    pinyin_search_progress_.store(0);
     RenderPinyinResults("正在离线字库中查找…");
-    Queue(7, pinyin_search_key_);
+    if (!Queue(7, pinyin_search_key_)) {
+        pinyin_search_key_.clear();
+        RenderPinyinResults("查找任务繁忙，请稍后重试");
+    }
+}
+
+void HanDisplay::SetPinyinSearchProgress(uint8_t percent) {
+    // The SD worker owns ContentStore's mutex while it scans and ranks candidates. Publish only
+    // an atomic percentage here; Tick() applies it on LVGL's task and avoids reversing the
+    // display-lock/content-lock order.
+    pinyin_search_progress_.store(std::min<uint8_t>(percent, 100));
+}
+
+void HanDisplay::UpdatePinyinSearchProgress() {
+    if (!pinyin_progress_)
+        return;
+    const auto target = pinyin_search_progress_.load();
+    if (pinyin_visible_progress_ < target) {
+        // Content lookup is usually faster than one display frame. Chase the worker's real
+        // progress in bounded steps so every search still shows the read/filter/rank phases
+        // instead of flashing one arbitrary percentage and immediately replacing the panel.
+        const auto remaining = static_cast<uint8_t>(target - pinyin_visible_progress_);
+        const auto step = static_cast<uint8_t>(std::min<int>(8, std::max<int>(1, remaining)));
+        pinyin_visible_progress_ = static_cast<uint8_t>(pinyin_visible_progress_ + step);
+        lv_bar_set_value(pinyin_progress_, pinyin_visible_progress_, LV_ANIM_ON);
+        if (pinyin_progress_value_) {
+            const auto text = std::to_string(pinyin_visible_progress_) + "%";
+            lv_label_set_text(pinyin_progress_value_, text.c_str());
+        }
+        if (search_status_) {
+            const char* phase = pinyin_visible_progress_ < 25   ? "正在读取拼音索引…"
+                                : pinyin_visible_progress_ < 60 ? "正在筛选同音汉字…"
+                                : pinyin_visible_progress_ < 93 ? "正在按常用字和笔画排序…"
+                                                                : "正在整理候选结果…";
+            SetTextIfChanged(search_status_, phase);
+        }
+    }
+    if (!pinyin_search_complete_ || pinyin_visible_progress_ < 100)
+        return;
+    pinyin_search_complete_ = false;
+    auto key = std::move(pinyin_pending_key_);
+    auto results = std::move(pinyin_pending_results_);
+    pinyin_pending_key_.clear();
+    ApplyPinyinResults(key, std::move(results));
 }
 
 void HanDisplay::RenderPinyinResults(const char* status) {
@@ -2458,12 +2922,38 @@ void HanDisplay::RenderPinyinResults(const char* status) {
     if (status)
         pinyin_status_text_ = status;
     lv_obj_clean(search_results_);
-    pinyin_page_label_ = nullptr;
-    search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 20, 12, 480);
-    ApplyDictionaryTextFont(search_status_);
+    pinyin_page_label_ = pinyin_progress_ = pinyin_progress_value_ = nullptr;
+    search_status_ = nullptr;
+    const bool searching = pinyin_results_.empty() && !pinyin_search_key_.empty() &&
+                           pinyin_status_text_ == "正在离线字库中查找…";
+    search_status_ = Label(search_results_, pinyin_status_text_.c_str(), 20,
+                           searching ? 96 : (pinyin_results_.empty() ? 154 : 10), 480);
+    ApplyDictionaryEmphasis(search_status_);
     lv_obj_set_style_text_color(search_status_, ThemeText(kMuted), 0);
     lv_label_set_long_mode(search_status_, LV_LABEL_LONG_DOT);
     lv_obj_set_height(search_status_, 40);
+    lv_obj_set_style_text_align(search_status_, LV_TEXT_ALIGN_CENTER, 0);
+    if (searching) {
+        pinyin_progress_ = lv_bar_create(search_results_);
+        lv_obj_set_pos(pinyin_progress_, 48, 166);
+        lv_obj_set_size(pinyin_progress_, 424, 24);
+        lv_bar_set_range(pinyin_progress_, 0, 100);
+        const int progress = pinyin_visible_progress_;
+        lv_bar_set_value(pinyin_progress_, progress, LV_ANIM_OFF);
+        lv_obj_set_style_radius(pinyin_progress_, 12, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(pinyin_progress_, ThemeFill(0xd9e8f2), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(pinyin_progress_, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_radius(pinyin_progress_, 12, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(pinyin_progress_, ThemeFill(0x2ab7ee), LV_PART_INDICATOR);
+        const auto progress_text = std::to_string(progress) + "%";
+        pinyin_progress_value_ = Label(search_results_, progress_text.c_str(), 172, 204, 176);
+        ApplyDictionaryEmphasis(pinyin_progress_value_);
+        lv_obj_set_style_text_color(pinyin_progress_value_, ThemeText(0x52718b), 0);
+        lv_obj_set_style_text_align(pinyin_progress_value_, LV_TEXT_ALIGN_CENTER, 0);
+        return;
+    }
+    if (pinyin_results_.empty())
+        return;
     const int page_count = std::max(
         1, (static_cast<int>(pinyin_results_.size()) + kPinyinPageSize - 1) / kPinyinPageSize);
     pinyin_page_ = std::clamp(pinyin_page_, 0, page_count - 1);
@@ -2478,18 +2968,26 @@ void HanDisplay::RenderPinyinResults(const char* status) {
                                              : kOrange,
                              1200 + index);
         auto text = lv_obj_get_child(button, 0);
-        ApplyDictionaryTextFont(text);
+        lv_obj_set_style_text_font(text, DictionaryCandidateFont(), 0);
+        lv_obj_set_style_text_color(text, ThemeText(kInk), 0);
+        const int candidate_height = DictionaryCandidateFont()->line_height + 8;
+        const int candidate_scale = DictionaryCandidateFont()->line_height >= 52 ? 256 : 320;
+        lv_obj_set_size(text, 92, candidate_height);
+        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_transform_pivot_x(text, 46, 0);
+        lv_obj_set_style_transform_pivot_y(text, candidate_height / 2, 0);
+        lv_obj_set_style_transform_scale(text, candidate_scale, 0);
         lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
     }
     if (page_count > 1) {
         auto previous = Button(search_results_, "‹", 20, 310, 64, 46, kGreen, 1137);
         auto next = Button(search_results_, "›", 436, 310, 64, 46, kBlue, 1138);
-        ApplyDictionaryTextFont(lv_obj_get_child(previous, 0));
-        ApplyDictionaryTextFont(lv_obj_get_child(next, 0));
+        ApplyDictionaryEmphasis(lv_obj_get_child(previous, 0));
+        ApplyDictionaryEmphasis(lv_obj_get_child(next, 0));
         const std::string page_text =
             std::to_string(pinyin_page_ + 1) + "/" + std::to_string(page_count) + " · 左右滑动翻页";
         pinyin_page_label_ = Label(search_results_, page_text.c_str(), 92, 318, 336);
-        ApplyDictionaryTextFont(pinyin_page_label_);
+        ApplyDictionaryEmphasis(pinyin_page_label_);
         lv_obj_set_style_text_align(pinyin_page_label_, LV_TEXT_ALIGN_CENTER, 0);
     }
 }
@@ -2538,7 +3036,7 @@ void HanDisplay::HideStrokeArtwork() {
     if (stroke_image_)
         lv_obj_add_flag(stroke_image_, LV_OBJ_FLAG_HIDDEN);
     if (stroke_placeholder_)
-        lv_obj_add_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(stroke_placeholder_, LV_OBJ_FLAG_HIDDEN);
 }
 
 bool HanDisplay::ApplyMissingStrokeGlyph(const std::string& character) {
@@ -2674,11 +3172,8 @@ void HanDisplay::Timetable() {
     lesson_count = std::clamp(lesson_count, 5, 8);
     const int row_pitch = 476 / lesson_count;
     const int cell_height = row_pitch - 7;
-    const auto lesson_range = "1—" + std::to_string(lesson_count) + "节";
     auto row_head = Box(table, 12, 12, 108, 54, 0xf4f5e8);
     lv_obj_set_style_radius(row_head, 18, 0);
-    auto range_label = Label(row_head, lesson_range.c_str(), 5, 10, 98, &han_font_28);
-    lv_obj_set_style_text_align(range_label, LV_TEXT_ALIGN_CENTER, 0);
     for (int c = 0; c < columns; ++c) {
         int day = first_day + c;
         const bool today = day == timetable_today_;
@@ -2725,9 +3220,11 @@ void HanDisplay::Timetable() {
         auto row = Box(table, 12, 73 + lesson * row_pitch, 108, cell_height, 0xf9f4e5);
         lv_obj_set_style_radius(row, 18, 0);
         auto name = "第" + std::to_string(lesson + 1) + "节";
-        auto row_label =
-            Label(row, name.c_str(), 5, std::max(0, (cell_height - 34) / 2), 98, &han_font_28);
+        // The schedule font uses the same rounded Heavy face as the alarm action text and already
+        // contains the complete 第 N 节 label set.
+        auto row_label = Label(row, name.c_str(), 5, 0, 98, &han_font_schedule);
         lv_obj_set_style_text_align(row_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(row_label, LV_ALIGN_CENTER, 0, -1);
     }
 
     // The regular Monday-to-Friday schedule always fits on one page.
@@ -2779,7 +3276,8 @@ void HanDisplay::SetUsbStorageActiveForTest(bool active) {
 #endif
 
 void HanDisplay::Timer() {
-    SyncTimerWeek();
+    if (SyncTimerWeek())
+        SaveTimer();
     auto left = Card(body_, 0, 0, 694, 592, 0xffffff);
     lv_obj_set_style_radius(left, 30, 0);
     const uint32_t subject_colors[] = {0xe3f7ea, 0xddeeff, 0xeee5ff};
@@ -3207,7 +3705,7 @@ void HanDisplay::Alarm() {
     lv_dropdown_set_selected(ringtone_dropdown, alarm_ringtone_);
     lv_dropdown_set_dir(ringtone_dropdown, LV_DIR_TOP);
     lv_dropdown_set_symbol(ringtone_dropdown, "▽");
-    lv_obj_set_style_text_font(ringtone_dropdown, DynamicTextFont(), 0);
+    lv_obj_set_style_text_font(ringtone_dropdown, &han_font_weather, 0);
     lv_obj_set_style_text_color(ringtone_dropdown, ThemeText(0x5532b7), 0);
     lv_obj_set_style_text_align(ringtone_dropdown, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_bg_color(ringtone_dropdown, ThemeFill(0xeee8ff), 0);
@@ -3218,7 +3716,7 @@ void HanDisplay::Alarm() {
     lv_obj_set_style_pad_left(ringtone_dropdown, 24, 0);
     lv_obj_set_style_pad_right(ringtone_dropdown, 20, 0);
     auto ringtone_list = lv_dropdown_get_list(ringtone_dropdown);
-    lv_obj_set_style_text_font(ringtone_list, DynamicTextFont(), 0);
+    lv_obj_set_style_text_font(ringtone_list, &han_font_weather, 0);
     lv_obj_set_style_text_color(ringtone_list, ThemeText(0x455472), 0);
     lv_obj_set_style_text_line_space(ringtone_list, 12, 0);
     lv_obj_set_style_bg_color(ringtone_list, ThemeFill(0xfffcff), 0);
@@ -3232,18 +3730,22 @@ void HanDisplay::Alarm() {
     lv_obj_add_event_cb(ringtone_dropdown, OnAlarmRingtoneChanged, LV_EVENT_VALUE_CHANGED, this);
 
     auto preview = Button(panel, alarm_previewing_.load() ? "停止试听" : "试听", 992, 390, 188, 60,
-                          alarm_previewing_.load() ? 0xffdce6 : 0xdceeff, 430);
+                          alarm_previewing_.load() ? 0x177ddd : 0x3a9df5, 430);
     lv_obj_set_style_radius(preview, 20, 0);
-    lv_obj_set_style_border_width(preview, 1, 0);
-    lv_obj_set_style_border_color(preview,
-                                  ThemeBorder(alarm_previewing_.load() ? 0xffaac2 : 0xadd8f6), 0);
-    lv_obj_set_style_text_font(lv_obj_get_child(preview, 0), &han_font_28, 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(preview, 0),
-                                ThemeText(alarm_previewing_.load() ? 0xb8003b : 0x286da8), 0);
+    lv_obj_set_style_bg_grad_color(preview,
+                                   ThemeFill(alarm_previewing_.load() ? 0x0d68c2 : 0x177dde), 0);
+    lv_obj_set_style_bg_grad_dir(preview, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_border_width(preview, 2, 0);
+    lv_obj_set_style_border_color(preview, ThemeBorder(0x81c9ff), 0);
+    lv_obj_set_style_shadow_color(preview, ThemeShadow(0x248fe8), 0);
+    lv_obj_set_style_shadow_width(preview, 12, 0);
+    lv_obj_set_style_shadow_opa(preview, LV_OPA_30, 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(preview, 0), &han_font_weather, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(preview, 0), ThemeText(0xffffff), 0);
 
     auto save = Button(panel, "保存并开启", 488, 480, 330, 72, 0x28cf7d, 400);
     auto disable = Button(panel, alarm_ringing_.load() ? "停止铃声" : "关闭闹钟", 850, 480, 330, 72,
-                          0xffabc5, 401);
+                          0xf05b78, 401);
     lv_obj_set_style_bg_grad_color(save, ThemeFill(0x08b966), 0);
     lv_obj_set_style_bg_grad_dir(save, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_border_width(save, 2, 0);
@@ -3251,17 +3753,17 @@ void HanDisplay::Alarm() {
     lv_obj_set_style_shadow_color(save, ThemeShadow(0x28c978), 0);
     lv_obj_set_style_shadow_width(save, 14, 0);
     lv_obj_set_style_shadow_opa(save, LV_OPA_30, 0);
-    lv_obj_set_style_bg_grad_color(disable, ThemeFill(0xff8fb3), 0);
+    lv_obj_set_style_bg_grad_color(disable, ThemeFill(0xdb3156), 0);
     lv_obj_set_style_bg_grad_dir(disable, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_border_width(disable, 2, 0);
-    lv_obj_set_style_border_color(disable, ThemeBorder(0xffc7d8), 0);
-    lv_obj_set_style_shadow_color(disable, ThemeShadow(0xff99b9), 0);
+    lv_obj_set_style_border_color(disable, ThemeBorder(0xff8faa), 0);
+    lv_obj_set_style_shadow_color(disable, ThemeShadow(0xd83055), 0);
     lv_obj_set_style_shadow_width(disable, 14, 0);
     lv_obj_set_style_shadow_opa(disable, LV_OPA_30, 0);
     lv_obj_set_style_text_font(lv_obj_get_child(save, 0), &han_font_weather, 0);
     lv_obj_set_style_text_font(lv_obj_get_child(disable, 0), &han_font_weather, 0);
     lv_obj_set_style_text_color(lv_obj_get_child(save, 0), ThemeText(0xffffff), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(disable, 0), ThemeText(0xb8003b), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(disable, 0), ThemeText(0xffffff), 0);
 }
 
 void HanDisplay::Weather() {
@@ -3451,7 +3953,7 @@ void HanDisplay::Weather() {
         Label(card, value.c_str(), 116,
               metric_text_y + han_font_weather.line_height + kMetricLineGap, 310,
               &han_font_weather);
-        if (index == 3 && !weather_index_detail_.empty()) {
+        if (index == 3) {
             lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_set_user_data(card, this);
             lv_obj_add_event_cb(card, OnClick, LV_EVENT_CLICKED,
@@ -4413,6 +4915,8 @@ void HanDisplay::InstallScalableDictionaryFonts(const std::string& path) {
     dictionary_large_font_ = large;
     dictionary_hero_font_ = hero;
     dictionary_font_is_ttf_ = true;
+    dictionary_ui_font_.fallback = body;
+    dictionary_large_ui_font_.fallback = large;
     ESP_LOGI("HanDisplay", "SD scalable dictionary font loaded: %s", path.c_str());
     if (page_ == Page::Dictionary || page_ == Page::KeyboardLookup || page_ == Page::Weather)
         Render(page_);
@@ -4437,8 +4941,12 @@ void HanDisplay::CloseWeatherIndexPopup() {
 
 void HanDisplay::ShowWeatherIndexPopup() {
     CloseWeatherIndexPopup();
-    if (weather_index_detail_.empty())
+    if (page_ != Page::Weather)
         return;
+    if (weather_index_detail_.empty()) {
+        Toast("生活指数正在获取，请稍后再试");
+        return;
+    }
 
     weather_index_popup_ = Box(root_, 0, 0, 1280, 720, 0x142b57);
     lv_obj_set_style_radius(weather_index_popup_, 0, 0);
@@ -4466,6 +4974,11 @@ void HanDisplay::ShowWeatherIndexPopup() {
     lv_obj_set_style_pad_bottom(content, 26, 0);
     auto detail = Label(content, weather_index_detail_.c_str(), 28, 24, 924);
     ApplyDictionaryTextFont(detail);
+    // Weather advice can contain arbitrary CJK glyphs, so keep the complete SD font and add the
+    // same strong visual weight as the rounded alarm action labels instead of switching to the
+    // embedded subset (which would make uncommon characters disappear).
+    lv_obj_set_style_text_outline_stroke_width(detail, 1, 0);
+    lv_obj_set_style_text_outline_stroke_color(detail, ThemeText(kInk), 0);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
     lv_obj_set_height(detail, LV_SIZE_CONTENT);
     lv_obj_set_style_text_line_space(detail, 12, 0);
@@ -4734,8 +5247,21 @@ void HanDisplay::Action(int a) {
         return;
     }
     if (a >= 0 && a < 6) {
-        if (a == 0)
+        if (a == 0) {
             dictionary_return_to_keyboard_ = false;
+#ifdef HAN_UI_HOST_SIM
+            // The host simulator intentionally has no worker task; render its embedded fixture
+            // synchronously so navigation tests still exercise the dictionary layout.
+            entry_ = han::ContentStore::Demo();
+            Render(Page::Dictionary);
+#else
+            // ContentStore already falls back to the embedded “妙” entry when the SD record is
+            // unavailable. Queue the lookup directly so the page is built exactly once instead of
+            // flashing the embedded entry and immediately rebuilding it with the SD result.
+            Queue(0, "妙");
+#endif
+            return;
+        }
         Render(static_cast<Page>(a + 1));
         if (a == 5)
             Queue(4, "");
@@ -4974,9 +5500,14 @@ void HanDisplay::Action(int a) {
         if (search_overlay_)
             lv_obj_delete(search_overlay_);
         search_overlay_ = search_input_ = search_results_ = search_status_ = nullptr;
-        pinyin_page_label_ = nullptr;
+        pinyin_page_label_ = pinyin_progress_ = pinyin_progress_value_ = nullptr;
         pinyin_tone_buttons_.fill(nullptr);
         pinyin_search_key_.clear();
+        pinyin_pending_key_.clear();
+        pinyin_pending_results_.clear();
+        pinyin_search_complete_ = false;
+        pinyin_search_progress_.store(0);
+        pinyin_visible_progress_ = 0;
         pinyin_status_text_.clear();
         pinyin_results_.clear();
         pinyin_page_ = 0;
@@ -5004,7 +5535,10 @@ void HanDisplay::Action(int a) {
     if (a >= 1200 && a < 1200 + static_cast<int>(pinyin_results_.size())) {
         const auto character = pinyin_results_[a - 1200];
         Toast("正在读取汉字和笔顺…");
-        Queue(page_ == Page::KeyboardLookup ? 13 : 0, character);
+        // Both lookup entrances should open the chosen character and immediately play the full
+        // stroke order. Type 13 remembers the keyboard return target; type 14 returns to the
+        // normal dictionary page after a touch lookup.
+        Queue(page_ == Page::KeyboardLookup ? 13 : 14, character);
         return;
     }
     if (a == 20 || a == 22) {
@@ -5277,6 +5811,12 @@ void HanDisplay::Tick(lv_timer_t* timer) {
 
 void HanDisplay::TimerTick(lv_timer_t* timer) {
     auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    if (self->SyncTimerWeek()) {
+        self->SaveTimer();
+        if (self->page_ == Page::Timer)
+            self->Render(Page::Timer);
+        return;
+    }
     if (self->study_.running() &&
         self->study_.Elapsed(self->study_.subject(), NowMs()) >= kTimerMaximumMs) {
         self->study_.Pause(NowMs());
@@ -5300,6 +5840,7 @@ void HanDisplay::TimerTick(lv_timer_t* timer) {
 
 void HanDisplay::ClockTick(lv_timer_t* timer) {
     auto self = static_cast<HanDisplay*>(lv_timer_get_user_data(timer));
+    self->UpdatePinyinSearchProgress();
     if (self->page_ != Page::Clock || self->screen_off_ || self->lock_screen_visible_)
         return;
     const auto now = time(nullptr);
@@ -5309,9 +5850,11 @@ void HanDisplay::ClockTick(lv_timer_t* timer) {
 }
 
 void HanDisplay::ShowEntry(const han::Entry& entry, bool auto_play_strokes, bool show_navigation,
-                           bool return_to_keyboard) {
+                           bool return_to_keyboard, han::StrokeGlyph stroke_glyph) {
     DisplayLockGuard guard(this);
     entry_ = entry;
+    stroke_glyph_ =
+        stroke_glyph.character == entry.character ? std::move(stroke_glyph) : han::StrokeGlyph{};
     dictionary_return_to_keyboard_ = return_to_keyboard;
     stroke_ = -1;
     stroke_playing_ = false;
@@ -5322,6 +5865,10 @@ void HanDisplay::ShowEntry(const han::Entry& entry, bool auto_play_strokes, bool
     }
     if (setup_ui_called_) {
         Render(Page::Dictionary);
+        // Render() deliberately clears transient playback state. Start candidate-triggered
+        // playback only after the dictionary page and its stroke canvas are ready.
+        if (auto_play_strokes && !show_navigation)
+            StartPendingStrokePlayback();
         if (auto_play_strokes && show_navigation) {
             auto detail = std::string("打开“") + entry.character + "”字并自动播放笔顺";
             ApplyDynamicTextFont(assistant_dialog_navigation_title_);
@@ -5337,7 +5884,7 @@ void HanDisplay::ShowEntry(const han::Entry& entry, bool auto_play_strokes, bool
 
 void HanDisplay::ShowKeyboardConnected() {
     DisplayLockGuard guard(this);
-    if (!setup_ui_called_) {
+    if (!setup_ui_called_ || boot_overlay_ != nullptr) {
         keyboard_connection_pending_ = true;
         return;
     }
@@ -5506,6 +6053,7 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
     bool changed = false;
     bool submit = false;
     bool selection_changed = false;
+    bool start_new_query = !pinyin_results_.empty() || !pinyin_search_key_.empty();
     for (const auto raw : input) {
         const auto character = static_cast<unsigned char>(raw);
         if (character >= 0x1c && character <= 0x1f && !pinyin_results_.empty()) {
@@ -5533,16 +6081,29 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
                 pinyin_tone_ = PinyinTone(pinyin_query_);
                 changed = true;
             }
-        } else if (std::isalpha(character) && pinyin_query_.size() < 7 &&
-                   PinyinTone(pinyin_query_) < 0) {
-            pinyin_query_.push_back(static_cast<char>(std::tolower(character)));
-            pinyin_tone_ = -1;
-            changed = true;
+        } else if (std::isalpha(character)) {
+            if (start_new_query) {
+                pinyin_query_.clear();
+                pinyin_search_key_.clear();
+                pinyin_results_.clear();
+                pinyin_page_ = 0;
+                pinyin_selected_index_ = 0;
+                pinyin_tone_ = -1;
+                start_new_query = false;
+            }
+            if (pinyin_query_.size() < 7 && PinyinTone(pinyin_query_) < 0) {
+                pinyin_query_.push_back(static_cast<char>(std::tolower(character)));
+                pinyin_tone_ = -1;
+                changed = true;
+            }
         } else if (character >= '1' && character <= '5' && !pinyin_query_.empty() &&
                    PinyinTone(pinyin_query_) < 0) {
             pinyin_query_.push_back(static_cast<char>(character));
             pinyin_tone_ = character == '5' ? 0 : character - '0';
             changed = true;
+            // A tone suffix completes the keyboard query (for example bi3), so searching here is
+            // faster and more natural than requiring an additional Enter press.
+            submit = true;
         }
     }
 
@@ -5554,10 +6115,8 @@ void HanDisplay::HandleKeyboardInput(const std::string& input) {
         pinyin_status_text_ = pinyin_query_.empty() ? "候选汉字会显示在这里"
                                                     : "按 Enter 查找 “" + pinyin_query_ + "”";
         if (search_input_) {
-            lv_label_set_text(search_input_,
-                              pinyin_query_.empty() ? "例如 gai" : pinyin_query_.c_str());
-            lv_obj_set_style_text_color(search_input_,
-                                        ThemeText(pinyin_query_.empty() ? kMuted : kInk), 0);
+            lv_label_set_text(search_input_, pinyin_query_.c_str());
+            lv_obj_set_style_text_color(search_input_, ThemeText(kInk), 0);
         }
         // Rebuild the header so the tone badge and tone chips track a typed suffix such as ke3.
         Render(Page::KeyboardLookup);
@@ -5674,25 +6233,48 @@ void HanDisplay::UpdateStatusBar(bool) {
     }
 }
 
-void HanDisplay::SyncTimerWeek() {
+bool HanDisplay::SyncTimerWeek() {
     int anchor = -1;
     int weekday = -1;
-    if (!CurrentTimerWeek(anchor, weekday)) {
+    int day_key = -1;
+    if (!CurrentTimerWeek(anchor, weekday, &day_key)) {
         if (timer_view_day_ < 0 || timer_view_day_ >= 5)
             timer_view_day_ = 0;
-        return;
+        return false;
+    }
+    const bool week_changed = timer_week_anchor_ != anchor;
+    const bool day_changed = timer_session_day_key_ != day_key;
+    if (!week_changed && day_changed && timer_session_day_key_ > 0 && timer_session_weekday_ >= 0 &&
+        timer_session_weekday_ < 5) {
+        // Commit the short tail after the last one-minute checkpoint to yesterday before the
+        // current daily session is cleared. Persisted checkpoints are already reflected in the
+        // weekly bucket through timer_week_baseline_seconds_.
+        for (int subject = 0; subject < 3; ++subject) {
+            const auto current = study_.Elapsed(subject, NowMs()) / 1000;
+            timer_week_subject_seconds_[timer_session_weekday_][subject] +=
+                std::max<int64_t>(0, current - timer_week_baseline_seconds_[subject]);
+        }
+    }
+    if (week_changed) {
+        for (auto& day : timer_week_subject_seconds_)
+            day.fill(0);
+        timer_week_anchor_ = anchor;
+    }
+    if (day_changed) {
+        // Each school day owns a fresh three-subject session. The weekly buckets above retain
+        // history, while the large ring and its completion state always begin at 00:00 today.
+        study_ = han::StudyTimer();
+        timer_week_baseline_seconds_.fill(0);
+        timer_session_day_key_ = day_key;
+        timer_session_weekday_ = weekday;
+        timer_last_rendered_second_ = -1;
     }
     timer_today_index_ = weekday;
     if (timer_view_day_ < 0 || timer_view_day_ >= 5)
         timer_view_day_ = weekday >= 0 && weekday < 5 ? weekday : 4;
-    if (timer_week_anchor_ == anchor)
-        return;
-    for (auto& day : timer_week_subject_seconds_)
-        day.fill(0);
-    timer_week_anchor_ = anchor;
-    timer_view_day_ = weekday >= 0 && weekday < 5 ? weekday : 4;
-    for (int i = 0; i < 3; ++i)
-        timer_week_baseline_seconds_[i] = study_.Elapsed(i, NowMs()) / 1000;
+    if (day_changed || week_changed)
+        timer_view_day_ = weekday >= 0 && weekday < 5 ? weekday : 4;
+    return day_changed || week_changed;
 }
 
 std::array<int64_t, 3> HanDisplay::TimerDaySeconds(int day, int64_t now_ms) const {
@@ -5722,6 +6304,8 @@ void HanDisplay::LoadPreferences() {
     }
     timer_plan_draft_ = timer_plan_minutes_;
     timer_week_anchor_ = static_cast<int>(s.GetInt("week", -1));
+    timer_session_day_key_ = static_cast<int>(s.GetInt("day", -1));
+    timer_session_weekday_ = static_cast<int>(s.GetInt("day_idx", -1));
     const bool has_subject_week = s.GetInt("wv", 0) >= 2;
     for (int day = 0; day < 5; ++day) {
         for (int subject = 0; subject < 3; ++subject) {
@@ -5741,7 +6325,9 @@ void HanDisplay::LoadPreferences() {
         timer_week_baseline_seconds_[subject] =
             stored >= 0 ? stored : study_.Elapsed(subject, NowMs()) / 1000;
     }
-    SyncTimerWeek();
+    const bool timer_day_changed = SyncTimerWeek();
+    if (timer_day_changed)
+        SaveTimer();
     Settings a("han_alarm");
     alarm_minutes_ = std::clamp(static_cast<int>(a.GetInt("minutes", 405)), 0, 1439);
     alarm_days_ =
@@ -5780,30 +6366,34 @@ void HanDisplay::SaveTimer() {
     const auto week_subject_seconds = timer_week_subject_seconds_;
     const auto week_anchor = timer_week_anchor_;
     const auto week_baseline = timer_week_baseline_seconds_;
-    Application::GetInstance().Schedule(
-        [seconds, completed, week_subject_seconds, week_anchor, week_baseline] {
-            Settings s("han_study", true);
-            for (int i = 0; i < 3; ++i) {
-                auto k = std::to_string(i);
-                s.SetInt("s" + k, seconds[i]);
-                s.SetBool("c" + k, completed[i]);
+    const auto session_day_key = timer_session_day_key_;
+    const auto session_weekday = timer_session_weekday_;
+    Application::GetInstance().Schedule([seconds, completed, week_subject_seconds, week_anchor,
+                                         week_baseline, session_day_key, session_weekday] {
+        Settings s("han_study", true);
+        for (int i = 0; i < 3; ++i) {
+            auto k = std::to_string(i);
+            s.SetInt("s" + k, seconds[i]);
+            s.SetBool("c" + k, completed[i]);
+        }
+        s.SetInt("week", week_anchor);
+        s.SetInt("day", session_day_key);
+        s.SetInt("day_idx", session_weekday);
+        s.SetInt("wv", 2);
+        for (int subject = 0; subject < 3; ++subject)
+            s.SetInt("b" + std::to_string(subject), static_cast<int>(week_baseline[subject]));
+        for (int day = 0; day < 5; ++day) {
+            int64_t total = 0;
+            for (int subject = 0; subject < 3; ++subject) {
+                const auto seconds = week_subject_seconds[day][subject];
+                total += seconds;
+                const auto key = "d" + std::to_string(day) + "s" + std::to_string(subject);
+                s.SetInt(key, static_cast<int>(seconds));
             }
-            s.SetInt("week", week_anchor);
-            s.SetInt("wv", 2);
-            for (int subject = 0; subject < 3; ++subject)
-                s.SetInt("b" + std::to_string(subject), static_cast<int>(week_baseline[subject]));
-            for (int day = 0; day < 5; ++day) {
-                int64_t total = 0;
-                for (int subject = 0; subject < 3; ++subject) {
-                    const auto seconds = week_subject_seconds[day][subject];
-                    total += seconds;
-                    const auto key = "d" + std::to_string(day) + "s" + std::to_string(subject);
-                    s.SetInt(key, static_cast<int>(seconds));
-                }
-                // Retain the aggregate keys so a downgrade does not lose the visible totals.
-                s.SetInt("w" + std::to_string(day), static_cast<int>(total));
-            }
-        });
+            // Retain the aggregate keys so a downgrade does not lose the visible totals.
+            s.SetInt("w" + std::to_string(day), static_cast<int>(total));
+        }
+    });
 }
 
 bool HanDisplay::Queue(int type, const std::string& value) {
@@ -5828,12 +6418,28 @@ void HanDisplay::Worker(void* ptr) {
     for (;;) {
         if (xQueueReceive(self->jobs_, &job, portMAX_DELAY) != pdTRUE)
             continue;
-        if (job.type == 0 || job.type == 13) {
+        if (job.type == 0 || job.type == 13 || job.type == 14) {
             han::Entry entry;
-            if (store.Lookup(job.value, entry))
-                self->ShowEntry(entry, job.type == 13, false, job.type == 13);
-            else
+            if (store.Lookup(job.value, entry)) {
+                han::StrokeGlyph glyph;
+                store.ReadStrokeGlyph(entry.character, glyph);
+                auto pending = new (std::nothrow)
+                    PendingDictionaryEntry{self, std::move(entry), std::move(glyph),
+                                           job.type == 13 || job.type == 14, job.type == 13};
+                if (!pending) {
+                    self->Toast("汉字资料内存不足");
+                    continue;
+                }
+                // The worker performs only bounded SD reads. ThorVG rendering runs on LVGL's
+                // larger render task so the entry, large glyph and title glyph land in one frame.
+                DisplayLockGuard guard(self);
+                if (lv_async_call(ShowDictionaryEntryAsync, pending) != LV_RESULT_OK) {
+                    delete pending;
+                    self->Toast("汉字页面绘制排队失败");
+                }
+            } else {
                 self->Toast("未找到这个字，请检查内容包");
+            }
         } else if (job.type == 1) {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() != kDeviceStateIdle &&
@@ -5896,7 +6502,7 @@ void HanDisplay::Worker(void* ptr) {
                 return preview ? self->alarm_previewing_.load() : self->alarm_ringing_.load();
             };
             while (active() && NowMs() < deadline) {
-                audio.PlaySound(data);
+                audio.PlaySound(data, active);
                 while (active() && !audio.IsPlaybackIdle() && NowMs() < deadline)
                     vTaskDelay(pdMS_TO_TICKS(50));
                 if (preview)
@@ -5904,7 +6510,8 @@ void HanDisplay::Worker(void* ptr) {
                 if (active())
                     vTaskDelay(pdMS_TO_TICKS(300));
             }
-            if (!audio.IsPlaybackIdle())
+            const bool cancelled = !active();
+            if (cancelled || !audio.IsPlaybackIdle())
                 audio.ResetDecoder();
             const bool timed_out = !preview && self->alarm_ringing_.load() && NowMs() >= deadline;
             if (preview)
@@ -5974,35 +6581,78 @@ void HanDisplay::Worker(void* ptr) {
                     delete pending;
             }
         } else if (job.type == 6) {
-            // Keep the body copy in bounded CBIN memory. Candidate glyphs use a single SD-backed
-            // OpenType face with a small LVGL grayscale cache; this removes 1 bpp stair-stepping
-            // without trying to allocate a complete 4 bpp CJK bitmap in PSRAM.
+            // Keep the complete body face in bounded CBin/PSRAM form. Candidates render only eight
+            // glyphs at a time, so one SD-backed 700-weight serif TTF plus a small grayscale cache
+            // gives smooth edges without the memory cost of a full-CJK 4 bpp bitmap. The older CBin
+            // candidate face remains a fallback if the selected TTF cannot be opened.
             std::string candidate_data;
             std::string body_data;
+            const std::string ui_scalable_path = store.DictionaryUiScalableFontPath();
             const std::string candidate_scalable_path = store.DictionaryCandidateScalableFontPath();
+            const bool body_bitmap_configured = store.HasDictionaryFont();
+            const bool candidate_bitmap_configured = store.HasCandidateDictionaryFont();
 #ifndef HAN_UI_HOST_SIM
             ESP_LOGI("HanDisplay", "Loading SD fonts: PSRAM free=%u largest=%u",
                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
                      static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)));
 #endif
-            const bool body_ready = store.ReadDictionaryFont(body_data);
-            const bool candidate_bitmap_ready = candidate_scalable_path.empty() &&
-                                                store.ReadCandidateDictionaryFont(candidate_data);
+            auto read_with_retry = [](auto&& read, std::string& data, const char* name) {
+                for (int attempt = 1; attempt <= 3; ++attempt) {
+                    if (read(data))
+                        return true;
+                    data.clear();
+#ifndef HAN_UI_HOST_SIM
+                    ESP_LOGW("HanDisplay", "SD %s font read failed (%d/3)", name, attempt);
+                    if (attempt < 3)
+                        vTaskDelay(pdMS_TO_TICKS(80));
+#endif
+                }
+                return false;
+            };
+            const bool body_ready =
+                body_bitmap_configured &&
+                read_with_retry([&](std::string& data) { return store.ReadDictionaryFont(data); },
+                                body_data, "body");
             if (body_ready)
                 self->InstallDictionaryFont(std::move(body_data));
-            if (!candidate_scalable_path.empty())
+            else if (!body_bitmap_configured && !ui_scalable_path.empty())
+                self->InstallScalableDictionaryFonts(ui_scalable_path);
+
+            const bool candidate_scalable_ready =
+                !candidate_scalable_path.empty() &&
                 self->InstallScalableDictionaryCandidateFont(candidate_scalable_path);
-            else if (candidate_bitmap_ready)
+            const bool candidate_bitmap_ready =
+                !candidate_scalable_ready && candidate_bitmap_configured &&
+                read_with_retry(
+                    [&](std::string& data) { return store.ReadCandidateDictionaryFont(data); },
+                    candidate_data, "candidate");
+            if (candidate_bitmap_ready)
                 self->InstallDictionaryCandidateFont(std::move(candidate_data));
 #ifndef HAN_UI_HOST_SIM
-            if (candidate_scalable_path.empty() && !candidate_bitmap_ready)
+            if (body_bitmap_configured && !body_ready)
+                ESP_LOGE("HanDisplay",
+                         "SD body font unavailable after retries; refusing TTF fallback");
+            if (!candidate_scalable_ready && candidate_bitmap_configured && !candidate_bitmap_ready)
+                ESP_LOGE("HanDisplay", "SD candidate fonts unavailable after retries");
+            if (!candidate_scalable_ready && !candidate_bitmap_ready &&
+                !candidate_bitmap_configured && candidate_scalable_path.empty())
                 ESP_LOGW("HanDisplay", "Candidate font unavailable; using safe embedded fallback");
 #endif
         } else if (job.type == 7) {
             std::vector<std::string> results;
-            store.SearchPinyin(job.value, results, 1024);
+            store.SearchPinyin(
+                job.value, results, 1024,
+                [](uint8_t percent, void* raw_context) {
+                    static_cast<HanDisplay*>(raw_context)->SetPinyinSearchProgress(percent);
+                },
+                self);
             DisplayLockGuard guard(self);
-            self->ApplyPinyinResults(job.value, std::move(results));
+            if (job.value == self->pinyin_search_key_) {
+                self->pinyin_pending_key_ = job.value;
+                self->pinyin_pending_results_ = std::move(results);
+                self->pinyin_search_complete_ = true;
+                self->pinyin_search_progress_.store(100);
+            }
         } else if (job.type == 8) {
             const auto error = self->usb_storage_restore_action_
                                    ? self->usb_storage_restore_action_()

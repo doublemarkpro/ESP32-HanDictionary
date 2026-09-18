@@ -66,17 +66,17 @@ async function main() {
  const font=path.join(root,'assets/source/fonts/ResourceHanRoundedCN-Heavy.ttf');
  const normalFont=path.join(root,'managed_components/lvgl__lvgl/scripts/built_in_font/SourceHanSansSC-Normal.otf');
  const tool=require.resolve('lv_font_conv/lv_font_conv.js');
- for(const [name,size,text,sourceFont=font] of [['han_font_home',48,'查字典英语音标课程表作业计时闹钟天气'],['han_font_brand',62,'小小助手联网设置查字典英语音标课程表作业计时闹钟天气'],['han_font_clock',40,'0123456789:—'],['han_font_assistant',28,'可以继续问我',normalFont]]) {
+ for(const [name,size,text,sourceFont=font] of [['han_font_home',48,'查字典英语音标课程表作业计时闹钟天气'],['han_font_brand',62,'小小助手妙智学伴联网设置查字典英语音标课程表作业计时闹钟天气'],['han_font_clock',40,' 0123456789:—月日周一二三四五六日期待同步'],['han_font_assistant',28,'可以继续问我小小字典陪你妙学每一天·',normalFont]]) {
   execFileSync(process.execPath,[tool,'--font',sourceFont,'--symbols',text,'--size',String(size),'--bpp','4','--format','lvgl','--no-kerning','--lv-font-name',name,'--lv-include','lvgl.h','-o',path.join(out,name+'.c')]);
   const output=path.join(out,name+'.c');
   fs.writeFileSync(output,fs.readFileSync(output,'utf8').trimEnd()+'\n');
  }
- // Fixed 规 preview uses the project's licensed, standard-source character paths (not AI text).
- const strokes=JSON.parse(fs.readFileSync(path.join(root,'assets/source/strokes/89C4.json'))).strokes;
+ // Use the same licensed, standard-source stroke glyph treatment as the previous 规 preview.
+ const strokes=JSON.parse(fs.readFileSync(path.join(root,'assets/source/strokes/5999.json'))).strokes;
  const glyph=svg(116,116,`<g transform="scale(.11328) translate(0 900) scale(1 -1)" fill="#102b21">${strokes.map(d=>`<path d="${d}"/>`).join('')}</g>`);
  const glyphPng=await sharp(glyph).png().toBuffer();
  // Append one validated example character, independent of the artistic heading font.
- fs.appendFileSync(path.join(out,'home_skin.c'),`static const uint8_t gui_png[]={${Array.from(glyphPng).join(',')}};\nconst lv_image_dsc_t han_home_gui={.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RAW_ALPHA,.w=116,.h=116},.data_size=sizeof(gui_png),.data=gui_png};\n`);
+ fs.appendFileSync(path.join(out,'home_skin.c'),`static const uint8_t miao_png[]={${Array.from(glyphPng).join(',')}};\nconst lv_image_dsc_t han_home_miao={.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RAW_ALPHA,.w=116,.h=116},.data_size=sizeof(miao_png),.data=miao_png};\n`);
  const totals={png_bytes:assets.reduce((n,a)=>n+a.png.length,0)+glyphPng.length,rgba_bytes:assets.reduce((n,a)=>n+a.width*a.height*4,0)+116*116*4,assets:assets.map(({name,width,height,png})=>({name,width,height,bytes:png.length}))};
  fs.writeFileSync(path.join(dir,'manifest.json'),JSON.stringify(totals,null,2)+'\n');console.log(totals.png_bytes+' bytes of UI3 PNG payload');
 }

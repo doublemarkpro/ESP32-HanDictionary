@@ -295,7 +295,7 @@ def validate_index_font(folder, manifest):
         if font.get("size") != 28 or font.get("bpp") != profiles[font["path"]]:
             raise ValueError("Indexed dictionary font profile is unsupported")
         path = Path(folder) / font["path"]
-        if not path.is_file() or not 128 * 1024 <= path.stat().st_size <= 4 * 1024 * 1024:
+        if not path.is_file() or not 128 * 1024 <= path.stat().st_size <= 5 * 1024 * 1024:
             raise ValueError("Indexed dictionary font size is invalid")
         if (font.get("bytes") != path.stat().st_size or
                 font.get("crc32") != zlib.crc32(path.read_bytes())):
@@ -304,15 +304,20 @@ def validate_index_font(folder, manifest):
         font = indexed["candidate_font"]
         profiles = {
             "dictionary/font-40-1.bin": (40, 4 * 1024 * 1024),
+            "dictionary/font-40-kai-2.bin": (40, 2, 8 * 1024 * 1024),
             "dictionary/font-56-kai-1.bin": (56, 8 * 1024 * 1024),
             "dictionary/font-56-heavy-1.bin": (56, 8 * 1024 * 1024),
         }
-        if (not isinstance(font, dict) or font.get("path") not in profiles or
-                font.get("size") != profiles[font["path"]][0] or font.get("bpp") != 1):
+        if not isinstance(font, dict) or font.get("path") not in profiles:
+            raise ValueError("Indexed dictionary candidate font metadata is invalid")
+        profile = profiles[font["path"]]
+        expected_bpp = profile[1] if len(profile) == 3 else 1
+        maximum_size = profile[-1]
+        if font.get("size") != profile[0] or font.get("bpp") != expected_bpp:
             raise ValueError("Indexed dictionary candidate font metadata is invalid")
         path = Path(folder) / font["path"]
         if (not path.is_file() or
-                not 128 * 1024 <= path.stat().st_size <= profiles[font["path"]][1]):
+                not 128 * 1024 <= path.stat().st_size <= maximum_size):
             raise ValueError("Indexed dictionary candidate font size is invalid")
         if (font.get("bytes") != path.stat().st_size or
                 font.get("crc32") != zlib.crc32(path.read_bytes())):
@@ -320,8 +325,9 @@ def validate_index_font(folder, manifest):
     if "candidate_scalable_font" in indexed:
         font = indexed["candidate_scalable_font"]
         if (not isinstance(font, dict) or
-                font.get("path") != "dictionary/NotoSansSC-Medium.ttf" or
-                font.get("format") != "truetype" or font.get("size") != 56):
+                font.get("path") != "dictionary/NotoSerifSC-Bold.ttf" or
+                font.get("format") != "truetype" or font.get("size") != 56 or
+                font.get("weight") != 700):
             raise ValueError("Indexed dictionary scalable candidate font metadata is invalid")
         path = Path(folder) / font["path"]
         if not path.is_file() or not 1024 * 1024 <= path.stat().st_size <= 32 * 1024 * 1024:
@@ -329,6 +335,18 @@ def validate_index_font(folder, manifest):
         if (font.get("bytes") != path.stat().st_size or
                 font.get("crc32") != zlib.crc32(path.read_bytes())):
             raise ValueError("Indexed dictionary scalable candidate font checksum mismatch")
+    if "ui_scalable_font" in indexed:
+        font = indexed["ui_scalable_font"]
+        if (not isinstance(font, dict) or
+                font.get("path") != "dictionary/ResourceHanRoundedCN-Heavy.ttf" or
+                font.get("format") != "truetype"):
+            raise ValueError("Indexed dictionary scalable UI font metadata is invalid")
+        path = Path(folder) / font["path"]
+        if not path.is_file() or not 1024 * 1024 <= path.stat().st_size <= 32 * 1024 * 1024:
+            raise ValueError("Indexed dictionary scalable UI font size is invalid")
+        if (font.get("bytes") != path.stat().st_size or
+                font.get("crc32") != zlib.crc32(path.read_bytes())):
+            raise ValueError("Indexed dictionary scalable UI font checksum mismatch")
     if "scalable_font" in indexed:
         font = indexed["scalable_font"]
         if (not isinstance(font, dict) or

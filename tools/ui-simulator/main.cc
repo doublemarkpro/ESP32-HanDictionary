@@ -74,10 +74,24 @@ lv_obj_t* FindArc(lv_obj_t* obj) {
             return arc;
     return nullptr;
 }
+lv_obj_t* FindDropdown(lv_obj_t* obj) {
+    if (lv_obj_check_type(obj, &lv_dropdown_class))
+        return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        if (auto dropdown = FindDropdown(lv_obj_get_child(obj, i)))
+            return dropdown;
+    return nullptr;
+}
 int CountArcs(lv_obj_t* obj) {
     int count = lv_obj_check_type(obj, &lv_arc_class) ? 1 : 0;
     for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
         count += CountArcs(lv_obj_get_child(obj, i));
+    return count;
+}
+int CountBars(lv_obj_t* obj) {
+    int count = lv_obj_check_type(obj, &lv_bar_class) ? 1 : 0;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); ++i)
+        count += CountBars(lv_obj_get_child(obj, i));
     return count;
 }
 lv_obj_t* FindArcBySize(lv_obj_t* obj, int size) {
@@ -120,10 +134,10 @@ void Shot(const std::filesystem::path& folder, const char* name) {
                 ++title_light;
         }
     const std::string shot_name(name);
-    if (shot_name != "clock" && shot_name.find("dark-") != 0 &&
+    if (shot_name != "clock" && shot_name.find("boot-") != 0 && shot_name.find("dark-") != 0 &&
         shot_name.find("assistant-dialog") == std::string::npos)
         Check(title_ink > 100, "screenshot must contain visibly rendered title text");
-    if (shot_name.find("dark-") == 0 && shot_name != "dark-clock")
+    if (shot_name.find("dark-") == 0 && shot_name != "dark-clock" && shot_name.find("boot-") != 0)
         Check(title_light > 100, "dark screenshot must contain a visible light title");
     std::ofstream f(folder / (std::string(name) + ".ppm"), std::ios::binary);
     f << "P6\n1280 720\n255\n";
@@ -204,16 +218,173 @@ int main(int argc, char** argv) {
         const bool dark_smoke = std::getenv("HAN_UI_DARK_SMOKE") != nullptr;
         const bool gallery_smoke = std::getenv("HAN_UI_GALLERY_SMOKE") != nullptr;
         const bool timer_plan_smoke = std::getenv("HAN_UI_TIMER_PLAN_SMOKE") != nullptr;
+        const bool timer_rollover_smoke = std::getenv("HAN_UI_TIMER_ROLLOVER_SMOKE") != nullptr;
         const bool assistant_smoke = std::getenv("HAN_UI_ASSISTANT_SMOKE") != nullptr;
         const bool keyboard_smoke = std::getenv("HAN_UI_KEYBOARD_SMOKE") != nullptr;
+        const bool font_compare_smoke = std::getenv("HAN_UI_FONT_COMPARE_SMOKE") != nullptr;
         const bool keyboard_connect_smoke = std::getenv("HAN_UI_KEYBOARD_CONNECT_SMOKE") != nullptr;
         const bool settings_smoke = std::getenv("HAN_UI_SETTINGS_SMOKE") != nullptr;
+        const bool boot_smoke = std::getenv("HAN_UI_BOOT_SMOKE") != nullptr;
+        const bool touch_pinyin_smoke = std::getenv("HAN_UI_TOUCH_PINYIN_SMOKE") != nullptr;
+        const bool dictionary_first_frame_smoke =
+            std::getenv("HAN_UI_DICTIONARY_FIRST_FRAME_SMOKE") != nullptr;
         if (dark_smoke) {
             Settings::values["displaytheme_mode"] = 1;
             Settings::values["displaydark_active"] = 1;
         }
+        if (timer_rollover_smoke) {
+            Settings::values["han_studys0"] = 43 * 60 + 57;
+            Settings::values["han_studyc0"] = 1;
+            Settings::values["han_studyday"] = 20000101;
+            Settings::values["han_studyday_idx"] = 0;
+        }
         HanDisplay ui(nullptr, nullptr, 1280, 720, 0, 0, false, false, false);
         ui.SetupUI();
+        if (font_compare_smoke) {
+            const char* font_path = std::getenv("HAN_UI_CANDIDATE_TTF");
+            const char* preview_name = std::getenv("HAN_UI_FONT_PREVIEW_NAME");
+            Check(font_path != nullptr && preview_name != nullptr,
+                  "font comparison needs a font path and preview name");
+            std::ifstream font_file(font_path, std::ios::binary);
+            Check(font_file.good(), "comparison font file opens");
+            std::vector<uint8_t> font_data((std::istreambuf_iterator<char>(font_file)),
+                                           std::istreambuf_iterator<char>());
+            Check(!font_data.empty(), "comparison font has data");
+            ui.HandleKeyboardInput("\t");
+            ui.HandleKeyboardInput("pai4");
+            const std::vector<std::string> candidates = {"派", "湃", "排", "蒎", "汖", "渒", "鎃"};
+            ui.SetPinyinResultsForTest("pai4", candidates);
+            auto preview_font = lv_tiny_ttf_create_data(font_data.data(), font_data.size(), 56);
+            Check(preview_font != nullptr, "comparison font opens in LVGL");
+            for (const auto& candidate : candidates) {
+                auto label = FindLabel(lv_screen_active(), candidate.c_str());
+                Check(label != nullptr, "comparison candidate exists");
+                lv_obj_set_style_text_font(label, preview_font, LV_PART_MAIN);
+                lv_obj_set_style_transform_scale(label, 256, LV_PART_MAIN);
+                lv_obj_set_height(label, preview_font->line_height + 12);
+                lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+                lv_obj_update_layout(label);
+                lv_area_t label_area{};
+                lv_area_t card_area{};
+                lv_obj_get_coords(label, &label_area);
+                lv_obj_get_coords(lv_obj_get_parent(label), &card_area);
+                Check(std::abs((label_area.x1 + label_area.x2) - (card_area.x1 + card_area.x2)) <=
+                              2 &&
+                          std::abs((label_area.y1 + label_area.y2) -
+                                   (card_area.y1 + card_area.y2)) <= 2,
+                      "candidate label line box is centred in its rounded card");
+            }
+            Shot(folder, preview_name);
+            std::cout << "PASS: candidate font preview rendered with " << font_path << ".\n";
+            return 0;
+        }
+        if (touch_pinyin_smoke) {
+            Check(ui.OpenPage("dictionary"), "touch pinyin smoke opens dictionary");
+            ClickImage(&han_icon_pinyin_search);
+            lv_obj_update_layout(lv_screen_active());
+            auto touch_title = FindLabel(lv_screen_active(), "拼音查字");
+            auto touch_input = FindLabel(lv_screen_active(), "输入拼音，例如 han");
+            auto touch_search = FindLabel(lv_screen_active(), "查找");
+            auto touch_close = FindLabel(lv_screen_active(), "关闭");
+            auto tone_title = FindLabel(lv_screen_active(), "音调");
+            auto tone_all = FindLabel(lv_screen_active(), "全部");
+            lv_area_t touch_title_area{}, touch_input_area{}, touch_search_area{},
+                touch_close_area{}, tone_title_area{}, tone_all_area{};
+            lv_obj_get_coords(touch_title, &touch_title_area);
+            lv_obj_get_coords(touch_input, &touch_input_area);
+            lv_obj_get_coords(touch_search, &touch_search_area);
+            lv_obj_get_coords(touch_close, &touch_close_area);
+            lv_obj_get_coords(tone_title, &tone_title_area);
+            lv_obj_get_coords(tone_all, &tone_all_area);
+            const auto visual_center_y = [](const lv_area_t& area) { return area.y1 + area.y2; };
+            Check(std::abs(visual_center_y(touch_title_area) - visual_center_y(touch_input_area)) <=
+                          4 &&
+                      std::abs(visual_center_y(touch_search_area) -
+                               visual_center_y(touch_input_area)) <= 4 &&
+                      std::abs(visual_center_y(touch_close_area) -
+                               visual_center_y(touch_input_area)) <= 4,
+                  "touch pinyin header shares one visual centre line");
+            Check(std::abs(visual_center_y(tone_title_area) - visual_center_y(tone_all_area)) <= 4,
+                  "touch tone heading and filter chips share one visual centre line");
+            Click("m");
+            Click("a");
+            Click("查找");
+            Check(FindLabel(lv_screen_active(), "正在离线字库中查找…") &&
+                      FindLabel(lv_screen_active(), "0%") && CountBars(lv_screen_active()) == 1,
+                  "touch pinyin lookup exposes a real progress indicator");
+            ui.AdvancePinyinProgressForTest(61);
+            Check(FindLabel(lv_screen_active(), "8%") &&
+                      FindLabel(lv_screen_active(), "正在读取拼音索引…"),
+                  "touch pinyin progress advances through its first lookup phase");
+            ui.AdvancePinyinProgressForTest(100);
+            Check(FindLabel(lv_screen_active(), "16%"),
+                  "touch pinyin progress animates continuously instead of jumping");
+            Shot(folder, "touch-pinyin-progress");
+            ui.SetPinyinResultsForTest("ma", {"妈", "麻", "马", "骂", "吗", "嘛", "码", "玛"});
+            Check(FindLabel(lv_screen_active(), "ma · 共8字，点击查看") &&
+                      FindLabel(lv_screen_active(), "妈") && CountBars(lv_screen_active()) == 0,
+                  "touch pinyin completion replaces progress with candidate characters");
+            Shot(folder, "touch-pinyin-results");
+            std::cout << "PASS: touch pinyin lookup progresses and renders candidates.\n";
+            return 0;
+        }
+        if (dictionary_first_frame_smoke) {
+            Check(argc == 3, "dictionary first-frame smoke needs an indexed content pack");
+            han::ContentStore generated(argv[2]);
+            Check(generated.Initialize(), "first-frame indexed card");
+            han::Entry indexed_entry;
+            han::StrokeGlyph indexed_glyph;
+            Check(generated.Lookup("汉", indexed_entry) &&
+                      generated.ReadStrokeGlyph("汉", indexed_glyph),
+                  "first-frame entry and vector glyph load together");
+            ui.ShowEntry(indexed_entry, false, true, false, std::move(indexed_glyph));
+            auto grid_canvas = FindCanvas(lv_screen_active(), 400, 400);
+            auto heading_canvas = FindCanvas(lv_screen_active(), 96, 88);
+            Check(grid_canvas && heading_canvas, "both dictionary vector canvases are created");
+#if LV_USE_VECTOR_GRAPHIC
+            Check(!lv_obj_has_flag(grid_canvas, LV_OBJ_FLAG_HIDDEN) &&
+                      !lv_obj_has_flag(heading_canvas, LV_OBJ_FLAG_HIDDEN),
+                  "grid and heading vector glyphs are both visible on the first frame");
+#endif
+            std::cout << "PASS: dictionary entry and both vector glyphs render in one frame.\n";
+            return 0;
+        }
+        if (boot_smoke) {
+            lv_tick_inc(1050);
+            lv_timer_handler();
+            Check(!FindLabel(lv_layer_top(), "妙") && FindLabel(lv_layer_top(), "妙智学伴") &&
+                      FindLabel(lv_layer_top(), "小小字典·陪你妙学每一天") &&
+                      FindLabel(lv_layer_top(), "正在读取 microSD 卡…"),
+                  "the themed boot screen renders its complete identity and progress");
+            Shot(folder, dark_smoke ? "boot-dark" : "boot-light");
+            ui.SetStatus("等待唤醒");
+            lv_tick_inc(2700);
+            lv_timer_handler();
+            Check(FindLabel(lv_layer_top(), "准备完成"),
+                  "the completed boot screen remains visible before dismissal");
+            lv_tick_inc(500);
+            lv_timer_handler();
+            lv_tick_inc(350);
+            lv_timer_handler();
+            Check(!FindLabel(lv_layer_top(), "妙智学伴"),
+                  "the boot screen dismisses without blocking the UI");
+            Check(FindLabel(lv_screen_active(), "等待唤醒") &&
+                      FindLabel(lv_screen_active(), "说“你好小智”，我来帮你学习") &&
+                      !FindLabel(lv_screen_active(), "准备中"),
+                  "the home page does not replay startup messaging after boot");
+            Check(FindImage(lv_screen_active(), &han_home_miao),
+                  "home dictionary card uses the centred Miao stroke glyph");
+            Shot(folder, "home-miao");
+            Click("查字典");
+            const auto default_entry = han::ContentStore::Demo();
+            Check(FindLabel(lv_screen_active(), default_entry.character.c_str()) &&
+                      FindLabel(lv_screen_active(), default_entry.definition.c_str()) &&
+                      FindLabel(lv_screen_active(), default_entry.words.front().c_str()),
+                  "home dictionary card opens the Miao entry and its learning content");
+            Shot(folder, "dictionary-miao");
+            std::cout << "PASS: boot state and default Miao dictionary entry rendered.\n";
+            return 0;
+        }
         if (settings_smoke) {
             Check(ui.OpenPage("network"), "settings smoke page opens");
             auto appearance_control =
@@ -276,7 +447,21 @@ int main(int argc, char** argv) {
                       !FindLabel(lv_screen_active(), "Enter") &&
                       !FindLabel(lv_screen_active(), "Esc"),
                   "keyboard lookup omits the shortcut sidebar");
-            ui.HandleKeyboardInput("ke3\r");
+            Check(!FindLabel(lv_screen_active(), "例如 qu4") &&
+                      !FindLabel(lv_screen_active(), "例如 gai"),
+                  "an empty keyboard query does not masquerade as typed pinyin");
+            ui.HandleKeyboardInput("ke3");
+            Check(FindLabel(lv_screen_active(), "正在离线字库中查找…") &&
+                      FindLabel(lv_screen_active(), "0%") && CountBars(lv_screen_active()) == 1,
+                  "typing a tone digit automatically starts lookup with a real progress indicator");
+            ui.AdvancePinyinProgressForTest(61);
+            Check(FindLabel(lv_screen_active(), "8%") &&
+                      FindLabel(lv_screen_active(), "正在读取拼音索引…"),
+                  "pinyin lookup animates through bounded visible loading steps");
+            ui.AdvancePinyinProgressForTest(61);
+            Check(FindLabel(lv_screen_active(), "16%"),
+                  "pinyin loading progress continues instead of jumping to the worker value");
+            Shot(folder, dark_smoke ? "dark-keyboard-search-progress" : "keyboard-search-progress");
             ui.SetPinyinResultsForTest("ke3", {"可", "渴", "坷", "岢", "炣", "敤", "嵑", "渇"});
             auto pinyin_prompt = FindLabel(lv_screen_active(), "拼音");
             auto pinyin_input = FindLabel(lv_screen_active(), "ke3");
@@ -333,6 +518,10 @@ int main(int argc, char** argv) {
             Click("<");
             Check(FindLabel(lv_screen_active(), "ke3") && FindLabel(lv_screen_active(), "渴"),
                   "dictionary back returns to the preserved keyboard lookup results");
+            ui.HandleKeyboardInput("ling");
+            Check(FindLabel(lv_screen_active(), "ling") && !FindLabel(lv_screen_active(), "ke3") &&
+                      !FindLabel(lv_screen_active(), "渴"),
+                  "typing after results starts a fresh pinyin query without backspacing");
             Shot(folder, dark_smoke ? "dark-keyboard-dictionary" : "keyboard-dictionary");
             ui.HandleKeyboardInput("\x1b");
             Check(ui.IsScreenOffForTest(), "Esc uses the global one-key screen-lock path");
@@ -359,13 +548,30 @@ int main(int argc, char** argv) {
             lv_obj_send_event(first_plan_arc, LV_EVENT_VALUE_CHANGED, nullptr);
             Check(FindLabel(lv_screen_active(), "75"), "rotary control updates its minute value");
             Click("保存");
+            auto updated_timer_arc = FindArcBySize(lv_screen_active(), 336);
+            Check(updated_timer_arc && lv_arc_get_max_value(updated_timer_arc) == 75 * 60,
+                  "saving a new plan immediately refreshes the active timer ring range");
             Click("计划时间");
             Check(FindLabel(lv_screen_active(), "75"), "saved plan is retained when reopened");
             std::cout << "PASS: timer plan popup rendered.\n";
             return 0;
         }
+        if (timer_rollover_smoke) {
+            Check(ui.OpenPage("timer"), "timer rollover page opens");
+            Check(FindLabel(lv_screen_active(), "00:00") && Settings::values["han_studys0"] == 0 &&
+                      Settings::values["han_studyc0"] == 0,
+                  "a stale completed session resets at the next valid calendar day");
+            std::cout << "PASS: study timer starts a fresh session on a new day.\n";
+            return 0;
+        }
         if (dark_smoke || gallery_smoke) {
             ui.UpdateStatusBar();
+            auto header_date = FindLabelAt(lv_screen_active(), 670, 41);
+            auto header_clock = FindLabelAt(lv_screen_active(), 970, 41);
+            Check(header_date && header_clock &&
+                      lv_obj_get_style_text_font(header_date, LV_PART_MAIN) ==
+                          lv_obj_get_style_text_font(header_clock, LV_PART_MAIN),
+                  "header date and clock share one size, weight and typeface");
             const std::string prefix = dark_smoke ? "dark-" : "";
             Shot(folder, (prefix + "home").c_str());
             const char* pages[] = {"dictionary", "phonetics", "timetable", "timer",
@@ -559,7 +765,8 @@ int main(int argc, char** argv) {
                       "voice lookup glyph accepted");
                 lv_tick_inc(800);
                 lv_timer_handler();
-                Check(FindLabel(lv_screen_active(), "1/8"),
+                const auto first_stroke = "1/" + std::to_string(demo.stroke_count);
+                Check(FindLabel(lv_screen_active(), first_stroke.c_str()),
                       "voice writing query automatically starts stroke playback");
                 ui.ShowEntry(demo);
                 auto definition_text = FindLabel(lv_screen_active(), demo.definition.c_str());
@@ -577,22 +784,30 @@ int main(int argc, char** argv) {
                 Check(first_word_area.y1 - definition_area.y2 >= 0 &&
                           first_word_area.y1 - definition_area.y2 <= 10,
                       "word chips closely follow the rendered definition");
-                Check(!FindLabel(lv_screen_active(), "笔顺 · 共8画") &&
+                const auto removed_stroke_heading =
+                    "笔顺 · 共" + std::to_string(demo.stroke_count) + "画";
+                Check(!FindLabel(lv_screen_active(), removed_stroke_heading.c_str()) &&
                           !FindLabel(lv_screen_active(), demo.strokes.front().c_str()),
                       "right-side stroke details are removed");
-                Check(FindLabel(lv_screen_active(), "0/8"),
+                const auto stroke_preview = "0/" + std::to_string(demo.stroke_count);
+                const auto stroke_first = "1/" + std::to_string(demo.stroke_count);
+                const auto stroke_final =
+                    std::to_string(demo.stroke_count) + "/" + std::to_string(demo.stroke_count);
+                Check(FindLabel(lv_screen_active(), stroke_preview.c_str()),
                       "stroke preview starts before the first stroke");
                 Click("下一步");
-                Check(FindLabel(lv_screen_active(), "1/8"), "first next selects stroke one");
+                Check(FindLabel(lv_screen_active(), stroke_first.c_str()),
+                      "first next selects stroke one");
                 Click("上一步");
-                Check(FindLabel(lv_screen_active(), "0/8"),
+                Check(FindLabel(lv_screen_active(), stroke_preview.c_str()),
                       "previous returns to untouched preview");
                 Click("播放笔顺");
-                for (int tick = 0; tick < 9; ++tick) {
+                for (int tick = 0; tick <= demo.stroke_count; ++tick) {
                     lv_tick_inc(800);
                     lv_timer_handler();
                 }
-                Check(FindLabel(lv_screen_active(), "8/8"), "playback reaches its final state");
+                Check(FindLabel(lv_screen_active(), stroke_final.c_str()),
+                      "playback reaches its final state");
                 auto pinyin_icon = FindImage(lv_screen_active(), &han_icon_pinyin_search);
                 auto definition_icon = FindImage(lv_screen_active(), &han_icon_definition_detail);
                 Check(pinyin_icon && definition_icon, "dictionary action icons are present");
@@ -606,7 +821,9 @@ int main(int argc, char** argv) {
                           FindLabel(definition_button, "释义") && FindLabel(pinyin_button, "拼音"),
                       "dictionary actions are large, labeled and separated");
                 ClickImage(&han_icon_definition_detail);
-                auto definition_title = FindLabel(lv_screen_active(), "规 的完整释义");
+                const auto full_definition_title = demo.character + " 的完整释义";
+                auto definition_title =
+                    FindLabel(lv_screen_active(), full_definition_title.c_str());
                 Check(definition_title, "full definition opens above dictionary");
                 auto definition_overlay = lv_obj_get_parent(definition_title);
                 auto full_definition = FindLabel(definition_overlay, demo.definition.c_str());
@@ -651,15 +868,53 @@ int main(int argc, char** argv) {
                     FindLabel(lv_screen_active(), "轻声") && FindLabel(lv_screen_active(), "四声"),
                     "pinyin tone filters are visible");
                 Check(lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "拼音查字"),
-                                                 LV_PART_MAIN) == dictionary_body_font,
-                      "pinyin search controls use the dictionary body font");
+                                                 LV_PART_MAIN) == &han_font_timer &&
+                          lv_obj_get_style_text_font(FindLabel(lv_screen_active(), "查找"),
+                                                     LV_PART_MAIN) == &han_font_timer,
+                      "touch pinyin controls use the rounded emphasis font");
+                lv_obj_update_layout(lv_screen_active());
+                auto touch_title = FindLabel(lv_screen_active(), "拼音查字");
+                auto touch_input = FindLabel(lv_screen_active(), "输入拼音，例如 han");
+                auto touch_search = FindLabel(lv_screen_active(), "查找");
+                auto touch_close = FindLabel(lv_screen_active(), "关闭");
+                auto tone_title = FindLabel(lv_screen_active(), "音调");
+                auto tone_all = FindLabel(lv_screen_active(), "全部");
+                lv_area_t touch_title_area{}, touch_input_area{}, touch_search_area{},
+                    touch_close_area{}, tone_title_area{}, tone_all_area{};
+                lv_obj_get_coords(touch_title, &touch_title_area);
+                lv_obj_get_coords(touch_input, &touch_input_area);
+                lv_obj_get_coords(touch_search, &touch_search_area);
+                lv_obj_get_coords(touch_close, &touch_close_area);
+                lv_obj_get_coords(tone_title, &tone_title_area);
+                lv_obj_get_coords(tone_all, &tone_all_area);
+                const auto visual_center_y = [](const lv_area_t& area) {
+                    return area.y1 + area.y2;
+                };
+                Check(std::abs(visual_center_y(touch_title_area) -
+                               visual_center_y(touch_input_area)) <= 4 &&
+                          std::abs(visual_center_y(touch_search_area) -
+                                   visual_center_y(touch_input_area)) <= 4 &&
+                          std::abs(visual_center_y(touch_close_area) -
+                                   visual_center_y(touch_input_area)) <= 4,
+                      "touch pinyin header shares one visual centre line");
+                Check(std::abs(visual_center_y(tone_title_area) - visual_center_y(tone_all_area)) <=
+                          4,
+                      "touch tone heading and filter chips share one visual centre line");
                 Click("h");
                 Click("a");
                 Click("n");
                 Check(FindLabel(lv_screen_active(), "han"), "pinyin keypad entry");
                 Click("四声");
-                Check(FindLabel(lv_screen_active(), "正在离线字库中查找…"),
-                      "tone selection starts filtered lookup");
+                Check(FindLabel(lv_screen_active(), "正在离线字库中查找…") &&
+                          FindLabel(lv_screen_active(), "0%") && CountBars(lv_screen_active()) == 1,
+                      "touch pinyin lookup starts with a real progress indicator");
+                ui.AdvancePinyinProgressForTest(61);
+                Check(FindLabel(lv_screen_active(), "8%") &&
+                          FindLabel(lv_screen_active(), "正在读取拼音索引…"),
+                      "touch pinyin progress advances through the real lookup phases");
+                ui.AdvancePinyinProgressForTest(61);
+                Check(FindLabel(lv_screen_active(), "16%"),
+                      "touch pinyin progress remains visibly continuous");
                 ui.SetPinyinResultsForTest(
                     "han4",
                     {"鉲", "鯻", "三", "四", "五", "六", "七", "八", "九", "十", "人", "大", "中",
@@ -672,8 +927,8 @@ int main(int argc, char** argv) {
                 Check(first_candidate &&
                           lv_obj_get_style_text_font(first_candidate, LV_PART_MAIN) ==
                               dictionary_body_font &&
-                          lv_obj_get_style_transform_scale_x(first_candidate, LV_PART_MAIN) == 256,
-                      "candidate characters use the native dictionary body font");
+                          lv_obj_get_style_transform_scale_x(first_candidate, LV_PART_MAIN) == 320,
+                      "candidate characters use the antialiased dictionary candidate font");
                 lv_font_glyph_dsc_t rare{};
                 Check(lv_font_get_glyph_dsc(dictionary_body_font, &rare, 0x9272, 0) &&
                           !rare.is_placeholder &&
@@ -805,6 +1060,7 @@ int main(int argc, char** argv) {
                 lv_font_glyph_dsc_t timer_glyph{};
                 Check(lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x8bb0, 0) &&
                           lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x5f55, 0) &&
+                          lv_font_get_glyph_dsc(&han_font_timer, &timer_glyph, 0x76d8, 0) &&
                           lv_font_get_glyph_dsc(&han_font_timer_title, &timer_glyph, 0x4e00, 0) &&
                           lv_font_get_glyph_dsc(&han_font_timer_title, &timer_glyph, 0x4e94, 0),
                       "timer fonts contain historical status and weekday glyphs");
@@ -866,6 +1122,24 @@ int main(int argc, char** argv) {
                 Check(FindLabel(lv_screen_active(), "保存并开启") &&
                           FindLabel(lv_screen_active(), "关闭闹钟"),
                       "alarm actions remain large and explicit");
+                auto ringtone_title = FindLabel(lv_screen_active(), "铃声");
+                auto ringtone_dropdown = FindDropdown(lv_screen_active());
+                auto preview_text = FindLabel(lv_screen_active(), "试听");
+                auto save_text = FindLabel(lv_screen_active(), "保存并开启");
+                auto disable_text = FindLabel(lv_screen_active(), "关闭闹钟");
+                Check(ringtone_title && ringtone_dropdown && preview_text && save_text &&
+                          disable_text &&
+                          lv_obj_get_style_text_font(ringtone_title, LV_PART_MAIN) ==
+                              lv_obj_get_style_text_font(ringtone_dropdown, LV_PART_MAIN) &&
+                          lv_obj_get_style_text_font(preview_text, LV_PART_MAIN) ==
+                              lv_obj_get_style_text_font(save_text, LV_PART_MAIN) &&
+                          lv_color_eq(lv_obj_get_style_bg_color(lv_obj_get_parent(preview_text),
+                                                                LV_PART_MAIN),
+                                      lv_color_hex(0x3a9df5)) &&
+                          lv_color_eq(lv_obj_get_style_bg_color(lv_obj_get_parent(disable_text),
+                                                                LV_PART_MAIN),
+                                      lv_color_hex(0xf05b78)),
+                      "alarm ringtone and actions use consistent bold high-contrast styling");
                 Click("保存并开启");
                 Check(FindLabel(lv_screen_active(), "闹钟已开启") &&
                           FindLabel(lv_screen_active(), "✓"),
@@ -1001,15 +1275,16 @@ int main(int argc, char** argv) {
             Check(generated.Lookup("汉", entry), "indexed dictionary lookup");
             Check(entry.source == "guoxuedashi-xinhua-community" && entry.stroke_count > 0,
                   "indexed dictionary metadata");
-            ui.ShowEntry(entry);
             han::StrokeGlyph glyph;
             Check(generated.ReadStrokeGlyph("汉", glyph), "read indexed vector strokes");
-            Check(ui.ApplyStrokeGlyph("汉", std::move(glyph)), "apply indexed vector strokes");
+            ui.ShowEntry(entry, false, true, false, std::move(glyph));
             auto heading_canvas = FindCanvas(lv_screen_active(), 96, 88);
+            auto grid_canvas = FindCanvas(lv_screen_active(), 400, 400);
             Check(heading_canvas, "large dictionary heading canvas exists");
 #if LV_USE_VECTOR_GRAPHIC
-            Check(!lv_obj_has_flag(heading_canvas, LV_OBJ_FLAG_HIDDEN),
-                  "dictionary heading uses a large crisp vector glyph");
+            Check(grid_canvas && !lv_obj_has_flag(grid_canvas, LV_OBJ_FLAG_HIDDEN) &&
+                      !lv_obj_has_flag(heading_canvas, LV_OBJ_FLAG_HIDDEN),
+                  "both preloaded vector glyphs are visible on the first frame");
 #endif
             auto heading_pinyin = FindLabel(lv_screen_active(), entry.pinyin.c_str());
             lv_obj_update_layout(lv_screen_active());

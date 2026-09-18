@@ -24,7 +24,7 @@ LV_IMAGE_DECLARE(han_art_timer);
 LV_IMAGE_DECLARE(han_art_alarm);
 LV_IMAGE_DECLARE(han_art_weather);
 LV_IMAGE_DECLARE(han_footer);
-LV_IMAGE_DECLARE(han_home_gui);
+LV_IMAGE_DECLARE(han_home_miao);
 LV_IMAGE_DECLARE(han_status_wifi_1);
 LV_IMAGE_DECLARE(han_status_wifi_2);
 LV_IMAGE_DECLARE(han_status_wifi_3);

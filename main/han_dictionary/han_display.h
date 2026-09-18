@@ -28,12 +28,15 @@ public:
     void SetupUI() override;
     void SetTheme(Theme* theme) override;
     void SetStatus(const char* status) override;
+    void ShowNotification(const char* notification, int duration_ms = 3000);
+    void ShowNotification(const std::string& notification, int duration_ms = 3000);
     void SetEmotion(const char*) override {}
     void SetChatMessage(const char* role, const char* content) override;
     void ClearChatMessages() override;
     void UpdateStatusBar(bool update_all = false) override;
     void ShowEntry(const han::Entry& entry, bool auto_play_strokes = false,
-                   bool show_navigation = true, bool return_to_keyboard = false);
+                   bool show_navigation = true, bool return_to_keyboard = false,
+                   han::StrokeGlyph stroke_glyph = {});
     void HandleKeyboardInput(const std::string& input);
     void ShowKeyboardConnected();
     bool OpenPage(const std::string& page);
@@ -47,6 +50,10 @@ public:
     bool IsScreenOffForTest() const { return screen_off_.load(); }
     void SetPinyinResultsForTest(const std::string& query, std::vector<std::string> results) {
         ApplyPinyinResults(query, std::move(results));
+    }
+    void AdvancePinyinProgressForTest(uint8_t percent) {
+        SetPinyinSearchProgress(percent);
+        UpdatePinyinSearchProgress();
     }
 #endif
 
@@ -100,6 +107,8 @@ private:
     static void TimerTick(lv_timer_t* timer);
     static void ClockTick(lv_timer_t* timer);
     static void HideKeyboardOverlay(lv_timer_t* timer);
+    static void HideBootAnimation(lv_timer_t* timer);
+    static void UpdateBootAnimation(lv_timer_t* timer);
     static void FlipTopExec(void* value, int32_t scale);
     static void FlipTopCompleted(lv_anim_t* animation);
     static void FlipBottomExec(void* value, int32_t scale);
@@ -158,11 +167,16 @@ private:
     void UpdatePinyinToneButtons();
     void RenderPinyinResults(const char* status);
     void RenderKeyboardPinyinResults(const char* status);
+    void SetPinyinSearchProgress(uint8_t percent);
+    void UpdatePinyinSearchProgress();
     void ApplyPinyinResults(const std::string& query, std::vector<std::string> results);
-    void SyncTimerWeek();
+    bool SyncTimerWeek();
     std::array<int64_t, 3> TimerDaySeconds(int day, int64_t now_ms) const;
     void SaveTimer();
     void LoadPreferences();
+    void LoadBootConfig();
+    void ShowBootAnimation();
+    void SetBootStage(int progress, const char* status, bool ready = false);
     void ShowAssistantDialog();
     void HideAssistantDialog();
     void AppendAssistantHistory(const char* role, const char* text);
@@ -186,7 +200,7 @@ private:
     void ApplyDictionaryLargeFont(lv_obj_t* label);
     void InstallDictionaryFont(std::string data);
     void InstallDictionaryCandidateFont(std::string data);
-    void InstallScalableDictionaryCandidateFont(const std::string& path);
+    bool InstallScalableDictionaryCandidateFont(const std::string& path);
     void InstallScalableDictionaryFonts(const std::string& path);
     void ReleaseDictionaryFonts();
     lv_obj_t* Button(lv_obj_t* parent, const char* text, int x, int y, int w, int h, uint32_t color,
@@ -245,6 +259,18 @@ private:
     lv_obj_t* screen_wake_overlay_ = nullptr;
     lv_obj_t* keyboard_connection_overlay_ = nullptr;
     lv_timer_t* keyboard_connection_timer_ = nullptr;
+    lv_obj_t* boot_overlay_ = nullptr;
+    lv_timer_t* boot_timer_ = nullptr;
+    lv_timer_t* boot_progress_timer_ = nullptr;
+    lv_obj_t* boot_progress_ = nullptr;
+    lv_obj_t* boot_progress_value_ = nullptr;
+    lv_obj_t* boot_status_ = nullptr;
+    uint32_t boot_started_tick_ = 0;
+    int boot_target_progress_ = 0;
+    int boot_visible_progress_ = 0;
+    bool boot_ready_ = false;
+    bool boot_dismiss_scheduled_ = false;
+    lv_image_dsc_t boot_embedded_background_{};
     lv_obj_t* timer_value_ = nullptr;
     lv_obj_t* timer_progress_ = nullptr;
     lv_obj_t* timer_today_value_ = nullptr;
@@ -268,6 +294,8 @@ private:
     lv_obj_t* search_results_ = nullptr;
     lv_obj_t* search_status_ = nullptr;
     lv_obj_t* pinyin_page_label_ = nullptr;
+    lv_obj_t* pinyin_progress_ = nullptr;
+    lv_obj_t* pinyin_progress_value_ = nullptr;
     lv_obj_t* definition_overlay_ = nullptr;
     std::array<lv_obj_t*, 6> pinyin_tone_buttons_{};
     std::string pinyin_query_;
@@ -277,6 +305,11 @@ private:
     int pinyin_page_ = 0;
     int pinyin_selected_index_ = 0;
     int pinyin_tone_ = -1;
+    std::atomic<uint8_t> pinyin_search_progress_{0};
+    uint8_t pinyin_visible_progress_ = 0;
+    bool pinyin_search_complete_ = false;
+    std::string pinyin_pending_key_;
+    std::vector<std::string> pinyin_pending_results_;
     bool dictionary_return_to_keyboard_ = false;
     lv_obj_t* alarm_hour_ = nullptr;
     lv_obj_t* alarm_minute_ = nullptr;
@@ -321,6 +354,8 @@ private:
     int timer_today_index_ = -1;
     int timer_view_day_ = -1;
     int64_t timer_last_rendered_second_ = -1;
+    int timer_session_day_key_ = -1;
+    int timer_session_weekday_ = -1;
     std::array<int, 3> timer_plan_minutes_{{45, 60, 40}};
     std::array<int, 3> timer_plan_draft_{{45, 60, 40}};
     Page page_ = Page::Home;
@@ -359,6 +394,9 @@ private:
     lv_font_t* dictionary_candidate_font_ = nullptr;
     lv_font_t* dictionary_large_font_ = nullptr;
     lv_font_t* dictionary_hero_font_ = nullptr;
+    lv_font_t dictionary_ui_font_{};
+    lv_font_t dictionary_large_ui_font_{};
+    bool dictionary_ui_fonts_ready_ = false;
     bool dictionary_font_is_ttf_ = false;
     bool dictionary_candidate_font_is_ttf_ = false;
 #endif
@@ -380,5 +418,9 @@ private:
     int battery_current_ma_ = 0;
     bool battery_charging_ = false;
     bool battery_discharging_ = false;
-    bool initial_banner_pending_ = true;
+    bool startup_chrome_suppressed_ = true;
+    bool boot_enabled_ = true;
+    int boot_duration_ms_ = 4200;
+    std::string boot_title_ = "妙智学伴";
+    std::string boot_subtitle_ = "小小字典·陪你妙学每一天";
 };

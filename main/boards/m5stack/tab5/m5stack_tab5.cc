@@ -19,9 +19,12 @@
 #include <esp_idf_version.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_log.h>
+#include <sys/time.h>
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include "esp_check.h"
 #include "esp_lcd_mipi_dsi.h"
@@ -62,7 +65,17 @@ static constexpr MipiLcdDisplayConfig kTab5DisplayConfig = {};
 #define AUDIO_CODEC_ES8388_ADDR ES8388_CODEC_DEFAULT_ADDR
 #define LCD_MIPI_DSI_PHY_PWR_LDO_CHAN 3  // LDO_VO3 is connected to VDD_MIPI_DPHY
 #define LCD_MIPI_DSI_PHY_PWR_LDO_VOLTAGE_MV 2500
+#define SD_CARD_PWR_LDO_CHAN 4  // LDO_VO4 supplies the microSD I/O rail on Tab5
+#define SD_CARD_PWR_LDO_VOLTAGE_MV 3300
 #define ST712X_TOUCH_I2C_ADDRESS 0x55
+
+#if CONFIG_HAN_DICTIONARY
+// The Tab5 microSD socket is wired over a relatively long SPI path. At the SDSPI default
+// 20 MHz, sustained bursts (for example, decoding all weather PNGs) intermittently return
+// ESP_ERR_INVALID_RESPONSE/ESP_ERR_TIMEOUT and leave every later SD-backed asset unreadable.
+// 8 MHz is still fast enough for the UI while providing the margin this board needs.
+static constexpr int kContentCardFrequencyKHz = 8 * 1000;
+#endif
 
 enum class St712xPanel {
     kSt7121,
@@ -125,6 +138,121 @@ public:
         uint8_t reg = PI4IO_REG_IN_STA;
         return i2c_master_transmit_receive(i2c_device_, &reg, 1, &value, 1, 100) == ESP_OK;
     }
+};
+
+class Tab5Rtc {
+public:
+    bool Initialize(i2c_master_bus_handle_t bus) {
+        i2c_device_config_t config = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = 0x32,
+            .scl_speed_hz = 400 * 1000,
+            .scl_wait_us = 0,
+            .flags = {},
+        };
+        auto err = i2c_master_bus_add_device(bus, &config, &device_);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Could not attach RX8130CE RTC: %s", esp_err_to_name(err));
+            return false;
+        }
+
+        // RX8130CE startup sequence used by M5Unified: select the 32 kHz compensation mode and
+        // leave alarm/timer interrupts disabled. The calendar registers are intentionally kept.
+        uint8_t extension = 0;
+        if (!ReadRegister(0x1f, extension) || !WriteRegister(0x1f, extension | 0x30) ||
+            !WriteRegister(0x30, 0x00) || !WriteRegister(0x1e, 0x00)) {
+            ESP_LOGW(TAG, "Could not initialize RX8130CE RTC");
+            i2c_master_bus_rm_device(device_);
+            device_ = nullptr;
+            return false;
+        }
+        return true;
+    }
+
+    bool ReadTime(time_t& value) const {
+        std::array<uint8_t, 7> registers{};
+        if (device_ == nullptr || !ReadRegisters(0x10, registers.data(), registers.size()))
+            return false;
+        const uint8_t second_bcd = registers[0] & 0x7f;
+        const uint8_t minute_bcd = registers[1] & 0x7f;
+        const uint8_t hour_bcd = registers[2] & 0x3f;
+        const uint8_t weekday = registers[3];
+        const uint8_t day_bcd = registers[4] & 0x3f;
+        const uint8_t month_bcd = registers[5] & 0x1f;
+        const uint8_t year_bcd = registers[6];
+        if (!ValidBcd(second_bcd) || !ValidBcd(minute_bcd) || !ValidBcd(hour_bcd) ||
+            !ValidBcd(day_bcd) || !ValidBcd(month_bcd) || !ValidBcd(year_bcd) || weekday == 0 ||
+            (weekday & (weekday - 1)) != 0) {
+            return false;
+        }
+
+        const int second = FromBcd(second_bcd);
+        const int minute = FromBcd(minute_bcd);
+        const int hour = FromBcd(hour_bcd);
+        const int day = FromBcd(day_bcd);
+        const int month = FromBcd(month_bcd);
+        const int year = 2000 + FromBcd(year_bcd);
+        if (year < 2024 || month < 1 || month > 12 || day < 1 || day > DaysInMonth(year, month) ||
+            hour > 23 || minute > 59 || second > 59) {
+            return false;
+        }
+        const int64_t seconds =
+            DaysFromCivil(year, month, day) * 86400LL + hour * 3600LL + minute * 60LL + second;
+        value = static_cast<time_t>(seconds);
+        return true;
+    }
+
+    bool WriteTime(time_t value) const {
+        if (device_ == nullptr || value < 1704067200)
+            return false;
+        struct tm utc{};
+        gmtime_r(&value, &utc);
+        const std::array<uint8_t, 8> bytes = {
+            0x10,
+            ToBcd(utc.tm_sec),
+            ToBcd(utc.tm_min),
+            ToBcd(utc.tm_hour),
+            static_cast<uint8_t>(1U << utc.tm_wday),
+            ToBcd(utc.tm_mday),
+            ToBcd(utc.tm_mon + 1),
+            ToBcd((utc.tm_year + 1900) % 100),
+        };
+        return i2c_master_transmit(device_, bytes.data(), bytes.size(), 100) == ESP_OK;
+    }
+
+private:
+    static bool ValidBcd(uint8_t value) { return (value & 0x0f) <= 9 && (value >> 4) <= 9; }
+    static uint8_t FromBcd(uint8_t value) { return (value >> 4) * 10 + (value & 0x0f); }
+    static uint8_t ToBcd(int value) {
+        return static_cast<uint8_t>(((value / 10) << 4) | (value % 10));
+    }
+    static bool LeapYear(int year) { return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0); }
+    static int DaysInMonth(int year, int month) {
+        static constexpr int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+        return month == 2 && LeapYear(year) ? 29 : days[month - 1];
+    }
+    static int64_t DaysFromCivil(int year, unsigned month, unsigned day) {
+        year -= month <= 2;
+        const int era = (year >= 0 ? year : year - 399) / 400;
+        const unsigned year_of_era = static_cast<unsigned>(year - era * 400);
+        const unsigned adjusted_month = month > 2 ? month - 3 : month + 9;
+        const unsigned day_of_year = (153 * adjusted_month + 2) / 5 + day - 1;
+        const unsigned day_of_era =
+            year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        return era * 146097LL + static_cast<int64_t>(day_of_era) - 719468;
+    }
+    bool ReadRegister(uint8_t reg, uint8_t& value) const {
+        return i2c_master_transmit_receive(device_, &reg, 1, &value, 1, 100) == ESP_OK;
+    }
+    bool ReadRegisters(uint8_t reg, uint8_t* data, size_t size) const {
+        return i2c_master_transmit_receive(device_, &reg, 1, data, size, 100) == ESP_OK;
+    }
+    bool WriteRegister(uint8_t reg, uint8_t value) const {
+        const uint8_t bytes[] = {reg, value};
+        return i2c_master_transmit(device_, bytes, sizeof(bytes), 100) == ESP_OK;
+    }
+
+    i2c_master_dev_handle_t device_ = nullptr;
 };
 
 class Tab5PowerMonitor {
@@ -228,11 +356,14 @@ private:
     Pi4ioe2* pi4ioe2_;
     Tab5PowerMonitor power_monitor_;
     bool power_monitor_ready_ = false;
+    Tab5Rtc rtc_;
+    bool rtc_ready_ = false;
     esp_lcd_touch_handle_t touch_ = nullptr;
 #if CONFIG_HAN_DICTIONARY
     sdmmc_card_t* sd_card_ = nullptr;
     bool sd_bus_initialized_ = false;
     bool sd_card_mounted_ = false;
+    esp_ldo_channel_handle_t sd_card_power_ = nullptr;
     tinyusb_msc_storage_handle_t usb_storage_ = nullptr;
     bool tinyusb_driver_started_ = false;
     std::unique_ptr<Tab5Keyboard> keyboard_;
@@ -253,6 +384,47 @@ private:
                 },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
+    }
+
+    void InitializeRtc() {
+        rtc_ready_ = rtc_.Initialize(i2c_bus_);
+        if (!rtc_ready_)
+            return;
+
+        time_t stored_time = 0;
+        if (rtc_.ReadTime(stored_time)) {
+            struct timeval value{};
+            value.tv_sec = stored_time;
+            if (settimeofday(&value, nullptr) == 0)
+                ESP_LOGI(TAG, "System time restored from RX8130CE RTC: %lld",
+                         static_cast<long long>(stored_time));
+        } else {
+            ESP_LOGW(TAG, "RX8130CE RTC has no valid retained time; waiting for network sync");
+        }
+
+        xTaskCreate(
+            [](void* context) {
+                auto self = static_cast<M5StackTab5Board*>(context);
+                // The OTA response performs network time synchronization. Periodically compare it
+                // with the hardware RTC so a later reset can restore the corrected wall clock.
+                for (;;) {
+                    // Poll quickly enough to persist the first server correction before a user can
+                    // immediately reset the unit. Once both clocks agree, this remains a cheap
+                    // one-second I2C check and writes only when their difference exceeds 3 seconds.
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    const time_t system_time = time(nullptr);
+                    if (system_time < 1735689600)
+                        continue;
+                    time_t rtc_time = 0;
+                    if (!self->rtc_.ReadTime(rtc_time) ||
+                        std::llabs(static_cast<long long>(system_time) -
+                                   static_cast<long long>(rtc_time)) > 3) {
+                        if (self->rtc_.WriteTime(system_time))
+                            ESP_LOGI(TAG, "RX8130CE RTC synchronized from system time");
+                    }
+                }
+            },
+            "tab5_rtc_sync", 3072, this, 1, nullptr);
     }
 
     static esp_err_t bsp_enable_dsi_phy_power() {
@@ -734,6 +906,7 @@ public:
     M5StackTab5Board() {
         InitializeI2c();
         I2cDetect();
+        InitializeRtc();
         InitializePi4ioe();
         power_monitor_ready_ = power_monitor_.Initialize(i2c_bus_);
         InitializeDisplay();  // Auto-detect and initialize display + touch
@@ -840,9 +1013,29 @@ public:
 
     // BSP power control functions
 #if CONFIG_HAN_DICTIONARY
+    esp_err_t EnableContentCardPower() {
+        if (sd_card_power_)
+            return ESP_OK;
+        const esp_ldo_channel_config_t config = {
+            .chan_id = SD_CARD_PWR_LDO_CHAN,
+            .voltage_mv = SD_CARD_PWR_LDO_VOLTAGE_MV,
+        };
+        auto err = esp_ldo_acquire_channel(&config, &sd_card_power_);
+        if (err == ESP_OK) {
+            // Give the card rail time to settle before the first command. Without this explicit
+            // enable, the card only worked accidentally when an earlier firmware left LDO4 on.
+            vTaskDelay(pdMS_TO_TICKS(20));
+            ESP_LOGI(TAG, "microSD power enabled from LDO4");
+        }
+        return err;
+    }
+
     esp_err_t InitializeSdBus() {
         if (sd_bus_initialized_)
             return ESP_OK;
+        auto err = EnableContentCardPower();
+        if (err != ESP_OK)
+            return err;
         // Official Tab5 SPI pins. Wi-Fi uses its separate SDIO bus; never reconfigure it.
         spi_bus_config_t bus{};
         bus.mosi_io_num = GPIO_NUM_44;
@@ -851,7 +1044,7 @@ public:
         bus.quadwp_io_num = -1;
         bus.quadhd_io_num = -1;
         bus.max_transfer_sz = 8192;
-        const auto err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+        err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
         if (err == ESP_OK)
             sd_bus_initialized_ = true;
         return err;
@@ -882,7 +1075,7 @@ public:
         }
         sdmmc_host_t host = SDSPI_HOST_DEFAULT();
         host.slot = device;
-        host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+        host.max_freq_khz = kContentCardFrequencyKHz;
         err = sdmmc_card_init(&host, card);
         if (err != ESP_OK) {
             sdspi_host_remove_device(device);
@@ -904,13 +1097,15 @@ public:
         }
         sdmmc_host_t host = SDSPI_HOST_DEFAULT();
         host.slot = SPI2_HOST;
-        host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+        host.max_freq_khz = kContentCardFrequencyKHz;
         sdspi_device_config_t slot = SDSPI_DEVICE_CONFIG_DEFAULT();
         slot.host_id = SPI2_HOST;
         slot.gpio_cs = GPIO_NUM_42;
         esp_vfs_fat_sdmmc_mount_config_t mount{};
         mount.format_if_mount_failed = false;
-        mount.max_files = 6;
+        // Weather and settings pages can decode several SD images while content workers are
+        // reading. Six descriptors were exhausted by file-backed fonts plus PNG decoders.
+        mount.max_files = 12;
         mount.allocation_unit_size = 16 * 1024;
         err = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount, &sd_card_);
         if (err != ESP_OK) {

@@ -347,6 +347,19 @@ bool PinyinMatchesTone(const std::string& value, const std::string& expected, in
 
 Entry ContentStore::Demo() {
     Entry e;
+    e.character = "妙";
+    e.pinyin = "miào";
+    e.radical = "女";
+    e.structure = "左右结构";
+    e.definition = "美好、神奇；也表示精巧、高明。";
+    e.stroke_count = 7;
+    e.words = {"美妙", "奇妙", "巧妙", "妙趣"};
+    e.strokes = {"撇点", "撇", "横", "竖", "撇", "点", "撇"};
+    return e;
+}
+
+static Entry GuiDemo() {
+    Entry e;
     e.character = "规";
     e.pinyin = "guī";
     e.radical = "见";
@@ -459,6 +472,7 @@ bool ContentStore::Initialize() {
     dictionary_candidate_font_path_.clear();
     dictionary_scalable_font_path_.clear();
     dictionary_candidate_scalable_font_path_.clear();
+    dictionary_ui_scalable_font_path_.clear();
     stroke_index_ready_ = false;
     stroke_records_ = 0;
     stroke_data_size_ = 0;
@@ -581,7 +595,7 @@ bool ContentStore::Initialize() {
                              font_bpp->valueint == 2;
     if (indexed_ready_ && (legacy_font || smooth_font) && cJSON_IsNumber(font_size) &&
         font_size->valuedouble == font_size->valueint && font_size->valueint >= 128 * 1024 &&
-        font_size->valueint <= 4 * 1024 * 1024 && cJSON_IsNumber(font_crc) &&
+        font_size->valueint <= 5 * 1024 * 1024 && cJSON_IsNumber(font_crc) &&
         font_crc->valuedouble >= 0 && font_crc->valuedouble <= UINT32_MAX) {
         dictionary_font_path_ = font_path->valuestring;
         FILE* dictionary_font = fopen((root_ + "/" + dictionary_font_path_).c_str(), "rb");
@@ -604,15 +618,24 @@ bool ContentStore::Initialize() {
         candidate_font_height->valueint == 40;
     const bool large_candidate_font =
         cJSON_IsString(candidate_font_path) && cJSON_IsNumber(candidate_font_height) &&
+        cJSON_IsNumber(candidate_font_bpp) &&
         (strcmp(candidate_font_path->valuestring, "dictionary/font-56-kai-1.bin") == 0 ||
          strcmp(candidate_font_path->valuestring, "dictionary/font-56-heavy-1.bin") == 0) &&
-        candidate_font_height->valueint == 56;
+        candidate_font_height->valueint == 56 && candidate_font_bpp->valueint == 1;
+    const bool smooth_candidate_font =
+        cJSON_IsString(candidate_font_path) && cJSON_IsNumber(candidate_font_height) &&
+        cJSON_IsNumber(candidate_font_bpp) &&
+        strcmp(candidate_font_path->valuestring, "dictionary/font-40-kai-2.bin") == 0 &&
+        candidate_font_height->valueint == 40 && candidate_font_bpp->valueint == 2;
     if (indexed_ready_ && cJSON_IsString(candidate_font_path) &&
-        (legacy_candidate_font || large_candidate_font) && cJSON_IsNumber(candidate_font_bpp) &&
-        candidate_font_bpp->valueint == 1 && cJSON_IsNumber(candidate_font_size) &&
+        (legacy_candidate_font || large_candidate_font || smooth_candidate_font) &&
+        cJSON_IsNumber(candidate_font_bpp) &&
+        (candidate_font_bpp->valueint == 1 || smooth_candidate_font) &&
+        cJSON_IsNumber(candidate_font_size) &&
         candidate_font_size->valuedouble == candidate_font_size->valueint &&
         candidate_font_size->valueint >= 128 * 1024 &&
-        candidate_font_size->valueint <= (large_candidate_font ? 8 : 4) * 1024 * 1024 &&
+        candidate_font_size->valueint <=
+            (large_candidate_font || smooth_candidate_font ? 8 : 4) * 1024 * 1024 &&
         cJSON_IsNumber(candidate_font_crc) && candidate_font_crc->valuedouble >= 0 &&
         candidate_font_crc->valuedouble <= UINT32_MAX) {
         dictionary_candidate_font_path_ = candidate_font_path->valuestring;
@@ -653,11 +676,14 @@ bool ContentStore::Initialize() {
         cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "bytes");
     auto candidate_scalable_height =
         cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "size");
+    auto candidate_scalable_weight =
+        cJSON_GetObjectItemCaseSensitive(candidate_scalable_font, "weight");
     if (indexed_ready_ && cJSON_IsString(candidate_scalable_path) &&
-        strcmp(candidate_scalable_path->valuestring, "dictionary/NotoSansSC-Medium.ttf") == 0 &&
+        strcmp(candidate_scalable_path->valuestring, "dictionary/NotoSerifSC-Bold.ttf") == 0 &&
         cJSON_IsString(candidate_scalable_format) &&
         strcmp(candidate_scalable_format->valuestring, "truetype") == 0 &&
         cJSON_IsNumber(candidate_scalable_height) && candidate_scalable_height->valueint == 56 &&
+        cJSON_IsNumber(candidate_scalable_weight) && candidate_scalable_weight->valueint == 700 &&
         cJSON_IsNumber(candidate_scalable_size) &&
         candidate_scalable_size->valuedouble == candidate_scalable_size->valueint &&
         candidate_scalable_size->valueint >= 1024 * 1024 &&
@@ -666,6 +692,25 @@ bool ContentStore::Initialize() {
         FILE* scalable = fopen((root_ + "/" + relative).c_str(), "rb");
         if (scalable && FileSize(scalable) == candidate_scalable_size->valueint)
             dictionary_candidate_scalable_font_path_ = "S:" + root_ + "/" + relative;
+        if (scalable)
+            fclose(scalable);
+    }
+    auto ui_scalable_font = cJSON_GetObjectItemCaseSensitive(indexed, "ui_scalable_font");
+    auto ui_scalable_path = cJSON_GetObjectItemCaseSensitive(ui_scalable_font, "path");
+    auto ui_scalable_format = cJSON_GetObjectItemCaseSensitive(ui_scalable_font, "format");
+    auto ui_scalable_size = cJSON_GetObjectItemCaseSensitive(ui_scalable_font, "bytes");
+    if (indexed_ready_ && cJSON_IsString(ui_scalable_path) &&
+        strcmp(ui_scalable_path->valuestring, "dictionary/ResourceHanRoundedCN-Heavy.ttf") == 0 &&
+        cJSON_IsString(ui_scalable_format) &&
+        strcmp(ui_scalable_format->valuestring, "truetype") == 0 &&
+        cJSON_IsNumber(ui_scalable_size) &&
+        ui_scalable_size->valuedouble == ui_scalable_size->valueint &&
+        ui_scalable_size->valueint >= 1024 * 1024 &&
+        ui_scalable_size->valueint <= 32 * 1024 * 1024) {
+        const std::string relative = ui_scalable_path->valuestring;
+        FILE* scalable = fopen((root_ + "/" + relative).c_str(), "rb");
+        if (scalable && FileSize(scalable) == ui_scalable_size->valueint)
+            dictionary_ui_scalable_font_path_ = "S:" + root_ + "/" + relative;
         if (scalable)
             fclose(scalable);
     }
@@ -687,13 +732,14 @@ void ContentStore::Detach(const std::string& notice) {
     dictionary_candidate_font_path_.clear();
     dictionary_scalable_font_path_.clear();
     dictionary_candidate_scalable_font_path_.clear();
+    dictionary_ui_scalable_font_path_.clear();
     notice_ = notice;
 }
 
 bool ContentStore::ReadDictionaryFont(std::string& data) const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!indexed_ready_ || dictionary_font_size_ == 0 || dictionary_font_path_.empty() ||
-        !Read(dictionary_font_path_, data, 4 * 1024 * 1024) ||
+        !Read(dictionary_font_path_, data, 5 * 1024 * 1024) ||
         data.size() != dictionary_font_size_ || Crc32(data) != dictionary_font_crc_) {
         data.clear();
         return false;
@@ -714,6 +760,17 @@ bool ContentStore::ReadCandidateDictionaryFont(std::string& data) const {
     return true;
 }
 
+bool ContentStore::HasDictionaryFont() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return indexed_ready_ && dictionary_font_size_ != 0 && !dictionary_font_path_.empty();
+}
+
+bool ContentStore::HasCandidateDictionaryFont() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return indexed_ready_ && dictionary_candidate_font_size_ != 0 &&
+           !dictionary_candidate_font_path_.empty();
+}
+
 std::string ContentStore::DictionaryScalableFontPath() const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     return indexed_ready_ ? dictionary_scalable_font_path_ : std::string();
@@ -722,6 +779,11 @@ std::string ContentStore::DictionaryScalableFontPath() const {
 std::string ContentStore::DictionaryCandidateScalableFontPath() const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     return indexed_ready_ ? dictionary_candidate_scalable_font_path_ : std::string();
+}
+
+std::string ContentStore::DictionaryUiScalableFontPath() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return indexed_ready_ ? dictionary_ui_scalable_font_path_ : std::string();
 }
 
 bool ContentStore::ReadStrokeGlyph(const std::string& character, StrokeGlyph& glyph) const {
@@ -901,20 +963,31 @@ bool ContentStore::Lookup(const std::string& query, Entry& entry) const {
             return true;
         }
     }
-    if (character == "规") {
+    if (character == "妙") {
         entry = Demo();
+        return true;
+    }
+    if (character == "规") {
+        entry = GuiDemo();
         return true;
     }
     return false;
 }
 
 bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::string>& characters,
-                                size_t limit) const {
+                                size_t limit, ProgressCallback progress,
+                                void* progress_context) const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const auto report_progress = [&](uint8_t percent) {
+        if (progress)
+            progress(percent, progress_context);
+    };
+    report_progress(2);
     characters.clear();
     auto key = NormalizePinyin(query);
     if (!pinyin_index_ready_ || key.empty() || limit == 0)
         return false;
+    report_progress(8);
     FILE* file = fopen((root_ + "/dictionary/pinyin.idx").c_str(), "rb");
     if (!file)
         return false;
@@ -951,6 +1024,7 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
         fclose(file);
         return false;
     }
+    report_progress(25);
     const uint32_t offset = ReadLe32(directory + 8);
     const size_t count = std::min<size_t>(ReadLe16(directory + 12), limit);
     if (offset > pinyin_data_size_ || count * 3 > pinyin_data_size_ - offset ||
@@ -964,6 +1038,7 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
     fclose(file);
     if (!ok)
         return false;
+    report_progress(38);
     characters.reserve(std::min(count, limit));
     for (size_t index = 0; index < count; ++index) {
         auto character = data.substr(index * 3, 3);
@@ -980,6 +1055,9 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
                 continue;
         }
         characters.push_back(std::move(character));
+        if ((index & 0x1f) == 0 || index + 1 == count)
+            report_progress(
+                static_cast<uint8_t>(38 + (index + 1) * 22 / std::max<size_t>(1, count)));
         if (characters.size() >= limit)
             break;
     }
@@ -1017,6 +1095,9 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
                 candidate.stroke_count = count;
         }
         ranked.push_back(std::move(candidate));
+        if ((index & 0x1f) == 0 || index + 1 == characters.size())
+            report_progress(static_cast<uint8_t>(60 + (index + 1) * 32 /
+                                                          std::max<size_t>(1, characters.size())));
     }
     if (stroke_data)
         fclose(stroke_data);
@@ -1038,6 +1119,7 @@ bool ContentStore::SearchPinyin(const std::string& query, std::vector<std::strin
     characters.reserve(ranked.size());
     for (auto& candidate : ranked)
         characters.push_back(std::move(candidate.character));
+    report_progress(100);
     return !characters.empty();
 }
 

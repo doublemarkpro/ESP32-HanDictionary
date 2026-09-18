@@ -74,6 +74,9 @@ if(CONFIG_HAN_DICTIONARY)
         "han_dictionary/assets/han_font_timer.c"
         "han_dictionary/assets/han_font_timer_title.c")
     list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/han_dictionary")
+    set(HAN_BOOT_ASSETS
+        "han_dictionary/assets/boot_light.png"
+        "han_dictionary/assets/boot_dark.png")
 endif()
 
 # Add board common files
@@ -1086,7 +1089,7 @@ if(CONFIG_BOARD_TYPE_ESP32_P4_FUNCTION_EV_BOARD)
     )
 endif()
 idf_component_register(SRCS ${SOURCES}
-                    EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
+                    EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS} ${HAN_BOOT_ASSETS}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
                     WHOLE_ARCHIVE
                     PRIV_REQUIRES

@@ -82,6 +82,7 @@ enum DeviceState {
 };
 struct AudioService {
     void PlaySound(std::string_view) {}
+    void PlaySound(std::string_view, const std::function<bool()>&) {}
     bool IsPlaybackIdle() { return true; }
     bool IsWakeWordRunning() { return false; }
     void EnableWakeWordDetection(bool) {}

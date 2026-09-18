@@ -39,17 +39,23 @@ struct StrokeGlyph {
 // All file reads are bounded; callers perform SD I/O on a worker task.
 class ContentStore {
 public:
+    using ProgressCallback = void (*)(uint8_t percent, void* context);
+
     explicit ContentStore(std::string root = "/sdcard/handict") : root_(std::move(root)) {}
     bool Initialize();
     void Detach(const std::string& notice = "SD 卡已交给 USB，重启后恢复内容读取");
     bool Lookup(const std::string& query, Entry& entry) const;
     bool SearchPinyin(const std::string& query, std::vector<std::string>& characters,
-                      size_t limit = 20) const;
+                      size_t limit = 20, ProgressCallback progress = nullptr,
+                      void* progress_context = nullptr) const;
     bool Read(const std::string& relative, std::string& data, size_t limit) const;
     bool ReadDictionaryFont(std::string& data) const;
     bool ReadCandidateDictionaryFont(std::string& data) const;
+    bool HasDictionaryFont() const;
+    bool HasCandidateDictionaryFont() const;
     std::string DictionaryScalableFontPath() const;
     std::string DictionaryCandidateScalableFontPath() const;
+    std::string DictionaryUiScalableFontPath() const;
     bool ReadStrokeGlyph(const std::string& character, StrokeGlyph& glyph) const;
     bool ready() const {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -87,6 +93,7 @@ private:
     std::string dictionary_candidate_font_path_;
     std::string dictionary_scalable_font_path_;
     std::string dictionary_candidate_scalable_font_path_;
+    std::string dictionary_ui_scalable_font_path_;
     bool stroke_index_ready_ = false;
     uint32_t stroke_records_ = 0;
     uint32_t stroke_data_size_ = 0;

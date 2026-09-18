@@ -26,16 +26,16 @@ SHA-256: `23EC023913E1851925EB94462C4B0CCD1D78BB89533745AAA8CC682CCD339DC0`
 Copyright 2021–2026 LXGW and contributors. License: SIL Open Font License 1.1; the upstream notice
 is preserved in `LXGW-WenKai-Screen-OFL.txt`.
 
-## Antialiased dictionary candidate font
+## Antialiased dictionary candidate font (selected)
 
-`NotoSansSC-Medium.ttf` is a static 500-weight instance generated from the official
-[Noto Sans SC variable TrueType font](https://github.com/google/fonts/tree/main/ofl/notosanssc).
+`NotoSerifSC-Bold.ttf` is a static 700-weight instance generated from the official
+[Noto Serif SC variable TrueType font](https://github.com/google/fonts/tree/main/ofl/notoserifsc).
 The device reads it from SD and lets
 LVGL rasterize only the visible 56 px candidates into a bounded grayscale glyph cache. This is the
-preferred candidate renderer because it avoids the jagged black/white edges inherent to a 1 bpp
-full-CJK bitmap while retaining uncommon-character coverage.
+preferred candidate renderer because its stronger Song-style strokes remain clear on the 720p
+panel, avoid the jagged edges of a 1 bpp full-CJK bitmap, and retain uncommon-character coverage.
 
-SHA-256: `A0F7BCCC73BFEF1B0C6382F11AD43749EE11B2CB4C9ACAB39957950C50755AC8`
+SHA-256: `B3C3040EFCEEBCB1433E6153D2EE12EAB5E4E2A02FFD992709CC8EC24E1C95F5`
 
 Copyright 2014–2021 Adobe. License: SIL Open Font License 1.1; the upstream notice is preserved in
 `Noto-CJK-OFL.txt`.
