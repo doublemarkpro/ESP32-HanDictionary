@@ -275,6 +275,12 @@ MipiLcdDisplay::MipiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel
     // this MIPI display path, so its LVGL task also needs enough stack for vector
     // stroke rendering.
     port_cfg.task_stack = 32 * 1024;
+    // Keep touch/navigation work off the audio-input core. A priority just above audio playback
+    // makes taps responsive without competing with the priority-8 capture task.
+    port_cfg.task_priority = 5;
+#if CONFIG_SOC_CPU_CORES_NUM > 1
+    port_cfg.task_affinity = 1;
+#endif
 #if CONFIG_SPIRAM
     port_cfg.task_stack_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
 #endif

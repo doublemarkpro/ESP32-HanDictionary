@@ -211,6 +211,11 @@ void AnimateObjectScale(void* object, int32_t value) {
         lv_obj_set_style_transform_scale(static_cast<lv_obj_t*>(object), value, 0);
 }
 
+void AnimateObjectOpacity(void* object, int32_t value) {
+    if (object)
+        lv_obj_set_style_opa(static_cast<lv_obj_t*>(object), static_cast<lv_opa_t>(value), 0);
+}
+
 constexpr int64_t kTimerMaximumMs = (99 * 60 + 59) * 1000LL;
 struct AlarmRingtone {
     const char* name;
@@ -608,6 +613,23 @@ std::string WeatherConditionId(const std::string& text, const std::string& code)
     return "cloudy";
 }
 
+// Tab5 has no general-purpose 2D GPU for LVGL's rounded rectangles, gradients and shadows. A
+// feature page containing dozens of them can therefore spend more than a second in the software
+// rasterizer before it is usable. Keep the artwork, typography and colour hierarchy, but flatten
+// page-local decoration so opaque fills can use the ESP32-P4 PPA path. Shared chrome and modal
+// dialogs retain their softer styling.
+void OptimizePageRenderTree(lv_obj_t* object) {
+    if (object == nullptr)
+        return;
+    lv_obj_set_style_shadow_width(object, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(object, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(object, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_radius(object, 0, LV_PART_MAIN);
+    const uint32_t child_count = lv_obj_get_child_count(object);
+    for (uint32_t index = 0; index < child_count; ++index)
+        OptimizePageRenderTree(lv_obj_get_child(object, static_cast<int32_t>(index)));
+}
+
 #ifdef HAN_UI_HOST_SIM
 const char* LegacyWeatherGraphicId(const std::string& id) {
     if (id == "sunny")
@@ -664,10 +686,6 @@ lv_obj_t* HanDisplay::Card(lv_obj_t* parent, int x, int y, int w, int h, uint32_
     auto card = Box(parent, x, y, w, h, color);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_color(card, ThemeBorder(kCardBorder), 0);
-    lv_obj_set_style_shadow_color(card, ThemeShadow(0xb8a889), 0);
-    lv_obj_set_style_shadow_width(card, 12, 0);
-    lv_obj_set_style_shadow_opa(card, LV_OPA_10, 0);
-    lv_obj_set_style_shadow_ofs_y(card, 4, 0);
     return card;
 }
 
@@ -1232,10 +1250,6 @@ void HanDisplay::SetupUI() {
     lv_obj_set_style_border_color(assistant_card_, ThemeBorder(0xc9e8df), 0);
     lv_obj_set_style_bg_grad_color(assistant_card_, ThemeFill(0xfffbef), 0);
     lv_obj_set_style_bg_grad_dir(assistant_card_, LV_GRAD_DIR_HOR, 0);
-    lv_obj_set_style_shadow_color(assistant_card_, ThemeShadow(0x8fbcb2), 0);
-    lv_obj_set_style_shadow_width(assistant_card_, 18, 0);
-    lv_obj_set_style_shadow_opa(assistant_card_, LV_OPA_20, 0);
-    lv_obj_set_style_shadow_ofs_y(assistant_card_, 5, 0);
     assistant_badge_ = Box(assistant_card_, 12, 7, 76, 76, 0xdff6ee);
     lv_obj_set_style_radius(assistant_badge_, 24, 0);
     lv_obj_set_style_border_width(assistant_badge_, 3, 0);
@@ -2086,6 +2100,7 @@ void HanDisplay::Render(Page page) {
             KeyboardLookup();
             break;
     }
+    OptimizePageRenderTree(body_);
     if (page == Page::Timetable) {
         // body_ covers the full screen for this design, so keep the live root labels/buttons above
         // its decorative layers.
@@ -2097,8 +2112,9 @@ void HanDisplay::Render(Page page) {
     }
     if (assistant_dialog_active_ || assistant_navigation_pending_)
         ShowAssistantDialog();
-    // Every page transition uses a full-screen framebuffer. Merge the changed header and body
-    // into one invalid area so the top-left chrome cannot reach the panel a frame early.
+    // A page replacement already invalidates almost the entire screen. Merge those overlapping
+    // header/body regions into the full-screen draw buffer so LVGL traverses the scene once and
+    // the panel receives one completed landscape frame instead of four visibly ordered blocks.
     lv_obj_invalidate(root_);
 #ifndef HAN_UI_HOST_SIM
     page_build_ms_ = NowMs() - page_render_started_ms_;
@@ -2122,10 +2138,6 @@ void HanDisplay::Home() {
         auto card = Button(body_, "", (i % 3) * 405, (i / 3) * 236, 394, i < 3 ? 224 : 212, kBg, i);
         lv_obj_set_style_radius(card, 28, 0);
         lv_obj_set_style_clip_corner(card, true, 0);
-        lv_obj_set_style_shadow_color(card, ThemeShadow(0xdacc9d), 0);
-        lv_obj_set_style_shadow_width(card, 14, 0);
-        lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
-        lv_obj_set_style_shadow_ofs_y(card, 5, 0);
         if (dark_theme_) {
             lv_obj_set_style_bg_color(card, lv_color_hex(dark_cards[i]), 0);
             lv_obj_set_style_bg_grad_color(card, lv_color_hex(dark_gradients[i]), 0);
@@ -4756,6 +4768,8 @@ void HanDisplay::SetScreenOffLocked() {
     lock_screen_visible_ = false;
     lock_screen_transition_pending_ = false;
     lock_unlock_gesture_ = false;
+    lock_screen_dragging_ = false;
+    lock_drag_offset_y_ = 0;
 #ifndef HAN_UI_HOST_SIM
     Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
     Board::GetInstance().GetBacklight()->SetBrightness(0);
@@ -4785,8 +4799,11 @@ void HanDisplay::ShowLockScreenLocked() {
     lv_obj_remove_flag(screen_wake_overlay_, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_flag(screen_wake_overlay_, LV_OBJ_FLAG_PRESS_LOCK);
     lv_obj_set_user_data(screen_wake_overlay_, this);
+    lv_obj_add_event_cb(screen_wake_overlay_, OnLockPressed, LV_EVENT_PRESSED, this);
+    lv_obj_add_event_cb(screen_wake_overlay_, OnLockPressing, LV_EVENT_PRESSING, this);
     lv_obj_add_event_cb(screen_wake_overlay_, OnLockGesture, LV_EVENT_GESTURE, this);
     lv_obj_add_event_cb(screen_wake_overlay_, OnLockReleased, LV_EVENT_RELEASED, this);
+    lv_obj_add_event_cb(screen_wake_overlay_, OnLockReleased, LV_EVENT_PRESS_LOST, this);
 
     auto panel = Card(screen_wake_overlay_, 120, 68, 1040, 584, 0xffffff);
     lv_obj_set_style_radius(panel, 42, 0);
@@ -4830,12 +4847,90 @@ void HanDisplay::ShowLockScreenLocked() {
     lock_screen_visible_ = true;
     lock_screen_transition_pending_ = false;
     lock_unlock_gesture_ = false;
+    lock_screen_dragging_ = false;
+    lock_drag_offset_y_ = 0;
     lock_screen_shown_ms_ = NowMs();
 #ifndef HAN_UI_HOST_SIM
     // Keep the backlight dark until OnRefresh observes the first completed lock-screen frame.
     lock_screen_backlight_pending_ = true;
     Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
 #endif
+}
+
+void HanDisplay::UpdateLockScreenDrag(int32_t offset_y) {
+    if (!screen_wake_overlay_ || lock_screen_transition_pending_)
+        return;
+
+    // The lock layer follows the finger only in the unlock direction. Fading the complete layer
+    // (background and children together) reveals the already-rendered page below without building
+    // a second page or decoding any additional artwork during the gesture.
+    constexpr int32_t kMaximumDrag = 600;
+    constexpr int32_t kFullFadeDistance = 420;
+    lock_drag_offset_y_ = std::clamp<int32_t>(offset_y, -kMaximumDrag, 0);
+    const int32_t distance = -lock_drag_offset_y_;
+    const int32_t opacity =
+        LV_OPA_COVER - std::min<int32_t>(LV_OPA_COVER, distance * LV_OPA_COVER / kFullFadeDistance);
+    lv_obj_set_y(screen_wake_overlay_, lock_drag_offset_y_);
+    lv_obj_set_style_opa(screen_wake_overlay_, static_cast<lv_opa_t>(opacity), 0);
+}
+
+void HanDisplay::AnimateLockScreenBack() {
+    if (!screen_wake_overlay_)
+        return;
+    auto overlay = screen_wake_overlay_;
+    lv_anim_delete(overlay, AnimateObjectY);
+    lv_anim_delete(overlay, AnimateObjectOpacity);
+
+    lv_anim_t position;
+    lv_anim_init(&position);
+    lv_anim_set_var(&position, overlay);
+    lv_anim_set_exec_cb(&position, AnimateObjectY);
+    lv_anim_set_values(&position, lock_drag_offset_y_, 0);
+    lv_anim_set_duration(&position, 190);
+    lv_anim_set_path_cb(&position, lv_anim_path_ease_out);
+    lv_anim_start(&position);
+
+    lv_anim_t opacity;
+    lv_anim_init(&opacity);
+    lv_anim_set_var(&opacity, overlay);
+    lv_anim_set_exec_cb(&opacity, AnimateObjectOpacity);
+    lv_anim_set_values(&opacity, lv_obj_get_style_opa(overlay, LV_PART_MAIN), LV_OPA_COVER);
+    lv_anim_set_duration(&opacity, 160);
+    lv_anim_set_path_cb(&opacity, lv_anim_path_ease_out);
+    lv_anim_start(&opacity);
+    lock_drag_offset_y_ = 0;
+}
+
+void HanDisplay::AnimateLockScreenUnlock() {
+    if (!screen_wake_overlay_ || lock_screen_transition_pending_.exchange(true))
+        return;
+    auto overlay = screen_wake_overlay_;
+    lv_anim_delete(overlay, AnimateObjectY);
+    lv_anim_delete(overlay, AnimateObjectOpacity);
+
+    // A short remaining distance completes quickly, while a small flick still has enough travel
+    // to look intentional. The page underneath is revealed by the simultaneous cross-fade.
+    const uint32_t duration = static_cast<uint32_t>(
+        std::clamp<int32_t>(220 + (720 + lock_drag_offset_y_) / 5, 220, 330));
+    lv_anim_t position;
+    lv_anim_init(&position);
+    lv_anim_set_var(&position, overlay);
+    lv_anim_set_exec_cb(&position, AnimateObjectY);
+    lv_anim_set_values(&position, lock_drag_offset_y_, -720);
+    lv_anim_set_duration(&position, duration);
+    lv_anim_set_path_cb(&position, lv_anim_path_ease_out);
+    lv_anim_set_user_data(&position, this);
+    lv_anim_set_completed_cb(&position, OnLockUnlockAnimationCompleted);
+    lv_anim_start(&position);
+
+    lv_anim_t opacity;
+    lv_anim_init(&opacity);
+    lv_anim_set_var(&opacity, overlay);
+    lv_anim_set_exec_cb(&opacity, AnimateObjectOpacity);
+    lv_anim_set_values(&opacity, lv_obj_get_style_opa(overlay, LV_PART_MAIN), LV_OPA_TRANSP);
+    lv_anim_set_duration(&opacity, std::min<uint32_t>(duration, 240));
+    lv_anim_set_path_cb(&opacity, lv_anim_path_ease_out);
+    lv_anim_start(&opacity);
 }
 
 void HanDisplay::UnlockScreen() {
@@ -4854,7 +4949,11 @@ void HanDisplay::UnlockScreenLocked() {
     lock_screen_transition_pending_ = false;
     lock_screen_backlight_pending_ = false;
     lock_unlock_gesture_ = false;
+    lock_screen_dragging_ = false;
+    lock_drag_offset_y_ = 0;
     if (screen_wake_overlay_ != nullptr) {
+        lv_anim_delete(screen_wake_overlay_, AnimateObjectY);
+        lv_anim_delete(screen_wake_overlay_, AnimateObjectOpacity);
         lv_obj_delete(screen_wake_overlay_);
         screen_wake_overlay_ = nullptr;
     }
@@ -5181,6 +5280,41 @@ void HanDisplay::OnSettingsGesture(lv_event_t* event) {
     }
 }
 
+void HanDisplay::OnLockPressed(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    auto indev = lv_event_get_indev(event);
+    if (!self || !indev || !self->screen_wake_overlay_ ||
+        self->lock_screen_transition_pending_)
+        return;
+    lv_point_t point{};
+    lv_indev_get_point(indev, &point);
+    lv_anim_delete(self->screen_wake_overlay_, AnimateObjectY);
+    lv_anim_delete(self->screen_wake_overlay_, AnimateObjectOpacity);
+    self->lock_drag_offset_y_ = lv_obj_get_y(self->screen_wake_overlay_);
+    self->lock_screen_dragging_ = true;
+    self->lock_unlock_gesture_ = false;
+    self->lock_drag_start_x_ = point.x;
+    self->lock_drag_start_y_ = point.y;
+    self->lock_drag_start_offset_y_ = self->lock_drag_offset_y_;
+}
+
+void HanDisplay::OnLockPressing(lv_event_t* event) {
+    auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
+    auto indev = lv_event_get_indev(event);
+    if (!self || !indev || !self->lock_screen_dragging_ ||
+        self->lock_screen_transition_pending_)
+        return;
+    lv_point_t point{};
+    lv_indev_get_point(indev, &point);
+    const int32_t delta_x = point.x - self->lock_drag_start_x_;
+    const int32_t delta_y = point.y - self->lock_drag_start_y_;
+    // Ignore an unmistakably horizontal gesture. Small diagonal motion remains natural for a
+    // child swiping one-handed across a landscape display.
+    if (delta_y >= 0 || (-delta_y < std::abs(delta_x) / 2 && self->lock_drag_offset_y_ == 0))
+        return;
+    self->UpdateLockScreenDrag(self->lock_drag_start_offset_y_ + delta_y);
+}
+
 void HanDisplay::OnLockGesture(lv_event_t* event) {
     auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
     auto indev = lv_event_get_indev(event);
@@ -5192,16 +5326,29 @@ void HanDisplay::OnLockGesture(lv_event_t* event) {
 
 void HanDisplay::OnLockReleased(lv_event_t* event) {
     auto self = static_cast<HanDisplay*>(lv_event_get_user_data(event));
-    if (!self || !self->lock_unlock_gesture_)
+    if (!self || !self->lock_screen_dragging_ || self->lock_screen_transition_pending_)
         return;
+    self->lock_screen_dragging_ = false;
+    constexpr int32_t kUnlockDistance = 150;
+    const bool should_unlock = self->lock_drag_offset_y_ <= -kUnlockDistance ||
+                               (self->lock_unlock_gesture_ && self->lock_drag_offset_y_ <= -36);
     self->lock_unlock_gesture_ = false;
-    if (self->lock_screen_transition_pending_.exchange(true))
+    if (should_unlock)
+        self->AnimateLockScreenUnlock();
+    else
+        self->AnimateLockScreenBack();
+}
+
+void HanDisplay::OnLockUnlockAnimationCompleted(lv_anim_t* animation) {
+    auto self = static_cast<HanDisplay*>(lv_anim_get_user_data(animation));
+    if (!self)
         return;
-    // Do not delete the lock-screen object from its gesture/release callback. Deferring one LVGL
-    // cycle lets the touch driver clear its active target first and prevents intermittent
-    // use-after- free resets during an upward swipe.
-    if (lv_async_call(UnlockScreenAsync, self) != LV_RESULT_OK)
+    // Even though the animation already runs outside the input callback, defer deletion once more
+    // so the input device can finish processing RELEASED/PRESS_LOST with its original target.
+    if (lv_async_call(UnlockScreenAsync, self) != LV_RESULT_OK) {
         self->lock_screen_transition_pending_ = false;
+        self->UnlockScreenLocked();
+    }
 }
 
 void HanDisplay::UnlockScreenAsync(void* user_data) {
@@ -5877,7 +6024,8 @@ void HanDisplay::Tick(lv_timer_t* timer) {
         }
         self->UpdateStroke();
     }
-    if (self->lock_screen_visible_ && NowMs() - self->lock_screen_shown_ms_ >= 10000) {
+    if (self->lock_screen_visible_ && !self->lock_screen_transition_pending_ &&
+        NowMs() - self->lock_screen_shown_ms_ >= 10000) {
         self->SetScreenOffLocked();
         return;
     }

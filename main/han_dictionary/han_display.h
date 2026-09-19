@@ -96,8 +96,11 @@ private:
     static void ShowLockScreenAsync(void* user_data);
     static void OnPinyinGesture(lv_event_t* event);
     static void OnSettingsGesture(lv_event_t* event);
+    static void OnLockPressed(lv_event_t* event);
+    static void OnLockPressing(lv_event_t* event);
     static void OnLockGesture(lv_event_t* event);
     static void OnLockReleased(lv_event_t* event);
+    static void OnLockUnlockAnimationCompleted(lv_anim_t* animation);
     static void UnlockScreenAsync(void* user_data);
     static void OnSettingSliderChanged(lv_event_t* event);
     static void OnSettingSliderReleased(lv_event_t* event);
@@ -138,6 +141,9 @@ private:
     void SetScreenOffLocked();
     void ShowLockScreen();
     void ShowLockScreenLocked();
+    void UpdateLockScreenDrag(int32_t offset_y);
+    void AnimateLockScreenBack();
+    void AnimateLockScreenUnlock();
     void UnlockScreen();
     void UnlockScreenLocked();
     void SaveAutoLockSetting();
@@ -347,6 +353,11 @@ private:
     std::atomic<bool> lock_screen_transition_pending_{false};
     std::atomic<bool> lock_screen_backlight_pending_{false};
     bool lock_unlock_gesture_ = false;
+    bool lock_screen_dragging_ = false;
+    int32_t lock_drag_start_x_ = 0;
+    int32_t lock_drag_start_y_ = 0;
+    int32_t lock_drag_start_offset_y_ = 0;
+    int32_t lock_drag_offset_y_ = 0;
     int64_t lock_screen_shown_ms_ = 0;
     han::Entry entry_ = han::ContentStore::Demo();
     han::StudyTimer study_;
